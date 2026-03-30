@@ -784,7 +784,6 @@ export default function App(){
         <input type="password" style={{...s.input,marginBottom:10}} placeholder="Password" value={instPw} onChange={e=>setInstPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} autoFocus/>
         {instErr&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{instErr}</p>}
         <button onClick={doLogin} style={s.btnPri}>Login</button>
-        <p style={{...s.muted,fontSize:12,textAlign:"center",marginTop:16}}>Default password: <code style={{background:"rgba(255,255,255,0.08)",padding:"2px 6px",borderRadius:4}}>physics123</code></p>
       </div>
     </div>
   );
