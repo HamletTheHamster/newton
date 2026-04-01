@@ -310,6 +310,11 @@ export default function App(){
   useLayoutEffect(()=>{doScroll();},[messages]);
   useLayoutEffect(()=>{doScroll();},[busy]);
   useEffect(()=>{if(screen==="quiz"&&!isYesNoQ&&!isDragDropQ&&!quizDone)requestAnimationFrame(()=>inputRef.current?.focus());},[qIdx,screen,quizDone]);
+  useEffect(()=>{
+    const onPop=()=>{if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?setScreen("student-portal"):setShowLeaveConfirm(true);}};
+    window.addEventListener("popstate",onPop);
+    return()=>window.removeEventListener("popstate",onPop);
+  },[screen,quizDone]);
   const prevBusy=useRef(false);
   useEffect(()=>{
     if(prevBusy.current&&!busy&&screen==="quiz"&&!isYesNoQ&&!isDragDropQ&&!quizDone)requestAnimationFrame(()=>inputRef.current?.focus());
@@ -439,6 +444,7 @@ export default function App(){
       {id:1,type:"question",q:quiz.questions[0],num:1,total:quiz.questions.length,pts:ptsPer(quiz.questions.length)[0]}
     ]);
     setScreen("quiz");
+    history.pushState({newton:"quiz"},"","");
   };
   const handleLeaveQuiz=()=>{if(quizDone){setScreen("student-portal");return;}setShowLeaveConfirm(true);};
   const confirmLeave=()=>{setShowLeaveConfirm(false);setScreen("student-portal");};
