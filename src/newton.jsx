@@ -311,10 +311,14 @@ export default function App(){
   useLayoutEffect(()=>{doScroll();},[busy]);
   useEffect(()=>{if(screen==="quiz"&&!isYesNoQ&&!isDragDropQ&&!quizDone)requestAnimationFrame(()=>inputRef.current?.focus());},[qIdx,screen,quizDone]);
   useEffect(()=>{
-    const onPop=()=>{if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?setScreen("student-portal"):setShowLeaveConfirm(true);}};
+    const onPop=()=>{
+      if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?setScreen("student-portal"):setShowLeaveConfirm(true);}
+      else if(showStudentSettings){history.pushState({newton:"settings"},"","");setShowStudentSettings(false);setNewPw1("");setNewPw2("");setPwChangeMsg("");}
+      else if(screen==="inst-sub-detail"){history.pushState({newton:"inst-sub-detail"},"","");setScreen("instructor");setViewingSub(null);}
+    };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
-  },[screen,quizDone]);
+  },[screen,quizDone,showStudentSettings]);
   const prevBusy=useRef(false);
   useEffect(()=>{
     if(prevBusy.current&&!busy&&screen==="quiz"&&!isYesNoQ&&!isDragDropQ&&!quizDone)requestAnimationFrame(()=>inputRef.current?.focus());
@@ -633,7 +637,7 @@ export default function App(){
             <div><h2 style={{fontSize:20,fontWeight:700,color:"#fff",margin:"0 0 4px"}}>Hi, {loggedInStudent.altName?loggedInStudent.altName.split(' ')[0]:loggedInStudent.firstName}!</h2><p style={{...s.muted,margin:0}}>Select a quiz to begin</p></div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <button onClick={handleStudentLogout} style={{...s.btnGhost,width:"auto",padding:"6px 14px",fontSize:13}}>Log Out</button>
-              <button onClick={()=>setShowStudentSettings(true)} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer"}} title="Account settings">⚙️</button>
+              <button onClick={()=>{setShowStudentSettings(true);history.pushState({newton:"settings"},"","");}} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer"}} title="Account settings">⚙️</button>
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,margin:"12px 0 20px"}}>
@@ -801,7 +805,7 @@ export default function App(){
                   {isOpen&&(<div style={{borderTop:`1px solid ${BORDER}`}}>
                     {subs.map((sub,i)=>{
                       const checked=!!checkedSubs[sub.id],scoreColor=sub.score>=8?"#4ade80":sub.score>=6?"#facc15":sub.score>=4?"#fb923c":"#f87171";
-                      return(<div key={sub.id} onClick={()=>{if(!sub.imported){setViewingSub(sub);setScreen("inst-sub-detail");}}} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 18px",borderTop:i>0?`1px solid ${BORDER}`:"none",background:checked?"rgba(255,255,255,0.01)":"transparent",opacity:checked?0.65:1,transition:"opacity 0.2s, background 0.15s",cursor:sub.imported?"default":"pointer"}} onMouseEnter={e=>{if(!sub.imported)e.currentTarget.style.background=checked?"rgba(255,255,255,0.03)":"rgba(255,255,255,0.04)";}} onMouseLeave={e=>{e.currentTarget.style.background=checked?"rgba(255,255,255,0.01)":"transparent";}}>
+                      return(<div key={sub.id} onClick={()=>{if(!sub.imported){setViewingSub(sub);setScreen("inst-sub-detail");history.pushState({newton:"inst-sub-detail"},"","");}}} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 18px",borderTop:i>0?`1px solid ${BORDER}`:"none",background:checked?"rgba(255,255,255,0.01)":"transparent",opacity:checked?0.65:1,transition:"opacity 0.2s, background 0.15s",cursor:sub.imported?"default":"pointer"}} onMouseEnter={e=>{if(!sub.imported)e.currentTarget.style.background=checked?"rgba(255,255,255,0.03)":"rgba(255,255,255,0.04)";}} onMouseLeave={e=>{e.currentTarget.style.background=checked?"rgba(255,255,255,0.01)":"transparent";}}>
                         {!sub.imported?<button onClick={e=>{e.stopPropagation();toggleChecked(sub.id);}} style={{flexShrink:0,width:22,height:22,borderRadius:6,border:`2px solid ${checked?TEAL:BORDER}`,background:checked?TEAL:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:700}}>{checked&&"✓"}</button>:<div style={{flexShrink:0,width:22,height:22}}/>}
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{color:"#fff",fontSize:14,fontWeight:500}}>{sub.studentName}</span>{sub.late&&<span style={s.badge("#facc15")}>LATE</span>}{sub.imported&&<span style={s.badge(MUTED)}>Imported</span>}</div>
