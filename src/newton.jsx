@@ -674,8 +674,6 @@ export default function App(){
             {pwChangeMsg&&<p style={{color:pwChangeMsg.startsWith("✅")?"#4ade80":"#f87171",fontSize:13,margin:0}}>{pwChangeMsg}</p>}
             <button onClick={handleChangePassword} style={s.btnPri}>Update Password</button>
           </div>
-          <hr style={{border:`1px solid ${BORDER}`,margin:"24px 0"}}/>
-          <button onClick={handleStudentLogout} style={s.btnGhost}>Log Out</button>
         </div>
       </div>
     );
@@ -685,7 +683,10 @@ export default function App(){
         <div style={{maxWidth:860,width:"100%",...s.card,padding:28}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
             <div><h2 style={{fontSize:20,fontWeight:700,color:"#fff",margin:"0 0 4px"}}>Hi, {loggedInStudent.firstName}!</h2><p style={{...s.muted,margin:0}}>Select a quiz to begin</p></div>
-            <button onClick={()=>setShowStudentSettings(true)} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer"}} title="Account settings">⚙️</button>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <button onClick={handleStudentLogout} style={{...s.btnGhost,width:"auto",padding:"6px 14px",fontSize:13}}>Log Out</button>
+              <button onClick={()=>setShowStudentSettings(true)} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer"}} title="Account settings">⚙️</button>
+            </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,margin:"12px 0 20px"}}>
             <div style={{flex:1,background:"rgba(255,255,255,0.08)",borderRadius:99,height:6,overflow:"hidden"}}><div style={{background:TEAL,height:6,borderRadius:99,width:(completedCount/QUIZZES.length*100)+"%",transition:"width 0.4s"}}/></div>
