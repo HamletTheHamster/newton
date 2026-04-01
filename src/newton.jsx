@@ -313,14 +313,15 @@ export default function App(){
   const navStateRef=useRef({screen,quizDone,showStudentSettings});
   useEffect(()=>{navStateRef.current={screen,quizDone,showStudentSettings};},[screen,quizDone,showStudentSettings]);
   useEffect(()=>{
+    const go=next=>{navStateRef.current={...navStateRef.current,screen:next,showStudentSettings:false};setScreen(next);};
     const onPop=()=>{
       const{screen,quizDone,showStudentSettings}=navStateRef.current;
-      if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?setScreen("student-portal"):setShowLeaveConfirm(true);}
-      else if(showStudentSettings){history.pushState({newton:"settings"},"","");setShowStudentSettings(false);setNewPw1("");setNewPw2("");setPwChangeMsg("");}
-      else if(screen==="inst-sub-detail"){history.pushState({newton:"inst-sub-detail"},"","");setScreen("instructor");setViewingSub(null);}
-      else if(screen==="student-pw"){history.pushState({newton:"student-pw"},"","");setSelectedStudent(null);setScreen("student-search");}
-      else if(screen==="student-search"){history.pushState({newton:"student-search"},"","");setScreen("home");}
-      else if(screen==="inst-login"){history.pushState({newton:"inst-login"},"","");setScreen("home");}
+      if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?go("student-portal"):setShowLeaveConfirm(true);}
+      else if(showStudentSettings){history.pushState({newton:"settings"},"","");navStateRef.current={...navStateRef.current,showStudentSettings:false};setShowStudentSettings(false);setNewPw1("");setNewPw2("");setPwChangeMsg("");}
+      else if(screen==="inst-sub-detail"){history.pushState({newton:"inst-sub-detail"},"","");go("instructor");setViewingSub(null);}
+      else if(screen==="student-pw"){history.pushState({newton:"student-pw"},"","");setSelectedStudent(null);go("student-search");}
+      else if(screen==="student-search"){history.pushState({newton:"student-search"},"","");go("home");}
+      else if(screen==="inst-login"){history.pushState({newton:"inst-login"},"","");go("home");}
     };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
