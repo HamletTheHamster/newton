@@ -135,7 +135,21 @@ function compressImage(file,maxPx=1200,quality=0.8){
   });
 }
 
-const dueToDate=due=>{if(!due)return null;if(due.length===10){const noon=new Date(due+'T12:00:00Z');const isEDT=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'short'}).format(noon).includes('EDT');return new Date(due+'T23:59:00'+(isEDT?'-04:00':'-05:00'));}return new Date(due);};
+const dueToDate=due=>{
+  if(!due)return null;
+  const datePart=due.slice(0,10);
+  const noon=new Date(datePart+'T12:00:00Z');
+  const isEDT=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'short'}).format(noon).includes('EDT');
+  const offset=isEDT?'-04:00':'-05:00';
+  if(due.length===10)return new Date(due+'T23:59:00'+offset);
+  if(due.length===16&&due[10]===' ')return new Date(datePart+'T'+due.slice(11)+':00'+offset);
+  return new Date(due);
+};
+const fmtDueTime=due=>{
+  if(!due||due.length===10)return'11:59 PM';
+  if(due.length===16&&due[10]===' '){const[h,m]=due.slice(11).split(':').map(Number);return`${h%12||12}:${String(m).padStart(2,'0')} ${h>=12?'PM':'AM'}`;}
+  return'11:59 PM';
+};
 const isLate=due=>due&&new Date()>dueToDate(due);
 const fmtDate=ts=>new Date(ts).toLocaleString();
 const ptsPer=n=>{const b=Math.floor(10/n),r=10-b*n;return Array.from({length:n},(_,i)=>b+(i<r?1:0));};
@@ -249,6 +263,7 @@ export default function App(){
   const[instTab,setInstTab]=useState("submissions");
   const[editPw,setEditPw]=useState("");const[editPw2,setEditPw2]=useState("");const[editPwMsg,setEditPwMsg]=useState("");
   const[openQuizzes,setOpenQuizzes]=useState({});
+  const[editingTimeFor,setEditingTimeFor]=useState(null);
   const[dangerAction,setDangerAction]=useState(null);
   const[dangerPw,setDangerPw]=useState("");const[dangerErr,setDangerErr]=useState("");
   const[removeStudent,setRemoveStudent]=useState(null);
@@ -256,6 +271,14 @@ export default function App(){
   const[viewingSub,setViewingSub]=useState(null);
   const[backupModal,setBackupModal]=useState(null);
   const[rosterMsg,setRosterMsg]=useState("");const[backupMsg,setBackupMsg]=useState("");
+  const[bugReports,setBugReports]=useState({});
+  const[bugReportOpen,setBugReportOpen]=useState(false);
+  const[bugInput,setBugInput]=useState("");
+  const[bugSubmitting,setBugSubmitting]=useState(false);
+  const[bugSubmitMsg,setBugSubmitMsg]=useState("");
+  const[bugBtnHover,setBugBtnHover]=useState(false);
+  const[instBugHover,setInstBugHover]=useState(false);
+  const[octocatHover,setOctocatHover]=useState(false);
 
   const chatRef=useRef(null);const detailRef=useRef(null);const inputRef=useRef(null);
   const fileInputRef=useRef(null);const rosterInputRef=useRef(null);
@@ -276,13 +299,14 @@ export default function App(){
         return; // No point loading if Firebase is unreachable
       }
       try{
-        const[rosterData,pwsData,datesData,settingsData,checkedData,subsData]=await Promise.all([
+        const[rosterData,pwsData,datesData,settingsData,checkedData,subsData,bugsData]=await Promise.all([
           fbGet('roster').catch(()=>null),
           fbGet('studentPws').catch(()=>null),
           fbGet('dueDates').catch(()=>null),
           fbGet('settings').catch(()=>null),
           fbGet('checkedSubs').catch(()=>null),
           fbGet('submissions').catch(()=>null),
+          fbGet('bugReports').catch(()=>null),
         ]);
         if(Array.isArray(rosterData))setRoster(rosterData);
         if(pwsData&&typeof pwsData==='object')setStudentPws(pwsData);
@@ -300,6 +324,7 @@ export default function App(){
           const allSubs=Object.values(subsData).flat().filter(Boolean);
           setSubmissions(allSubs);
         }
+        if(bugsData&&typeof bugsData==='object')setBugReports(bugsData);
       }catch(e){console.error("Startup load error:",e);}
       setReady(true);
     })();
@@ -419,11 +444,26 @@ export default function App(){
     const h=await makeHash(newPw1);await saveStudentPws({...studentPws,[loggedInStudent.studentId]:h});
     setNewPw1("");setNewPw2("");setPwChangeMsg("✅ Password updated successfully!");
   };
-  const handleStudentLogout=()=>{setLoggedInStudent(null);setSelectedStudent(null);setNameQuery("");setShowStudentSettings(false);setScreen("home");};
+  const handleStudentLogout=()=>{setLoggedInStudent(null);setSelectedStudent(null);setNameQuery("");setShowStudentSettings(false);setScreen("student-search");};
   const doLogin=async()=>{
     if(!settings.passwordHash){setInstErr("Settings still loading.");return;}
     const ok=await verifyPw(instPw,settings.passwordHash,settings.passwordSalt);
     if(ok){setInstErr("");setEditPw("");setScreen("instructor");}else setInstErr("Incorrect password.");
+  };
+  const submitBugReport=async()=>{
+    if(!bugInput.trim()||bugSubmitting)return;
+    setBugSubmitting(true);
+    const id=Date.now().toString();
+    const report={id,message:bugInput.trim(),timestamp:new Date().toISOString(),read:false};
+    const updated={...bugReports,[id]:report};
+    try{await fbSet('bugReports',updated);setBugReports(updated);setBugInput("");setBugSubmitMsg("Report sent! Thank you.");setTimeout(()=>{setBugSubmitMsg("");setBugReportOpen(false);},1800);}
+    catch{setBugSubmitMsg("Failed to send. Please try again.");}
+    setBugSubmitting(false);
+  };
+  const markBugRead=async(id)=>{
+    const updated={...bugReports,[id]:{...bugReports[id],read:true}};
+    setBugReports(updated);
+    await fbSet('bugReports',updated);
   };
   const confirmDanger=(label,onConfirm)=>{setDangerAction({label,onConfirm});setDangerPw("");setDangerErr("");};
   const executeDanger=async()=>{
@@ -432,6 +472,8 @@ export default function App(){
     if(!ok){setDangerErr("Incorrect password.");return;}
     dangerAction.onConfirm();setDangerAction(null);setDangerPw("");setDangerErr("");
   };
+
+  const unreadBugCount=Object.values(bugReports).filter(b=>!b.read).length;
 
   // ── Quiz helpers ───────────────────────────────────────────────────────────
   const quizzes=QUIZZES.map(q=>({...q,dueDate:dueDates[q.id]||null}));
@@ -566,13 +608,43 @@ export default function App(){
 
   const handleSelectStudent=st=>{setSelectedStudent(st);setPwInput("");setPwError("");setNameQuery("");setScreen("student-pw");history.pushState({newton:"student-pw"},"","");};
 
+  const bugModalJsx=bugReportOpen&&(
+    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:16}}>
+      <div style={{...s.card,padding:24,width:"100%",maxWidth:400}}>
+        <h3 style={{color:"#fff",fontWeight:700,fontSize:16,margin:"0 0 12px"}}>Report a Bug</h3>
+        <textarea style={{...s.input,height:100,resize:"vertical",marginBottom:10,fontFamily:"inherit"}} placeholder="Describe the issue…" value={bugInput} onChange={e=>setBugInput(e.target.value)} autoFocus/>
+        {bugSubmitMsg&&<p style={{color:bugSubmitMsg.startsWith("Failed")?"#f87171":"#4ade80",fontSize:13,margin:"0 0 10px"}}>{bugSubmitMsg}</p>}
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>{setBugReportOpen(false);setBugInput("");setBugSubmitMsg("");}} style={{...s.btnGhost,flex:1}}>Cancel</button>
+          <button onClick={submitBugReport} disabled={bugSubmitting||!bugInput.trim()} style={{...s.btnPri,flex:1,opacity:bugSubmitting||!bugInput.trim()?0.5:1}}>Send</button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const studentFooterJsx=(
+    <div style={{position:"fixed",bottom:16,left:0,right:0,display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+      <span style={{color:MUTED,fontSize:12}}>© Joel N. Johnson 2026</span>
+      <a href="https://github.com/HamletTheHamster/newton" target="_blank" rel="noopener noreferrer" onMouseEnter={()=>setOctocatHover(true)} onMouseLeave={()=>setOctocatHover(false)} style={{color:octocatHover?TEAL:MUTED,display:"flex",alignItems:"center",transition:"color 0.2s"}}>
+        <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      </a>
+      <div style={{position:"relative",display:"flex",alignItems:"center"}}>
+        <button onClick={()=>setBugReportOpen(true)} onMouseEnter={()=>setBugBtnHover(true)} onMouseLeave={()=>setBugBtnHover(false)} style={{background:"transparent",border:"none",color:bugBtnHover?TEAL:MUTED,cursor:"pointer",padding:"2px 4px",display:"flex",alignItems:"center",transition:"transform 0.2s, color 0.2s",transform:bugBtnHover?"rotate(30deg)":"rotate(0deg)"}}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2l1.5 1.5"/><path d="M14.5 3.5L16 2"/><circle cx="12" cy="8" r="4"/><path d="M4 13h16"/><path d="M4 17h16"/><path d="M8 21v-8"/><path d="M16 21v-8"/><path d="M3 10l2 2"/><path d="M19 10l2 2"/></svg>
+        </button>
+        {bugBtnHover&&<span style={{position:"absolute",bottom:"calc(100% + 6px)",left:"50%",transform:"translateX(-50%)",background:"rgba(40,40,40,0.95)",color:"#fff",fontSize:11,padding:"4px 8px",borderRadius:6,whiteSpace:"nowrap",pointerEvents:"none",border:`1px solid ${BORDER}`}}>Report a bug</span>}
+      </div>
+    </div>
+  );
+
   if(screen==="student-search")return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{maxWidth:420,width:"100%",...s.card,padding:36}}>
-        <div style={{textAlign:"center",marginBottom:28}}>
-          <h1 style={{fontSize:48,fontWeight:700,color:TEAL,margin:"0 0 20px"}}>Newton</h1>
-          <h2 style={{fontSize:22,fontWeight:700,color:"#fff",margin:"0 0 6px"}}>Student Login</h2>
-          <p style={{...s.muted,margin:0}}>Start typing your name to find yourself on the roster</p>
+      {bugModalJsx}
+      <button onClick={()=>{setScreen("inst-login");history.pushState({newton:"inst-login"},"","");}} style={{position:"fixed",top:16,right:16,background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 8px"}}>Instructor</button>
+      {studentFooterJsx}
+      <div style={{maxWidth:420,width:"100%"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
         </div>
         {roster.length===0&&<div style={{background:"rgba(202,138,4,0.1)",border:"1px solid rgba(202,138,4,0.3)",borderRadius:8,padding:"10px 14px",color:"#fde047",fontSize:13,marginBottom:16}}>No roster uploaded yet. Please contact your instructor.</div>}
         <div style={{position:"relative"}}>
@@ -588,25 +660,26 @@ export default function App(){
           </div>)}
           {nameQuery.trim().length>0&&filteredRoster.length===0&&roster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 16px",color:MUTED,fontSize:13,zIndex:10}}>No matches found. Check your spelling.</div>)}
         </div>
-        <div style={{marginTop:28,textAlign:"center"}}>
-          <button onClick={()=>{setScreen("inst-login");history.pushState({newton:"inst-login"},"","");}} style={{background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 8px"}}>Instructor Portal</button>
-        </div>
       </div>
     </div>
   );
 
   if(screen==="student-pw"&&selectedStudent)return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{maxWidth:420,width:"100%",...s.card,padding:36}}>
-        <button onClick={()=>{setSelectedStudent(null);setScreen("student-search");}} style={{...s.btnGhost,marginBottom:24,width:"auto"}}>← Not me</button>
-        <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{background:TEAL_DIM,border:`1px solid ${TEAL}44`,borderRadius:12,padding:"12px 20px",display:"inline-block",marginBottom:16}}><p style={{fontSize:20,fontWeight:700,color:"#fff",margin:0}}>{selectedStudent.altName||selectedStudent.fullName}</p></div>
-          <p style={{...s.muted,margin:0}}>Enter your password to continue</p>
+      {bugModalJsx}
+      {studentFooterJsx}
+      <div style={{maxWidth:420,width:"100%"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:"0 0 8px"}}>Newton</h1>
+          <p style={{fontSize:18,fontWeight:600,color:"#fff",margin:0}}>{selectedStudent.altName||selectedStudent.fullName}</p>
         </div>
-        <input type="password" style={{...s.input,marginBottom:10}} placeholder="Password" value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleStudentLogin()} autoFocus/>
+        <input type="password" style={{...s.input,marginBottom:10}} placeholder="Password…" value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleStudentLogin()} autoFocus/>
         {pwError&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{pwError}</p>}
-        <button onClick={handleStudentLogin} style={{...s.btnPri,marginBottom:10}}>Login</button>
+        <button onClick={handleStudentLogin} style={s.btnPri}>Login</button>
         {!studentPws[selectedStudent.studentId]&&(<div style={{marginTop:16,background:"rgba(202,138,4,0.08)",border:"1px solid rgba(202,138,4,0.25)",borderRadius:10,padding:"12px 16px",display:"flex",gap:12,alignItems:"flex-start"}}><span style={{color:"#fbbf24",fontSize:18,flexShrink:0}}>💡</span><div><p style={{color:"#fbbf24",fontWeight:600,fontSize:13,margin:"0 0 4px"}}>First time logging in?</p><p style={{color:"rgba(251,191,36,0.7)",fontSize:13,margin:0}}>Your initial password is your <strong>Student ID number</strong>.</p></div></div>)}
+        <div style={{marginTop:32,textAlign:"center"}}>
+          <button onClick={()=>{setSelectedStudent(null);setScreen("student-search");}} style={{background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 8px"}}>← Not me</button>
+        </div>
       </div>
     </div>
   );
@@ -731,12 +804,22 @@ export default function App(){
 
   if(screen==="inst-login")return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{maxWidth:400,width:"100%",...s.card,padding:36}}>
-        <button onClick={()=>setScreen("home")} style={{...s.btnGhost,marginBottom:24,width:"auto"}}>← Back</button>
-        <div style={{textAlign:"center",marginBottom:28}}><h2 style={{fontSize:22,fontWeight:700,color:"#fff",margin:"0 0 6px"}}>Instructor Login</h2><p style={{...s.muted,margin:0}}>Enter your instructor password</p></div>
-        <input type="password" style={{...s.input,marginBottom:10}} placeholder="Password" value={instPw} onChange={e=>setInstPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} autoFocus/>
+      <div style={{position:"fixed",bottom:16,left:0,right:0,display:"flex",alignItems:"center",justifyContent:"center",gap:12}}>
+        <span style={{color:MUTED,fontSize:12}}>© Joel N. Johnson 2026</span>
+        <a href="https://github.com/HamletTheHamster/newton" target="_blank" rel="noopener noreferrer" style={{color:MUTED,display:"flex",alignItems:"center"}}>
+          <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        </a>
+      </div>
+      <div style={{maxWidth:400,width:"100%"}}>
+        <div style={{textAlign:"center",marginBottom:32}}>
+          <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
+        </div>
+        <input type="password" style={{...s.input,marginBottom:10}} placeholder="Instructor password…" value={instPw} onChange={e=>setInstPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} autoFocus/>
         {instErr&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{instErr}</p>}
         <button onClick={doLogin} style={s.btnPri}>Login</button>
+        <div style={{marginTop:32,textAlign:"center"}}>
+          <button onClick={()=>setScreen("student-search")} style={{background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 8px"}}>← Student Login</button>
+        </div>
       </div>
     </div>
   );
@@ -777,7 +860,13 @@ export default function App(){
       </div>)}
       <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:12}}><h1 style={{color:TEAL,fontWeight:700,fontSize:20,margin:0}}>Newton</h1><SyncBadge status={syncStatus} error={syncError}/></div>
-        <button onClick={()=>{setInstPw("");setScreen("home");}} style={{...s.btnGhost,width:"auto"}}>Logout</button>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={()=>setInstTab("bugs")} onMouseEnter={()=>setInstBugHover(true)} onMouseLeave={()=>setInstBugHover(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:instTab==="bugs"?TEAL:unreadBugCount>0?"#f87171":MUTED,display:"flex",alignItems:"center",gap:5,padding:"4px 8px",borderRadius:6,transition:"transform 0.2s",transform:instBugHover?"rotate(30deg)":"rotate(0deg)"}} title="Bug reports">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2l1.5 1.5"/><path d="M14.5 3.5L16 2"/><circle cx="12" cy="8" r="4"/><path d="M4 13h16"/><path d="M4 17h16"/><path d="M8 21v-8"/><path d="M16 21v-8"/><path d="M3 10l2 2"/><path d="M19 10l2 2"/></svg>
+            {unreadBugCount>0&&<span style={{background:instTab==="bugs"?TEAL:"#f87171",color:"#fff",borderRadius:"999px",fontSize:10,fontWeight:700,padding:"1px 5px",lineHeight:1.4}}>{unreadBugCount}</span>}
+          </button>
+          <button onClick={()=>{setInstPw("");setScreen("student-search");}} style={{...s.btnGhost,width:"auto"}}>Logout</button>
+        </div>
       </div>
       <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,display:"flex",overflowX:"auto",flexShrink:0}}>
         {tabs.map(t=>(<button key={t.id} onClick={()=>setInstTab(t.id)} style={{padding:"14px 20px",fontSize:13,fontWeight:500,whiteSpace:"nowrap",background:"none",border:"none",borderBottom:`2px solid ${instTab===t.id?TEAL:"transparent"}`,color:instTab===t.id?TEAL:MUTED,cursor:"pointer"}}>{t.label}</button>))}
@@ -786,8 +875,8 @@ export default function App(){
 
         {instTab==="submissions"&&(<div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
-            <div><h2 style={{color:"#fff",fontWeight:700,fontSize:20,margin:"0 0 4px"}}>Student Submissions</h2><p style={{...s.muted,margin:0,display:"flex",alignItems:"center",gap:8}}>{submissions.length} total{totalUnchecked>0&&<span style={s.badge("#facc15")}>{totalUnchecked} pending</span>}{totalUnchecked===0&&submissions.filter(s=>!s.imported).length>0&&<span style={s.badge("#4ade80")}>All entered ✓</span>}</p></div>
-            <div style={{display:"flex",gap:8}}><button onClick={()=>setOpenQuizzes(QUIZZES.reduce((a,q)=>({...a,[q.id]:true}),{}))} style={s.btnGhost}>Expand all</button><button onClick={()=>setOpenQuizzes({})} style={s.btnGhost}>Collapse all</button></div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>{totalUnchecked>0&&<span style={s.badge("#facc15")}>{totalUnchecked} pending</span>}{totalUnchecked===0&&submissions.filter(s=>!s.imported).length>0&&<span style={s.badge("#4ade80")}>All entered ✓</span>}</div>
+            <button onClick={()=>setOpenQuizzes({})} style={s.btnGhost}>Collapse all</button>
           </div>
           {submissions.length===0?<div style={{...s.card,padding:40,textAlign:"center",color:MUTED}}>No submissions yet.</div>:(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -820,15 +909,19 @@ export default function App(){
         </div>)}
 
         {instTab==="quizzes"&&(<div>
-          <h2 style={{color:"#fff",fontWeight:700,fontSize:20,margin:"0 0 6px"}}>Quizzes & Due Dates</h2>
-          <p style={{...s.muted,marginBottom:24}}>All deadlines are at <strong style={{color:"rgba(255,255,255,0.7)"}}>11:59 PM EST</strong> on the selected date.</p>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {quizzes.map(quiz=>{
               const late=isLate(quiz.dueDate);
+              const dateVal=quiz.dueDate?quiz.dueDate.slice(0,10):"";
+              const timeVal=quiz.dueDate&&quiz.dueDate.length===16&&quiz.dueDate[10]===' '?quiz.dueDate.slice(11):"23:59";
               return(<div key={quiz.id} style={{...s.card,padding:"14px 18px",display:"flex",flexWrap:"wrap",alignItems:"center",justifyContent:"space-between",gap:14}}>
                 <div style={{flex:1,minWidth:0}}><div style={{color:"#fff",fontWeight:600,fontSize:14,display:"flex",alignItems:"center",gap:8}}>{quiz.title}{quiz.questions.some(q=>q.requiresImage)&&<span style={s.badge("#a78bfa")}>drawing</span>}</div><div style={{...s.muted,fontSize:12,marginTop:3}}>{quiz.questions.length} question{quiz.questions.length>1?"s":""}</div></div>
                 <div style={{display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
-                  <input type="date" style={{...s.input,width:"auto",padding:"6px 10px",fontSize:12}} value={quiz.dueDate?(quiz.dueDate.length===10?quiz.dueDate:new Date(new Date(quiz.dueDate)-5*3600000).toISOString().slice(0,10)):""} onChange={async e=>{const nd={...dueDates};if(e.target.value)nd[quiz.id]=e.target.value;else delete nd[quiz.id];await saveDueDates(nd);}}/>
+                  <input type="date" style={{...s.input,width:"auto",padding:"6px 10px",fontSize:12}} value={dateVal} onChange={async e=>{const nd={...dueDates};if(e.target.value){nd[quiz.id]=e.target.value;}else{delete nd[quiz.id];}setEditingTimeFor(null);await saveDueDates(nd);}}/>
+                  {quiz.dueDate&&(editingTimeFor===quiz.id
+                    ?<input type="time" autoFocus style={{...s.input,width:"auto",padding:"6px 10px",fontSize:12}} value={timeVal} onChange={async e=>{if(!e.target.value)return;const t=e.target.value;const nd={...dueDates,[quiz.id]:dateVal+' '+t};await saveDueDates(nd);}} onBlur={()=>setEditingTimeFor(null)}/>
+                    :<button onClick={()=>setEditingTimeFor(quiz.id)} style={{background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 6px",fontFamily:"monospace"}}>{fmtDueTime(quiz.dueDate)}</button>
+                  )}
                   {quiz.dueDate&&<span style={s.badge(late?"#f87171":"#4ade80")}>{late?"Past due":"Active"}</span>}
                 </div>
               </div>);
@@ -837,17 +930,16 @@ export default function App(){
         </div>)}
 
         {instTab==="roster"&&(<div>
-          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
-            <div><h2 style={{color:"#fff",fontWeight:700,fontSize:20,margin:"0 0 4px"}}>Class Roster</h2><p style={{...s.muted,margin:0}}>{roster.length} students loaded</p></div>
-            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
-              <label style={{...s.btnGhost,cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14}}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{display:"none"}}/></label>
+          <ManualAddStudent roster={roster} onAdd={async student=>{const updated=[...roster,student].sort((a,b)=>a.lastName.localeCompare(b.lastName));await saveRoster(updated);}}/>
+          <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
+            <div>
+              <p style={{color:"rgba(255,255,255,0.7)",fontWeight:600,margin:"0 0 4px"}}>Roster CSV format:</p>
+              <code style={{background:"rgba(255,255,255,0.06)",padding:"3px 8px",borderRadius:6,fontSize:12}}>Last Name,First Name,Student ID,</code>
+            </div>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
+              <label style={{...s.btnGhost,cursor:"pointer",display:"inline-block",padding:"8px 16px",fontSize:13}}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{display:"none"}}/></label>
               {rosterMsg&&<p style={{margin:0,fontSize:13,color:rosterMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{rosterMsg}</p>}
             </div>
-          </div>
-          <ManualAddStudent roster={roster} onAdd={async student=>{const updated=[...roster,student].sort((a,b)=>a.lastName.localeCompare(b.lastName));await saveRoster(updated);}}/>
-          <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED}}>
-            <p style={{color:"rgba(255,255,255,0.7)",fontWeight:600,margin:"0 0 4px"}}>Roster CSV format:</p>
-            <code style={{background:"rgba(255,255,255,0.06)",padding:"3px 8px",borderRadius:6,fontSize:12}}>Last Name,First Name,Student ID,</code>
           </div>
           {roster.length===0?<div style={{...s.card,padding:40,textAlign:"center",color:MUTED}}>No roster uploaded yet.</div>:(
             <div style={{...s.card,overflow:"hidden"}}>
@@ -873,9 +965,10 @@ export default function App(){
               </div>)}
               <div style={{overflowX:"auto"}}>
                 <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
-                  <thead><tr style={{borderBottom:`1px solid ${BORDER}`}}>{["Name","Student ID","Password Status",""].map(h=><th key={h} style={{textAlign:"left",color:MUTED,fontWeight:500,padding:"12px 16px",fontSize:13}}>{h}</th>)}</tr></thead>
+                  <thead><tr style={{borderBottom:`1px solid ${BORDER}`}}>{["#","Name","Student ID","Password Status",""].map(h=><th key={h} style={{textAlign:"left",color:MUTED,fontWeight:500,padding:"12px 16px",fontSize:13}}>{h}</th>)}</tr></thead>
                   <tbody>{roster.map((stu,i)=>(
                     <tr key={stu.studentId} style={{borderBottom:i<roster.length-1?`1px solid ${BORDER}`:"none"}}>
+                      <td style={{padding:"12px 16px",color:MUTED,fontSize:13,fontVariantNumeric:"tabular-nums"}}>{i+1}</td>
                       <td style={{padding:"12px 16px",color:"#fff",fontWeight:500}}>{editingAltName===stu.studentId?(<div style={{display:"flex",alignItems:"center",gap:6}}><input value={altNameInput} onChange={e=>setAltNameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveAltName(stu);if(e.key==="Escape")setEditingAltName(null);}} placeholder="Preferred name (blank to clear)" autoFocus style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${TEAL}`,color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:13,outline:"none",width:200}}/><button onClick={()=>saveAltName(stu)} style={{background:"rgba(0,130,140,0.2)",border:`1px solid ${TEAL}`,color:TEAL,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12,fontWeight:700}}>✓</button><button onClick={()=>setEditingAltName(null)} style={{background:"none",border:`1px solid ${BORDER}`,color:MUTED,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12}}>✕</button></div>):(<div style={{display:"flex",alignItems:"center",gap:8}}><span>{stu.altName||stu.fullName}{stu.altName&&<span style={{color:MUTED,fontWeight:400,fontSize:12,marginLeft:4}}>({stu.fullName})</span>}</span><button onClick={()=>{setEditingAltName(stu.studentId);setAltNameInput(stu.altName||"");}} style={{background:"none",border:"none",color:MUTED,cursor:"pointer",fontSize:13,padding:"2px 4px",lineHeight:1}} title="Set preferred name">✎</button></div>)}</td>
                       <td style={{padding:"12px 16px",color:MUTED,fontFamily:"monospace",fontSize:13}}>{stu.studentId}</td>
                       <td style={{padding:"12px 16px"}}><span style={studentPws[stu.studentId]?s.badge(TEAL):s.badge(MUTED)}>{studentPws[stu.studentId]?"Hashed password":"Using Student ID"}</span></td>
@@ -891,48 +984,74 @@ export default function App(){
           )}
         </div>)}
 
-        {instTab==="settings"&&(<div style={{maxWidth:500}}>
-          <h2 style={{color:"#fff",fontWeight:700,fontSize:20,margin:"0 0 24px"}}>Settings</h2>
-          <div style={{...s.card,padding:20,marginBottom:20,background:"rgba(0,130,140,0.06)",border:`1px solid ${TEAL}33`}}>
-            <p style={{color:TEAL,fontWeight:600,fontSize:14,margin:"0 0 6px"}}>🔥 Firebase Storage <span style={{fontSize:11,fontWeight:400,marginLeft:6,color:fbConnStatus==='ok'?"#4ade80":"#f87171"}}>{fbConnStatus==='ok'?"● Connected":"● Unreachable"}</span></p>
-            <p style={{...s.muted,fontSize:13,margin:"0 0 6px",lineHeight:1.6}}>All data persists via Firebase Realtime Database.</p>
-            <code style={{fontSize:11,color:MUTED,background:"rgba(255,255,255,0.04)",padding:"4px 8px",borderRadius:6,display:"block",wordBreak:"break-all"}}>{FIREBASE}</code>
-            {fbConnStatus==='error'&&<p style={{color:"#f87171",fontSize:12,margin:"8px 0 0",fontFamily:"monospace",wordBreak:"break-all"}}>{fbConnError}</p>}
-          </div>
-          <div style={{...s.card,padding:20,marginBottom:20,background:"rgba(0,130,140,0.06)",border:`1px solid ${TEAL}33`}}>
-            <p style={{color:TEAL,fontWeight:600,fontSize:14,margin:"0 0 6px"}}>🔒 Password Security</p>
-            <p style={{...s.muted,fontSize:13,margin:0,lineHeight:1.6}}>All passwords are hashed with SHA-256 + a random salt using the browser's Web Crypto API. No plaintext passwords are stored anywhere.</p>
-          </div>
-          <div style={{...s.card,padding:24,marginBottom:20}}>
-            <h3 style={{color:"#fff",fontWeight:600,fontSize:16,margin:"0 0 4px"}}>Backup & Restore</h3>
-            <p style={{...s.muted,fontSize:13,margin:"0 0 18px"}}>Export everything to a local JSON file as a safety copy.</p>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-              <button onClick={exportAllData} style={{...s.btnPri,flex:1,minWidth:160}}>Download Backup</button>
-              <label style={{...s.btnGhost,flex:1,minWidth:160,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>Restore from Backup<input ref={backupInputRef} type="file" accept=".json" onChange={onBackupImport} style={{display:"none"}}/></label>
+        {instTab==="settings"&&(<div style={{paddingTop:40}}>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:32,marginBottom:36}}>
+            <div style={{display:"flex",flexDirection:"column",gap:20}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <a href={FIREBASE} target="_blank" rel="noopener noreferrer" style={{color:MUTED,display:"flex",alignItems:"center"}} title="Open Firebase console">
+                  <svg width="14" height="14" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2.648 22.482L5.56 2.108a.484.484 0 0 1 .9-.18l3.004 5.594 1.06-2.01a.484.484 0 0 1 .862 0L19.38 22.482H2.648z" fill="#FFA000"/><path d="M12.82 14.278l-2.296-4.756L2.648 22.482H12.82v-8.204z" fill="#F57F17"/><path d="M19.596 22.482L16.97 6.716a.484.484 0 0 0-.858-.196L2.648 22.482h16.948z" fill="#FFCA28"/><path d="M19.596 22.482l-2.39-15.57a.484.484 0 0 0-.858-.196l-3.528 5.562 6.776 10.204z" fill="#FFA000"/></svg>
+                </a>
+                <span style={{fontSize:11,color:fbConnStatus==='ok'?"#4ade80":"#f87171"}}>{fbConnStatus==='ok'?"● Connected":"● Unreachable"}</span>
+                {fbConnStatus==='error'&&<p style={{color:"#f87171",fontSize:11,margin:0,fontFamily:"monospace",wordBreak:"break-all"}}>{fbConnError}</p>}
+              </div>
+              <div>
+                <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 16px"}}>Backup & Restore</p>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <button onClick={exportAllData} style={{...s.btnPri,flex:1,minWidth:140}}>Download Backup</button>
+                  <label style={{...s.btnGhost,flex:1,minWidth:140,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>Restore from Backup<input ref={backupInputRef} type="file" accept=".json" onChange={onBackupImport} style={{display:"none"}}/></label>
+                </div>
+                {backupMsg&&<p style={{margin:"10px 0 0",fontSize:13,color:backupMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{backupMsg}</p>}
+              </div>
             </div>
-            {backupMsg&&<p style={{margin:"12px 0 0",fontSize:13,color:backupMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{backupMsg}</p>}
-          </div>
-          <div style={{...s.card,padding:24,display:"flex",flexDirection:"column",gap:18}}>
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div><label style={s.label}>New Instructor Password</label><input type="password" style={s.input} placeholder="New password" value={editPw} onChange={e=>{setEditPw(e.target.value);setEditPwMsg("");}}/></div>
-              <div><label style={s.label}>Confirm New Password</label><input type="password" style={s.input} placeholder="Re-enter new password" value={editPw2} onChange={e=>{setEditPw2(e.target.value);setEditPwMsg("");}}/></div>
-              {editPwMsg&&<p style={{fontSize:13,margin:0,color:editPwMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{editPwMsg}</p>}
-              <button onClick={async()=>{
-                if(!editPw.trim()){setEditPwMsg("Password cannot be empty.");return;}
-                if(editPw!==editPw2){setEditPwMsg("Passwords do not match.");return;}
-                if(editPw.length<4){setEditPwMsg("Password must be at least 4 characters.");return;}
-                const h=await makeHash(editPw.trim());await saveSettings({passwordHash:h.hash,passwordSalt:h.salt});
-                setEditPw("");setEditPw2("");setEditPwMsg("✅ Password updated!");
-              }} style={s.btnPri}>Update Password</button>
+            <div>
+              <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 16px"}}>Change Instructor Password</p>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+                <input type="password" style={s.input} placeholder="New password" value={editPw} onChange={e=>{setEditPw(e.target.value);setEditPwMsg("");}}/>
+                <input type="password" style={s.input} placeholder="Confirm new password" value={editPw2} onChange={e=>{setEditPw2(e.target.value);setEditPwMsg("");}}/>
+                {editPwMsg&&<p style={{fontSize:13,margin:0,color:editPwMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{editPwMsg}</p>}
+                <button onClick={async()=>{
+                  if(!editPw.trim()){setEditPwMsg("Password cannot be empty.");return;}
+                  if(editPw!==editPw2){setEditPwMsg("Passwords do not match.");return;}
+                  if(editPw.length<4){setEditPwMsg("Password must be at least 4 characters.");return;}
+                  const h=await makeHash(editPw.trim());await saveSettings({passwordHash:h.hash,passwordSalt:h.salt});
+                  setEditPw("");setEditPw2("");setEditPwMsg("✅ Password updated!");
+                }} style={s.btnPri}>Update Password</button>
+              </div>
             </div>
-            <hr style={{border:`1px solid ${BORDER}`,margin:"4px 0"}}/>
-            <p style={{color:"#fca5a5",fontSize:14,fontWeight:600,margin:0}}>Danger Zone</p>
-            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          </div>
+
+          <hr style={{border:"none",borderTop:`1px solid ${BORDER}`,margin:"0 0 32px"}}/>
+
+          <div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
               {[["Clear All Quiz Due Dates",async()=>saveDueDates({})],["Clear All Submissions",async()=>saveSubs([])],["Clear Imported Grades Only",async()=>saveSubs(submissions.filter(s=>!s.imported))],["Clear All Gradebook Check Marks",async()=>saveChecked({})],["Reset All Student Passwords",async()=>saveStudentPws({})],["Clear Roster",async()=>saveRoster([])],].map(([label,action])=>(
                 <button key={label} onClick={()=>confirmDanger(label,action)} style={s.btnDanger}>{label}</button>
               ))}
             </div>
           </div>
+        </div>)}
+
+        {instTab==="bugs"&&(<div>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
+            <p style={{...s.muted,margin:0}}>{Object.values(bugReports).length} total{unreadBugCount>0&&<span style={{...s.badge("#f87171"),marginLeft:8}}>{unreadBugCount} unread</span>}</p>
+          </div>
+          {Object.values(bugReports).length===0?<div style={{...s.card,padding:40,textAlign:"center",color:MUTED}}>No bug reports yet.</div>:(
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {Object.values(bugReports).sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp)).map(report=>(
+                <div key={report.id} style={{...s.card,padding:"16px 20px",opacity:report.read?0.55:1,display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}}>
+                    <span style={{...s.muted,fontSize:12}}>{new Date(report.timestamp).toLocaleString()}</span>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      {!report.read&&<span style={s.badge("#f87171")}>Unread</span>}
+                      {!report.read&&<button onClick={()=>markBugRead(report.id)} style={{...s.btnGhost,padding:"4px 10px",fontSize:12}}>Mark read</button>}
+                    </div>
+                  </div>
+                  <p style={{color:"#fff",fontSize:14,margin:0,lineHeight:1.6,whiteSpace:"pre-wrap"}}>{report.message}</p>
+                </div>
+              ))}
+            </div>
+          )}
         </div>)}
 
       </div></div>
