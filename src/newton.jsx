@@ -246,7 +246,7 @@ export default function App(){
 
   const[instPw,setInstPw]=useState("");const[instErr,setInstErr]=useState("");
   const[instTab,setInstTab]=useState("submissions");
-  const[editPw,setEditPw]=useState("");
+  const[editPw,setEditPw]=useState("");const[editPw2,setEditPw2]=useState("");const[editPwMsg,setEditPwMsg]=useState("");
   const[openQuizzes,setOpenQuizzes]=useState({});
   const[dangerAction,setDangerAction]=useState(null);
   const[dangerPw,setDangerPw]=useState("");const[dangerErr,setDangerErr]=useState("");
@@ -899,8 +899,18 @@ export default function App(){
             </div>
           </div>
           <div style={{...s.card,padding:24,display:"flex",flexDirection:"column",gap:18}}>
-            <div><label style={s.label}>New Instructor Password</label><input type="password" style={s.input} placeholder="Leave blank to keep current" value={editPw} onChange={e=>setEditPw(e.target.value)}/></div>
-            <button onClick={async()=>{if(editPw.trim()){const h=await makeHash(editPw.trim());await saveSettings({passwordHash:h.hash,passwordSalt:h.salt});}setEditPw("");alert("✅ Settings saved!");}} style={s.btnPri}>Save Password</button>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div><label style={s.label}>New Instructor Password</label><input type="password" style={s.input} placeholder="New password" value={editPw} onChange={e=>{setEditPw(e.target.value);setEditPwMsg("");}}/></div>
+              <div><label style={s.label}>Confirm New Password</label><input type="password" style={s.input} placeholder="Re-enter new password" value={editPw2} onChange={e=>{setEditPw2(e.target.value);setEditPwMsg("");}}/></div>
+              {editPwMsg&&<p style={{fontSize:13,margin:0,color:editPwMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{editPwMsg}</p>}
+              <button onClick={async()=>{
+                if(!editPw.trim()){setEditPwMsg("Password cannot be empty.");return;}
+                if(editPw!==editPw2){setEditPwMsg("Passwords do not match.");return;}
+                if(editPw.length<4){setEditPwMsg("Password must be at least 4 characters.");return;}
+                const h=await makeHash(editPw.trim());await saveSettings({passwordHash:h.hash,passwordSalt:h.salt});
+                setEditPw("");setEditPw2("");setEditPwMsg("✅ Password updated!");
+              }} style={s.btnPri}>Update Password</button>
+            </div>
             <hr style={{border:`1px solid ${BORDER}`,margin:"4px 0"}}/>
             <p style={{color:"#fca5a5",fontSize:14,fontWeight:600,margin:0}}>Danger Zone</p>
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
