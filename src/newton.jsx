@@ -232,6 +232,7 @@ export default function App(){
   const[pwInput,setPwInput]=useState("");const[pwError,setPwError]=useState("");
   const[loggedInStudent,setLoggedInStudent]=useState(null);
   const[showStudentSettings,setShowStudentSettings]=useState(false);
+  const[editingAltName,setEditingAltName]=useState(null);const[altNameInput,setAltNameInput]=useState("");
   const[newPw1,setNewPw1]=useState("");const[newPw2,setNewPw2]=useState("");const[pwChangeMsg,setPwChangeMsg]=useState("");
 
   const[activeQuiz,setActiveQuiz]=useState(null);
@@ -336,6 +337,7 @@ export default function App(){
 
   // ── Persist functions ──────────────────────────────────────────────────────
   const saveRoster=async r=>{setRoster(r);await fbSave('roster',r);};
+  const saveAltName=async stu=>{const val=altNameInput.trim();const updated=roster.map(r=>r.studentId===stu.studentId?{...r,altName:val||undefined}:r);await saveRoster(updated);setEditingAltName(null);};
   const saveStudentPws=async p=>{setStudentPws(p);await fbSave('studentPws',p);};
   const saveDueDates=async d=>{setDueDates(d);await fbSave('dueDates',d);};
   const saveSettings=async s=>{setSettings(s);await fbSave('settings',s);};
@@ -423,7 +425,7 @@ export default function App(){
   const currentQ=activeQuiz?.questions[qIdx];
   const isImageQ=!!currentQ?.requiresImage,isYesNoQ=!!currentQ?.yesNo,isDragDropQ=!!currentQ?.dragDrop;
   const completedQuizIds=new Set(submissions.filter(s=>s.studentId===loggedInStudent?.studentId).map(s=>s.quizId));
-  const filteredRoster=nameQuery.trim().length===0?[]:roster.filter(s=>{const q=nameQuery.toLowerCase();return s.fullName.toLowerCase().includes(q)||s.lastName.toLowerCase().includes(q)||s.firstName.toLowerCase().includes(q);}).slice(0,8);
+  const filteredRoster=nameQuery.trim().length===0?[]:roster.filter(s=>{const q=nameQuery.toLowerCase();return(s.altName&&s.altName.toLowerCase().includes(q))||s.fullName.toLowerCase().includes(q)||s.lastName.toLowerCase().includes(q)||s.firstName.toLowerCase().includes(q);}).slice(0,8);
 
   const advanceOrFinish=async(quiz,nScores,afterMsgs,nextIdx)=>{
     if(nextIdx>=quiz.questions.length){await finishQuiz(quiz,nScores,afterMsgs);}
@@ -435,7 +437,7 @@ export default function App(){
     setQuizDone(false);setInput("");setPendingFile(null);setBusy(false);setShowLeaveConfirm(false);
     const late=isLate(quiz.dueDate);
     setMessages([
-      {id:0,type:"system",text:(isPractice?"Practice Mode — this run will not be submitted for a grade\n\n":"")+"📚 "+quiz.title+"  •  "+loggedInStudent.fullName+(late&&!isPractice?"\n\n⚠️ This quiz is past the due date. Your score will be halved.":"")},
+      {id:0,type:"system",text:(isPractice?"Practice Mode — this run will not be submitted for a grade\n\n":"")+"📚 "+quiz.title+"  •  "+(loggedInStudent.altName||loggedInStudent.fullName)+(late&&!isPractice?"\n\n⚠️ This quiz is past the due date. Your score will be halved.":"")},
       {id:1,type:"question",q:quiz.questions[0],num:1,total:quiz.questions.length,pts:ptsPer(quiz.questions.length)[0]}
     ]);
     setScreen("quiz");
@@ -636,7 +638,7 @@ export default function App(){
               else if(e.key==="Enter"){e.preventDefault();const st=highlightIdx>=0?filteredRoster[highlightIdx]:filteredRoster.length===1?filteredRoster[0]:null;if(st)handleSelectStudent(st);}
             }} autoFocus/>
           {filteredRoster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,overflow:"hidden",zIndex:10,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
-            {filteredRoster.map((st,i)=>(<button key={st.studentId} onClick={()=>handleSelectStudent(st)} style={{width:"100%",textAlign:"left",padding:"12px 16px",background:highlightIdx===i?TEAL_DIM:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,color:highlightIdx===i?TEAL:"#fff",fontSize:14,cursor:"pointer",fontWeight:highlightIdx===i?600:400}} onMouseEnter={()=>setHighlightIdx(i)}>{st.fullName}</button>))}
+            {filteredRoster.map((st,i)=>(<button key={st.studentId} onClick={()=>handleSelectStudent(st)} style={{width:"100%",textAlign:"left",padding:"12px 16px",background:highlightIdx===i?TEAL_DIM:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,color:highlightIdx===i?TEAL:"#fff",fontSize:14,cursor:"pointer",fontWeight:highlightIdx===i?600:400}} onMouseEnter={()=>setHighlightIdx(i)}>{st.altName||st.fullName}</button>))}
           </div>)}
           {nameQuery.trim().length>0&&filteredRoster.length===0&&roster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 16px",color:MUTED,fontSize:13,zIndex:10}}>No matches found. Check your spelling.</div>)}
         </div>
@@ -649,7 +651,7 @@ export default function App(){
       <div style={{maxWidth:420,width:"100%",...s.card,padding:36}}>
         <button onClick={()=>{setSelectedStudent(null);setScreen("student-search");}} style={{...s.btnGhost,marginBottom:24,width:"auto"}}>← Not me</button>
         <div style={{textAlign:"center",marginBottom:28}}>
-          <div style={{background:TEAL_DIM,border:`1px solid ${TEAL}44`,borderRadius:12,padding:"12px 20px",display:"inline-block",marginBottom:16}}><p style={{fontSize:20,fontWeight:700,color:"#fff",margin:0}}>{selectedStudent.fullName}</p></div>
+          <div style={{background:TEAL_DIM,border:`1px solid ${TEAL}44`,borderRadius:12,padding:"12px 20px",display:"inline-block",marginBottom:16}}><p style={{fontSize:20,fontWeight:700,color:"#fff",margin:0}}>{selectedStudent.altName||selectedStudent.fullName}</p></div>
           <p style={{...s.muted,margin:0}}>Enter your password to continue</p>
         </div>
         <input type="password" style={{...s.input,marginBottom:10}} placeholder="Password" value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleStudentLogin()} autoFocus/>
@@ -681,7 +683,7 @@ export default function App(){
       <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",padding:24}}>
         <div style={{maxWidth:860,width:"100%",...s.card,padding:28}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-            <div><h2 style={{fontSize:20,fontWeight:700,color:"#fff",margin:"0 0 4px"}}>Hi, {loggedInStudent.firstName}!</h2><p style={{...s.muted,margin:0}}>Select a quiz to begin</p></div>
+            <div><h2 style={{fontSize:20,fontWeight:700,color:"#fff",margin:"0 0 4px"}}>Hi, {loggedInStudent.altName?loggedInStudent.altName.split(' ')[0]:loggedInStudent.firstName}!</h2><p style={{...s.muted,margin:0}}>Select a quiz to begin</p></div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               <button onClick={handleStudentLogout} style={{...s.btnGhost,width:"auto",padding:"6px 14px",fontSize:13}}>Log Out</button>
               <button onClick={()=>setShowStudentSettings(true)} style={{background:"none",border:"none",color:MUTED,fontSize:20,cursor:"pointer"}} title="Account settings">⚙️</button>
@@ -943,7 +945,7 @@ export default function App(){
                   <thead><tr style={{borderBottom:`1px solid ${BORDER}`}}>{["Name","Student ID","Password Status",""].map(h=><th key={h} style={{textAlign:"left",color:MUTED,fontWeight:500,padding:"12px 16px",fontSize:13}}>{h}</th>)}</tr></thead>
                   <tbody>{roster.map((stu,i)=>(
                     <tr key={stu.studentId} style={{borderBottom:i<roster.length-1?`1px solid ${BORDER}`:"none"}}>
-                      <td style={{padding:"12px 16px",color:"#fff",fontWeight:500}}>{stu.fullName}</td>
+                      <td style={{padding:"12px 16px",color:"#fff",fontWeight:500}}>{editingAltName===stu.studentId?(<div style={{display:"flex",alignItems:"center",gap:6}}><input value={altNameInput} onChange={e=>setAltNameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")saveAltName(stu);if(e.key==="Escape")setEditingAltName(null);}} placeholder="Preferred name (blank to clear)" autoFocus style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${TEAL}`,color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:13,outline:"none",width:200}}/><button onClick={()=>saveAltName(stu)} style={{background:"rgba(0,130,140,0.2)",border:`1px solid ${TEAL}`,color:TEAL,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12,fontWeight:700}}>✓</button><button onClick={()=>setEditingAltName(null)} style={{background:"none",border:`1px solid ${BORDER}`,color:MUTED,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12}}>✕</button></div>):(<div style={{display:"flex",alignItems:"center",gap:8}}><span>{stu.altName||stu.fullName}{stu.altName&&<span style={{color:MUTED,fontWeight:400,fontSize:12,marginLeft:4}}>({stu.fullName})</span>}</span><button onClick={()=>{setEditingAltName(stu.studentId);setAltNameInput(stu.altName||"");}} style={{background:"none",border:"none",color:MUTED,cursor:"pointer",fontSize:13,padding:"2px 4px",lineHeight:1}} title="Set preferred name">✎</button></div>)}</td>
                       <td style={{padding:"12px 16px",color:MUTED,fontFamily:"monospace",fontSize:13}}>{stu.studentId}</td>
                       <td style={{padding:"12px 16px"}}><span style={studentPws[stu.studentId]?s.badge(TEAL):s.badge(MUTED)}>{studentPws[stu.studentId]?"Hashed password":"Using Student ID"}</span></td>
                       <td style={{padding:"8px 16px",textAlign:"right",display:"flex",gap:6,justifyContent:"flex-end",alignItems:"center"}}>
