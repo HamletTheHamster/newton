@@ -310,8 +310,11 @@ export default function App(){
   useLayoutEffect(()=>{doScroll();},[messages]);
   useLayoutEffect(()=>{doScroll();},[busy]);
   useEffect(()=>{if(screen==="quiz"&&!isYesNoQ&&!isDragDropQ&&!quizDone)requestAnimationFrame(()=>inputRef.current?.focus());},[qIdx,screen,quizDone]);
+  const navStateRef=useRef({screen,quizDone,showStudentSettings});
+  useEffect(()=>{navStateRef.current={screen,quizDone,showStudentSettings};},[screen,quizDone,showStudentSettings]);
   useEffect(()=>{
     const onPop=()=>{
+      const{screen,quizDone,showStudentSettings}=navStateRef.current;
       if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?setScreen("student-portal"):setShowLeaveConfirm(true);}
       else if(showStudentSettings){history.pushState({newton:"settings"},"","");setShowStudentSettings(false);setNewPw1("");setNewPw2("");setPwChangeMsg("");}
       else if(screen==="inst-sub-detail"){history.pushState({newton:"inst-sub-detail"},"","");setScreen("instructor");setViewingSub(null);}
@@ -321,7 +324,7 @@ export default function App(){
     };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
-  },[screen,quizDone,showStudentSettings]);
+  },[]);
   const prevBusy=useRef(false);
   useEffect(()=>{
     if(prevBusy.current&&!busy&&screen==="quiz"&&!isYesNoQ&&!isDragDropQ&&!quizDone)requestAnimationFrame(()=>inputRef.current?.focus());
