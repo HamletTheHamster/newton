@@ -647,7 +647,7 @@ export default function App(){
   if(screen==="student-pw"&&selectedStudent)return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:420,width:"100%",...s.card,padding:36}}>
-        <button onClick={()=>setScreen("student-search")} style={{...s.btnGhost,marginBottom:24,width:"auto"}}>← Back</button>
+        <button onClick={()=>{setSelectedStudent(null);setScreen("student-search");}} style={{...s.btnGhost,marginBottom:24,width:"auto"}}>← Not me</button>
         <div style={{textAlign:"center",marginBottom:28}}>
           <div style={{background:TEAL_DIM,border:`1px solid ${TEAL}44`,borderRadius:12,padding:"12px 20px",display:"inline-block",marginBottom:16}}><p style={{fontSize:20,fontWeight:700,color:"#fff",margin:0}}>{selectedStudent.fullName}</p></div>
           <p style={{...s.muted,margin:0}}>Enter your password to continue</p>
@@ -655,7 +655,6 @@ export default function App(){
         <input type="password" style={{...s.input,marginBottom:10}} placeholder="Password" value={pwInput} onChange={e=>setPwInput(e.target.value)} onKeyDown={e=>e.key==="Enter"&&handleStudentLogin()} autoFocus/>
         {pwError&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{pwError}</p>}
         <button onClick={handleStudentLogin} style={{...s.btnPri,marginBottom:10}}>Login</button>
-        <button onClick={()=>{setSelectedStudent(null);setScreen("student-search");}} style={s.btnGhost}>Not me — go back</button>
         {!studentPws[selectedStudent.studentId]&&(<div style={{marginTop:16,background:"rgba(202,138,4,0.08)",border:"1px solid rgba(202,138,4,0.25)",borderRadius:10,padding:"12px 16px",display:"flex",gap:12,alignItems:"flex-start"}}><span style={{color:"#fbbf24",fontSize:18,flexShrink:0}}>💡</span><div><p style={{color:"#fbbf24",fontWeight:600,fontSize:13,margin:"0 0 4px"}}>First time logging in?</p><p style={{color:"rgba(251,191,36,0.7)",fontSize:13,margin:0}}>Your initial password is your <strong>Student ID number</strong>.</p></div></div>)}
       </div>
     </div>
