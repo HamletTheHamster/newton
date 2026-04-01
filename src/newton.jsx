@@ -253,15 +253,11 @@ export default function App(){
   const[removeStudent,setRemoveStudent]=useState(null);
   const[removePw,setRemovePw]=useState("");const[removeErr,setRemoveErr]=useState("");
   const[viewingSub,setViewingSub]=useState(null);
-  const[gradeImportMsg,setGradeImportMsg]=useState("");
-  const[pwImportMsg,setPwImportMsg]=useState("");
-  const[dueDateImportMsg,setDueDateImportMsg]=useState("");
   const[backupModal,setBackupModal]=useState(null);
 
   const chatRef=useRef(null);const detailRef=useRef(null);const inputRef=useRef(null);
   const fileInputRef=useRef(null);const rosterInputRef=useRef(null);
-  const gradesInputRef=useRef(null);const backupInputRef=useRef(null);
-  const pwImportRef=useRef(null);const dueDateImportRef=useRef(null);
+  const backupInputRef=useRef(null);
   const syncTimer=useRef(null);
 
   // ── Load from Firebase on startup ──────────────────────────────────────────
@@ -515,63 +511,6 @@ export default function App(){
   const toggleQuizOpen=qid=>setOpenQuizzes(o=>({...o,[qid]:!o[qid]}));
   const onRosterUpload=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=async ev=>{const parsed=parseRoster(ev.target.result);await saveRoster(parsed);alert("✅ Roster uploaded: "+parsed.length+" students loaded.");};r.readAsText(file);e.target.value="";};
 
-  const onGradesUpload=e=>{
-    const file=e.target.files[0];if(!file)return;setGradeImportMsg("");
-    const r=new FileReader();
-    r.onload=async ev=>{
-      const{students,quizColCount,detectedHeaders}=parseGradesCSV(ev.target.result);
-      if(!students.length){setGradeImportMsg("⚠️ No valid rows found.");e.target.value="";return;}
-      const importedIds=new Set(students.map(s=>s.studentId));
-      const keptRoster=roster.filter(r=>!importedIds.has(r.studentId));
-      const newRosterEntries=students.map(({studentId,firstName,lastName,fullName})=>({studentId,firstName,lastName,fullName}));
-      await saveRoster([...keptRoster,...newRosterEntries].sort((a,b)=>a.lastName.localeCompare(b.lastName)));
-      const newPws={...studentPws};students.forEach(s=>{delete newPws[s.studentId];});
-      await saveStudentPws(newPws);
-      const kept=submissions.filter(s=>!s.imported);const added=[];let scoreCount=0;
-      for(const stu of students){
-        for(const{quizNum,score}of stu.scores){
-          const qId="q"+quizNum,qDef=QUIZZES.find(q=>q.id===qId);
-          added.push({id:"imported_"+stu.studentId+"_"+qId+"_"+Date.now()+"_"+Math.random(),studentName:stu.fullName,studentId:stu.studentId,quizId:qId,quizTitle:qDef?qDef.title:"Quiz "+quizNum,rawScore:score,score,late:false,timestamp:new Date().toISOString(),imported:true,dialogue:null});
-          scoreCount++;
-        }
-      }
-      await saveSubs([...kept,...added]);
-      if(scoreCount===0)setGradeImportMsg("✅ Roster: "+newRosterEntries.length+" students imported. ⚠️ No quiz scores found ("+quizColCount+" quiz columns detected). First 8 headers: "+detectedHeaders);
-      else setGradeImportMsg("✅ Roster: "+newRosterEntries.length+" students. Grades: "+scoreCount+" score"+(scoreCount!==1?"s":"")+" imported. Passwords reset to Student IDs.");
-    };
-    r.readAsText(file);e.target.value="";
-  };
-
-  const onPwImport=e=>{
-    const file=e.target.files[0];if(!file)return;setPwImportMsg("");
-    const r=new FileReader();
-    r.onload=async ev=>{
-      try{
-        const data=JSON.parse(ev.target.result);const pws=data.studentPws||data;
-        const valid=Object.entries(pws).every(([,v])=>v&&typeof v.hash==="string"&&typeof v.salt==="string");
-        if(!valid){setPwImportMsg("⚠️ Invalid password file format.");return;}
-        await saveStudentPws({...studentPws,...pws});
-        setPwImportMsg("✅ "+Object.keys(pws).length+" password"+(Object.keys(pws).length!==1?"s":"")+" restored.");
-      }catch{setPwImportMsg("⚠️ Could not parse file.");}
-    };
-    r.readAsText(file);e.target.value="";
-  };
-
-  const onDueDateImport=e=>{
-    const file=e.target.files[0];if(!file)return;setDueDateImportMsg("");
-    const r=new FileReader();
-    r.onload=async ev=>{
-      try{
-        const cleaned=ev.target.result.replace(/,\s*([}\]])/g,"$1");
-        const data=JSON.parse(cleaned);const dates=data.dueDates||data;
-        const valid=Object.entries(dates).every(([k,v])=>/^q\d+$/.test(k)&&typeof v==="string");
-        if(!valid){setDueDateImportMsg("⚠️ Invalid due dates file format.");return;}
-        await saveDueDates(dates);
-        setDueDateImportMsg("✅ "+Object.keys(dates).length+" due date"+(Object.keys(dates).length!==1?"s":"")+" restored.");
-      }catch{setDueDateImportMsg("⚠️ Could not parse file.");}
-    };
-    r.readAsText(file);e.target.value="";
-  };
 
   // ── Render ─────────────────────────────────────────────────────────────────
   if(!ready)return <div style={{...s.page,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",gap:16}}><span style={{color:TEAL,fontSize:18}}>Loading…</span><span style={{color:MUTED,fontSize:13}}>Testing Firebase connection</span></div>;
@@ -892,27 +831,6 @@ export default function App(){
             <label style={{...s.btnGhost,cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14}}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{display:"none"}}/></label>
           </div>
           <ManualAddStudent roster={roster} onAdd={async student=>{const updated=[...roster,student].sort((a,b)=>a.lastName.localeCompare(b.lastName));await saveRoster(updated);}}/>
-          <div style={{...s.card,padding:20,marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-              <div><p style={{color:"#fff",fontWeight:600,fontSize:14,margin:"0 0 4px"}}>Import Grades from Blackboard CSV</p><p style={{...s.muted,fontSize:12,margin:0}}>Also populates roster and resets passwords to Student IDs.</p></div>
-              <label style={{...s.btnPri,width:"auto",cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14,whiteSpace:"nowrap"}}>Upload Grades CSV<input ref={gradesInputRef} type="file" accept=".csv,.txt" onChange={onGradesUpload} style={{display:"none"}}/></label>
-            </div>
-            {gradeImportMsg&&<p style={{margin:"12px 0 0",fontSize:13,color:gradeImportMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{gradeImportMsg}</p>}
-          </div>
-          <div style={{...s.card,padding:20,marginBottom:16}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-              <div><p style={{color:"#fff",fontWeight:600,fontSize:14,margin:"0 0 4px"}}>Restore Student Passwords</p><p style={{...s.muted,fontSize:12,margin:0}}>Upload a JSON file with the <code style={{background:"rgba(255,255,255,0.08)",padding:"1px 5px",borderRadius:4}}>studentPws</code> object.</p></div>
-              <label style={{...s.btnPri,width:"auto",cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14,whiteSpace:"nowrap"}}>Upload Passwords JSON<input ref={pwImportRef} type="file" accept=".json" onChange={onPwImport} style={{display:"none"}}/></label>
-            </div>
-            {pwImportMsg&&<p style={{margin:"12px 0 0",fontSize:13,color:pwImportMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{pwImportMsg}</p>}
-          </div>
-          <div style={{...s.card,padding:20,marginBottom:20}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:12}}>
-              <div><p style={{color:"#fff",fontWeight:600,fontSize:14,margin:"0 0 4px"}}>Restore Quiz Due Dates</p><p style={{...s.muted,fontSize:12,margin:0}}>Upload a JSON file with the <code style={{background:"rgba(255,255,255,0.08)",padding:"1px 5px",borderRadius:4}}>dueDates</code> object.</p></div>
-              <label style={{...s.btnPri,width:"auto",cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14,whiteSpace:"nowrap"}}>Upload Due Dates JSON<input ref={dueDateImportRef} type="file" accept=".json" onChange={onDueDateImport} style={{display:"none"}}/></label>
-            </div>
-            {dueDateImportMsg&&<p style={{margin:"12px 0 0",fontSize:13,color:dueDateImportMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{dueDateImportMsg}</p>}
-          </div>
           <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED}}>
             <p style={{color:"rgba(255,255,255,0.7)",fontWeight:600,margin:"0 0 4px"}}>Roster CSV format:</p>
             <code style={{background:"rgba(255,255,255,0.06)",padding:"3px 8px",borderRadius:6,fontSize:12}}>Last Name,First Name,Student ID,</code>
