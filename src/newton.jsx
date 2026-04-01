@@ -607,7 +607,7 @@ export default function App(){
   if(screen==="home")return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:400,width:"100%",textAlign:"center",marginBottom:40}}>
-        <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>NEWTON</h1>
+        <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
       </div>
       <div style={{maxWidth:400,width:"100%",display:"flex",flexDirection:"column",gap:12}}>
         <button onClick={()=>{setNameQuery("");setSelectedStudent(null);setPwError("");setScreen("student-search");}} style={s.btnSec}>Student Login</button>
