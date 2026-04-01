@@ -233,6 +233,7 @@ export default function App(){
   const[loggedInStudent,setLoggedInStudent]=useState(null);
   const[showStudentSettings,setShowStudentSettings]=useState(false);
   const[editingAltName,setEditingAltName]=useState(null);const[altNameInput,setAltNameInput]=useState("");
+  const[hoveredQuiz,setHoveredQuiz]=useState(null);
   const[newPw1,setNewPw1]=useState("");const[newPw2,setNewPw2]=useState("");const[pwChangeMsg,setPwChangeMsg]=useState("");
 
   const[activeQuiz,setActiveQuiz]=useState(null);
@@ -637,7 +638,8 @@ export default function App(){
             {quizzes.map(quiz=>{
               const late=isLate(quiz.dueDate),completed=completedQuizIds.has(quiz.id);
               const sub=completed?[...submissions].reverse().find(s=>s.studentId===loggedInStudent?.studentId&&s.quizId===quiz.id):null;
-              return(<div key={quiz.id} style={{borderRadius:12,border:`1px solid ${completed?"rgba(0,130,140,0.3)":BORDER}`,background:completed?TEAL_DIM:"rgba(255,255,255,0.02)",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background=completed?"rgba(0,130,140,0.2)":"rgba(255,255,255,0.05)"} onMouseLeave={e=>e.currentTarget.style.background=completed?TEAL_DIM:"rgba(255,255,255,0.02)"}>
+              const hovered=hoveredQuiz===quiz.id;
+              return(<div key={quiz.id} onClick={()=>startQuiz(quiz,completed)} onMouseEnter={()=>setHoveredQuiz(quiz.id)} onMouseLeave={()=>setHoveredQuiz(null)} style={{borderRadius:12,border:`1px solid ${completed?"rgba(0,130,140,0.3)":BORDER}`,background:hovered?(completed?"rgba(0,130,140,0.2)":"rgba(255,255,255,0.05)"):(completed?TEAL_DIM:"rgba(255,255,255,0.02)"),padding:"12px 16px",display:"flex",alignItems:"center",gap:12,transition:"background 0.15s",cursor:"pointer"}}>
                 <div style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`2px solid ${completed?TEAL:BORDER}`,background:completed?TEAL:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:700}}>{completed&&"✓"}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{color:completed?TEAL:"#fff",fontWeight:600,fontSize:13}}>{quiz.title}</div>
@@ -648,8 +650,9 @@ export default function App(){
                       :quiz.dueDate&&<span style={{color:late?"#f87171":"#4ade80"}}>{late?"Past due (½ credit)":"Due "+dueToDate(quiz.dueDate).toLocaleDateString('en-US',{timeZone:'America/New_York'})+" · 11:59 PM ET"}</span>}
                   </div>
                 </div>
-                {completed?<button onClick={()=>startQuiz(quiz,true)} style={{...s.btnGhost,flexShrink:0,fontSize:12,padding:"6px 12px"}}>Practice</button>
-                  :<button onClick={()=>startQuiz(quiz,false)} style={{...s.btnPri,flexShrink:0,width:"auto",fontSize:12,padding:"6px 14px"}}>Start →</button>}
+                {completed
+                  ?<div style={{flexShrink:0,fontSize:12,padding:"6px 12px",borderRadius:8,border:`1px solid ${BORDER}`,color:MUTED,background:"transparent",opacity:hovered?1:0,transition:"opacity 0.15s"}}>Practice</div>
+                  :<div style={{flexShrink:0,fontSize:12,padding:"6px 14px",borderRadius:8,background:TEAL,color:"#fff",fontWeight:600,opacity:hovered?1:0,transition:"opacity 0.15s"}}>Start →</div>}
               </div>);
             })}
           </div>
