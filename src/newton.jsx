@@ -149,7 +149,7 @@ function ChatMessages({messages,busy=false}){
       if(msg.type==="tutor")return(<div key={i} style={{display:"flex",justifyContent:"flex-start"}}><div style={{background:msg.correct?"rgba(74,222,128,0.08)":"rgba(255,255,255,0.06)",border:`1px solid ${msg.correct?"rgba(74,222,128,0.25)":BORDER}`,borderRadius:"14px 14px 14px 4px",padding:"10px 16px",maxWidth:480,fontSize:14,lineHeight:1.6,color:msg.correct?"#bbf7d0":"#e2e8f0"}}>{msg.text}</div></div>);
       if(msg.type==="result"){
         const pct=msg.final/10,scoreColor=pct>=0.9?"#4ade80":pct>=0.7?"#a3e635":pct>=0.5?"#facc15":"#f87171";
-        return(<div key={i} style={{...s.card,padding:28}}><div style={{textAlign:"center",marginBottom:20}}><h3 style={{color:"#fff",fontWeight:700,fontSize:22,margin:"0 0 4px"}}>{msg.practiceMode?"Practice Complete":"Quiz Complete"}</h3>{msg.practiceMode&&<p style={{color:TEAL,fontSize:13,margin:0}}>Practice run — no grade recorded.</p>}{!msg.practiceMode&&msg.late&&<p style={{color:"#facc15",fontSize:13,margin:0}}>⚠️ Late submission — half credit applied</p>}</div><div style={{textAlign:"center",margin:"20px 0"}}><span style={{fontSize:64,fontWeight:700,color:scoreColor}}>{msg.final}</span><span style={{fontSize:24,color:MUTED}}>/10</span>{!msg.practiceMode&&msg.late&&<p style={{color:MUTED,fontSize:13,marginTop:4}}>Raw: {msg.raw}/10 → {msg.final}/10 after late penalty</p>}</div><div style={{borderTop:`1px solid ${BORDER}`,paddingTop:16,display:"flex",flexDirection:"column",gap:10}}>{msg.questions.map((q,qi)=>(<div key={qi} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}><span style={{color:MUTED,flex:1,fontSize:13,lineHeight:1.5}}>Q{qi+1}: {q.text.length>70?q.text.slice(0,70)+"…":q.text}</span><span style={{fontFamily:"monospace",flexShrink:0,fontWeight:700,color:(msg.scores[qi]||0)===msg.pts[qi]?"#4ade80":"#f87171"}}>{msg.scores[qi]??0}/{msg.pts[qi]}</span></div>))}</div></div>);
+        return(<div key={i} style={{...s.card,padding:28,animation:"fadeSlideUp 0.45s ease"}}><div style={{textAlign:"center",marginBottom:20}}><h3 style={{color:"#fff",fontWeight:700,fontSize:22,margin:"0 0 4px"}}>{msg.practiceMode?"Practice Complete":"Quiz Complete"}</h3>{msg.practiceMode&&<p style={{color:TEAL,fontSize:13,margin:0}}>Practice run — no grade recorded.</p>}{!msg.practiceMode&&msg.late&&<p style={{color:"#facc15",fontSize:13,margin:0}}>⚠️ Late submission — half credit applied</p>}</div><div style={{textAlign:"center",margin:"20px 0"}}><span style={{fontSize:64,fontWeight:700,color:scoreColor}}>{msg.final}</span><span style={{fontSize:24,color:MUTED}}>/10</span>{!msg.practiceMode&&msg.late&&<p style={{color:MUTED,fontSize:13,marginTop:4}}>Raw: {msg.raw}/10 → {msg.final}/10 after late penalty</p>}</div><div style={{borderTop:`1px solid ${BORDER}`,paddingTop:16,display:"flex",flexDirection:"column",gap:10}}>{msg.questions.map((q,qi)=>(<div key={qi} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12}}><span style={{color:MUTED,flex:1,fontSize:13,lineHeight:1.5}}>Q{qi+1}: {q.text.length>70?q.text.slice(0,70)+"…":q.text}</span><span style={{fontFamily:"monospace",flexShrink:0,fontWeight:700,color:(msg.scores[qi]||0)===msg.pts[qi]?"#4ade80":"#f87171"}}>{msg.scores[qi]??0}/{msg.pts[qi]}</span></div>))}</div></div>);
       }
       return null;
     })}
@@ -254,6 +254,7 @@ export default function App(){
   const[removePw,setRemovePw]=useState("");const[removeErr,setRemoveErr]=useState("");
   const[viewingSub,setViewingSub]=useState(null);
   const[backupModal,setBackupModal]=useState(null);
+  const[rosterMsg,setRosterMsg]=useState("");const[backupMsg,setBackupMsg]=useState("");
 
   const chatRef=useRef(null);const detailRef=useRef(null);const inputRef=useRef(null);
   const fileInputRef=useRef(null);const rosterInputRef=useRef(null);
@@ -367,7 +368,7 @@ export default function App(){
     r.onload=async ev=>{
       try{
         const data=JSON.parse(ev.target.result);
-        if(!data.version){alert("⚠️ Invalid backup file.");return;}
+        if(!data.version){setBackupMsg("⚠️ Invalid backup file.");return;}
         if(data.submissions&&data.checkedSubs){
           const cids=new Set(Object.keys(data.checkedSubs));
           data.submissions=data.submissions.map(s=>cids.has(s.id)?{...s,dialogue:null}:s);
@@ -378,8 +379,8 @@ export default function App(){
         if(data.dueDates)await saveDueDates(data.dueDates);
         if(data.checkedSubs)await saveChecked(data.checkedSubs);
         if(data.submissions)await saveSubs(data.submissions);
-        alert("✅ Restore complete!");
-      }catch(err){alert("⚠️ Restore failed: "+(err?.message||"unknown error"));}
+        setBackupMsg("✅ Restore complete!");
+      }catch(err){setBackupMsg("⚠️ Restore failed: "+(err?.message||"unknown error"));}
     };
     r.readAsText(file);e.target.value="";
   };
@@ -509,7 +510,7 @@ export default function App(){
     await saveChecked(nc);
   };
   const toggleQuizOpen=qid=>setOpenQuizzes(o=>({...o,[qid]:!o[qid]}));
-  const onRosterUpload=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=async ev=>{const parsed=parseRoster(ev.target.result);await saveRoster(parsed);alert("✅ Roster uploaded: "+parsed.length+" students loaded.");};r.readAsText(file);e.target.value="";};
+  const onRosterUpload=e=>{const file=e.target.files[0];if(!file)return;const r=new FileReader();r.onload=async ev=>{const parsed=parseRoster(ev.target.result);await saveRoster(parsed);setRosterMsg("✅ "+parsed.length+" students loaded.");};r.readAsText(file);e.target.value="";};
 
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -636,7 +637,7 @@ export default function App(){
             {quizzes.map(quiz=>{
               const late=isLate(quiz.dueDate),completed=completedQuizIds.has(quiz.id);
               const sub=completed?[...submissions].reverse().find(s=>s.studentId===loggedInStudent?.studentId&&s.quizId===quiz.id):null;
-              return(<div key={quiz.id} style={{borderRadius:12,border:`1px solid ${completed?"rgba(0,130,140,0.3)":BORDER}`,background:completed?TEAL_DIM:"rgba(255,255,255,0.02)",padding:"12px 16px",display:"flex",alignItems:"center",gap:12}}>
+              return(<div key={quiz.id} style={{borderRadius:12,border:`1px solid ${completed?"rgba(0,130,140,0.3)":BORDER}`,background:completed?TEAL_DIM:"rgba(255,255,255,0.02)",padding:"12px 16px",display:"flex",alignItems:"center",gap:12,transition:"background 0.15s"}} onMouseEnter={e=>e.currentTarget.style.background=completed?"rgba(0,130,140,0.2)":"rgba(255,255,255,0.05)"} onMouseLeave={e=>e.currentTarget.style.background=completed?TEAL_DIM:"rgba(255,255,255,0.02)"}>
                 <div style={{flexShrink:0,width:22,height:22,borderRadius:"50%",border:`2px solid ${completed?TEAL:BORDER}`,background:completed?TEAL:"transparent",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,color:"#fff",fontWeight:700}}>{completed&&"✓"}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{color:completed?TEAL:"#fff",fontWeight:600,fontSize:13}}>{quiz.title}</div>
@@ -753,7 +754,7 @@ export default function App(){
     const tabs=[{id:"submissions",label:"Submissions"},{id:"quizzes",label:"Quizzes & Dates"},{id:"roster",label:"Roster"},{id:"settings",label:"Settings"}];
     const subsByQuiz={};submissions.forEach(s=>{(subsByQuiz[s.quizId]=subsByQuiz[s.quizId]||[]).push(s);});
     const totalUnchecked=submissions.filter(s=>!checkedSubs[s.id]&&!s.imported).length;
-    return(<div style={{...s.page,display:"flex",flexDirection:"column"}}>
+    return(<div style={{...s.page,height:"100vh",display:"flex",flexDirection:"column"}}>
       {dangerAction&&(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:16}}>
         <div style={{...s.card,border:"1px solid rgba(127,29,29,0.6)",padding:24,width:"100%",maxWidth:360}}>
           <h3 style={{color:"#fff",fontWeight:700,fontSize:18,margin:"0 0 8px"}}>Confirm Action</h3>
@@ -791,14 +792,13 @@ export default function App(){
                   {isOpen&&(<div style={{borderTop:`1px solid ${BORDER}`}}>
                     {subs.map((sub,i)=>{
                       const checked=!!checkedSubs[sub.id],scoreColor=sub.score>=8?"#4ade80":sub.score>=6?"#facc15":sub.score>=4?"#fb923c":"#f87171";
-                      return(<div key={sub.id} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 18px",borderTop:i>0?`1px solid ${BORDER}`:"none",background:checked?"rgba(255,255,255,0.01)":"transparent",opacity:checked?0.65:1,transition:"opacity 0.2s"}}>
-                        {!sub.imported?<button onClick={()=>toggleChecked(sub.id)} style={{flexShrink:0,width:22,height:22,borderRadius:6,border:`2px solid ${checked?TEAL:BORDER}`,background:checked?TEAL:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:700}}>{checked&&"✓"}</button>:<div style={{flexShrink:0,width:22,height:22}}/>}
+                      return(<div key={sub.id} onClick={()=>{if(!sub.imported){setViewingSub(sub);setScreen("inst-sub-detail");}}} style={{display:"flex",alignItems:"center",gap:14,padding:"12px 18px",borderTop:i>0?`1px solid ${BORDER}`:"none",background:checked?"rgba(255,255,255,0.01)":"transparent",opacity:checked?0.65:1,transition:"opacity 0.2s, background 0.15s",cursor:sub.imported?"default":"pointer"}} onMouseEnter={e=>{if(!sub.imported)e.currentTarget.style.background=checked?"rgba(255,255,255,0.03)":"rgba(255,255,255,0.04)";}} onMouseLeave={e=>{e.currentTarget.style.background=checked?"rgba(255,255,255,0.01)":"transparent";}}>
+                        {!sub.imported?<button onClick={e=>{e.stopPropagation();toggleChecked(sub.id);}} style={{flexShrink:0,width:22,height:22,borderRadius:6,border:`2px solid ${checked?TEAL:BORDER}`,background:checked?TEAL:"transparent",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:700}}>{checked&&"✓"}</button>:<div style={{flexShrink:0,width:22,height:22}}/>}
                         <div style={{flex:1,minWidth:0}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}><span style={{color:"#fff",fontSize:14,fontWeight:500}}>{sub.studentName}</span>{sub.late&&<span style={s.badge("#facc15")}>LATE</span>}{sub.imported&&<span style={s.badge(MUTED)}>Imported</span>}</div>
                           <div style={{...s.muted,fontSize:12,marginTop:2}}>{fmtDate(sub.timestamp)}</div>
                         </div>
                         <div style={{textAlign:"right",flexShrink:0,marginRight:8}}><span style={{fontWeight:700,fontSize:16,color:scoreColor}}>{sub.score}</span><span style={{color:MUTED,fontSize:14}}>/10</span>{sub.late&&sub.rawScore!==sub.score&&<div style={{color:MUTED,fontSize:12}}>raw: {sub.rawScore}</div>}</div>
-                        {!sub.imported?<button onClick={()=>{setViewingSub(sub);setScreen("inst-sub-detail");}} style={{flexShrink:0,background:TEAL_DIM,border:`1px solid ${TEAL}44`,color:TEAL,borderRadius:8,padding:"6px 14px",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}} onMouseEnter={e=>{e.currentTarget.style.background=TEAL;e.currentTarget.style.color="#fff";}} onMouseLeave={e=>{e.currentTarget.style.background=TEAL_DIM;e.currentTarget.style.color=TEAL;}}>View →</button>:<div style={{flexShrink:0,width:72}}/>}
                       </div>);
                     })}
                   </div>)}
@@ -828,7 +828,10 @@ export default function App(){
         {instTab==="roster"&&(<div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16,flexWrap:"wrap",gap:12}}>
             <div><h2 style={{color:"#fff",fontWeight:700,fontSize:20,margin:"0 0 4px"}}>Class Roster</h2><p style={{...s.muted,margin:0}}>{roster.length} students loaded</p></div>
-            <label style={{...s.btnGhost,cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14}}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{display:"none"}}/></label>
+            <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6}}>
+              <label style={{...s.btnGhost,cursor:"pointer",display:"inline-block",padding:"10px 18px",fontSize:14}}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{display:"none"}}/></label>
+              {rosterMsg&&<p style={{margin:0,fontSize:13,color:rosterMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{rosterMsg}</p>}
+            </div>
           </div>
           <ManualAddStudent roster={roster} onAdd={async student=>{const updated=[...roster,student].sort((a,b)=>a.lastName.localeCompare(b.lastName));await saveRoster(updated);}}/>
           <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED}}>
@@ -897,6 +900,7 @@ export default function App(){
               <button onClick={exportAllData} style={{...s.btnPri,flex:1,minWidth:160}}>Download Backup</button>
               <label style={{...s.btnGhost,flex:1,minWidth:160,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>Restore from Backup<input ref={backupInputRef} type="file" accept=".json" onChange={onBackupImport} style={{display:"none"}}/></label>
             </div>
+            {backupMsg&&<p style={{margin:"12px 0 0",fontSize:13,color:backupMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{backupMsg}</p>}
           </div>
           <div style={{...s.card,padding:24,display:"flex",flexDirection:"column",gap:18}}>
             <div style={{display:"flex",flexDirection:"column",gap:12}}>
