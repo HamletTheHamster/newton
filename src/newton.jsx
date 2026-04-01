@@ -225,7 +225,7 @@ export default function App(){
   const[fbConnStatus,setFbConnStatus]=useState('checking'); // 'checking'|'ok'|'error'
   const[fbConnError,setFbConnError]=useState('');
 
-  const[screen,setScreen]=useState("home");
+  const[screen,setScreen]=useState("student-search");
   const[nameQuery,setNameQuery]=useState("");
   const[selectedStudent,setSelectedStudent]=useState(null);
   const[highlightIdx,setHighlightIdx]=useState(-1);
@@ -320,8 +320,7 @@ export default function App(){
       else if(showStudentSettings){history.pushState({newton:"settings"},"","");navStateRef.current={...navStateRef.current,showStudentSettings:false};setShowStudentSettings(false);setNewPw1("");setNewPw2("");setPwChangeMsg("");}
       else if(screen==="inst-sub-detail"){history.pushState({newton:"inst-sub-detail"},"","");go("instructor");setViewingSub(null);}
       else if(screen==="student-pw"){history.pushState({newton:"student-pw"},"","");setSelectedStudent(null);go("student-search");}
-      else if(screen==="student-search"){history.pushState({newton:"student-search"},"","");go("home");}
-      else if(screen==="inst-login"){history.pushState({newton:"inst-login"},"","");go("home");}
+      else if(screen==="inst-login"){history.pushState({newton:"inst-login"},"","");go("student-search");}
     };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
@@ -564,25 +563,14 @@ export default function App(){
     </div>
   );
 
-  if(screen==="home")return(
-    <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
-      <div style={{maxWidth:400,width:"100%",textAlign:"center",marginBottom:40}}>
-        <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
-      </div>
-      <div style={{maxWidth:400,width:"100%",display:"flex",flexDirection:"column",gap:12}}>
-        <button onClick={()=>{setNameQuery("");setSelectedStudent(null);setPwError("");setScreen("student-search");history.pushState({newton:"student-search"},"","");}} style={s.btnSec}>Student Login</button>
-        <button onClick={()=>{setScreen("inst-login");history.pushState({newton:"inst-login"},"","");}} style={s.btnSec}>Instructor Portal</button>
-      </div>
-    </div>
-  );
 
   const handleSelectStudent=st=>{setSelectedStudent(st);setPwInput("");setPwError("");setNameQuery("");setScreen("student-pw");history.pushState({newton:"student-pw"},"","");};
 
   if(screen==="student-search")return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:420,width:"100%",...s.card,padding:36}}>
-        <button onClick={()=>setScreen("home")} style={{...s.btnGhost,marginBottom:24,width:"auto"}}>← Back</button>
         <div style={{textAlign:"center",marginBottom:28}}>
+          <h1 style={{fontSize:48,fontWeight:700,color:TEAL,margin:"0 0 20px"}}>Newton</h1>
           <h2 style={{fontSize:22,fontWeight:700,color:"#fff",margin:"0 0 6px"}}>Student Login</h2>
           <p style={{...s.muted,margin:0}}>Start typing your name to find yourself on the roster</p>
         </div>
@@ -599,6 +587,9 @@ export default function App(){
             {filteredRoster.map((st,i)=>(<button key={st.studentId} onClick={()=>handleSelectStudent(st)} style={{width:"100%",textAlign:"left",padding:"12px 16px",background:highlightIdx===i?TEAL_DIM:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,color:highlightIdx===i?TEAL:"#fff",fontSize:14,cursor:"pointer",fontWeight:highlightIdx===i?600:400}} onMouseEnter={()=>setHighlightIdx(i)}>{st.altName||st.fullName}</button>))}
           </div>)}
           {nameQuery.trim().length>0&&filteredRoster.length===0&&roster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 16px",color:MUTED,fontSize:13,zIndex:10}}>No matches found. Check your spelling.</div>)}
+        </div>
+        <div style={{marginTop:28,textAlign:"center"}}>
+          <button onClick={()=>{setScreen("inst-login");history.pushState({newton:"inst-login"},"","");}} style={{background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 8px"}}>Instructor Portal</button>
         </div>
       </div>
     </div>
@@ -857,7 +848,6 @@ export default function App(){
           <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED}}>
             <p style={{color:"rgba(255,255,255,0.7)",fontWeight:600,margin:"0 0 4px"}}>Roster CSV format:</p>
             <code style={{background:"rgba(255,255,255,0.06)",padding:"3px 8px",borderRadius:6,fontSize:12}}>Last Name,First Name,Student ID,</code>
-            <p style={{margin:"8px 0 0"}}>Initial password = Student ID for all students.</p>
           </div>
           {roster.length===0?<div style={{...s.card,padding:40,textAlign:"center",color:MUTED}}>No roster uploaded yet.</div>:(
             <div style={{...s.card,overflow:"hidden"}}>
