@@ -135,7 +135,7 @@ function compressImage(file,maxPx=1200,quality=0.8){
   });
 }
 
-const dueToDate=due=>!due?null:due.length===10?new Date(due+"T23:59:00-05:00"):new Date(due);
+const dueToDate=due=>{if(!due)return null;if(due.length===10){const noon=new Date(due+'T12:00:00Z');const isEDT=new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',timeZoneName:'short'}).format(noon).includes('EDT');return new Date(due+'T23:59:00'+(isEDT?'-04:00':'-05:00'));}return new Date(due);};
 const isLate=due=>due&&new Date()>dueToDate(due);
 const fmtDate=ts=>new Date(ts).toLocaleString();
 const ptsPer=n=>{const b=Math.floor(10/n),r=10-b*n;return Array.from({length:n},(_,i)=>b+(i<r?1:0));};
@@ -703,7 +703,7 @@ export default function App(){
                     <span>{quiz.questions.length} question{quiz.questions.length>1?"s":""}  •  10 pts</span>
                     {quiz.questions.some(q=>q.requiresImage)&&<span style={{color:"#a78bfa"}}>Drawing required</span>}
                     {completed&&sub?<span style={{color:sub.score>=8?"#4ade80":sub.score>=6?"#facc15":sub.score>=4?"#fb923c":"#f87171",fontWeight:600}}>Score: {sub.score}/10{sub.late?" · submitted late":""}{sub.imported?" · graded off-platform":""}</span>
-                      :quiz.dueDate&&<span style={{color:late?"#f87171":"#4ade80"}}>{late?"Past due (½ credit)":"Due "+dueToDate(quiz.dueDate).toLocaleDateString()+" · 11:59 PM EST"}</span>}
+                      :quiz.dueDate&&<span style={{color:late?"#f87171":"#4ade80"}}>{late?"Past due (½ credit)":"Due "+dueToDate(quiz.dueDate).toLocaleDateString('en-US',{timeZone:'America/New_York'})+" · 11:59 PM ET"}</span>}
                   </div>
                 </div>
                 {completed?<button onClick={()=>startQuiz(quiz,true)} style={{...s.btnGhost,flexShrink:0,fontSize:12,padding:"6px 12px"}}>Practice</button>
