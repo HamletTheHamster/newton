@@ -315,6 +315,9 @@ export default function App(){
       if(screen==="quiz"){history.pushState({newton:"quiz"},"","");quizDone?setScreen("student-portal"):setShowLeaveConfirm(true);}
       else if(showStudentSettings){history.pushState({newton:"settings"},"","");setShowStudentSettings(false);setNewPw1("");setNewPw2("");setPwChangeMsg("");}
       else if(screen==="inst-sub-detail"){history.pushState({newton:"inst-sub-detail"},"","");setScreen("instructor");setViewingSub(null);}
+      else if(screen==="student-pw"){history.pushState({newton:"student-pw"},"","");setSelectedStudent(null);setScreen("student-search");}
+      else if(screen==="student-search"){history.pushState({newton:"student-search"},"","");setScreen("home");}
+      else if(screen==="inst-login"){history.pushState({newton:"inst-login"},"","");setScreen("home");}
     };
     window.addEventListener("popstate",onPop);
     return()=>window.removeEventListener("popstate",onPop);
@@ -563,13 +566,13 @@ export default function App(){
         <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
       </div>
       <div style={{maxWidth:400,width:"100%",display:"flex",flexDirection:"column",gap:12}}>
-        <button onClick={()=>{setNameQuery("");setSelectedStudent(null);setPwError("");setScreen("student-search");}} style={s.btnSec}>Student Login</button>
-        <button onClick={()=>setScreen("inst-login")} style={s.btnSec}>Instructor Portal</button>
+        <button onClick={()=>{setNameQuery("");setSelectedStudent(null);setPwError("");setScreen("student-search");history.pushState({newton:"student-search"},"","");}} style={s.btnSec}>Student Login</button>
+        <button onClick={()=>{setScreen("inst-login");history.pushState({newton:"inst-login"},"","");}} style={s.btnSec}>Instructor Portal</button>
       </div>
     </div>
   );
 
-  const handleSelectStudent=st=>{setSelectedStudent(st);setPwInput("");setPwError("");setNameQuery("");setScreen("student-pw");};
+  const handleSelectStudent=st=>{setSelectedStudent(st);setPwInput("");setPwError("");setNameQuery("");setScreen("student-pw");history.pushState({newton:"student-pw"},"","");};
 
   if(screen==="student-search")return(
     <div style={{...s.page,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:24}}>
