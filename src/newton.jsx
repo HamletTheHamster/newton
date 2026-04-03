@@ -20,7 +20,12 @@ async function getAppCheckToken() {
     });
     data = await r.json();
   } else {
-    while (!window.grecaptcha?.execute) await new Promise(r => setTimeout(r, 50));
+    await new Promise(resolve => {
+      if (window.grecaptcha) { window.grecaptcha.ready(resolve); }
+      else {
+        const iv = setInterval(() => { if (window.grecaptcha) { clearInterval(iv); window.grecaptcha.ready(resolve); } }, 50);
+      }
+    });
     const rcToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: "firebase" });
     const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token`, {
       method: "POST",
@@ -29,6 +34,7 @@ async function getAppCheckToken() {
     });
     data = await r.json();
   }
+  if (!data.token) throw new Error(`App Check exchange failed: ${JSON.stringify(data)}`);
   _acToken = data.token;
   _acExpiry = Date.now() + (parseInt(data.ttl) - 60) * 1000;
   return _acToken;
