@@ -5,48 +5,49 @@ const RECAPTCHA_SITE_KEY = "6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23";
 const AC_BASE = "https://firebaseappcheck.googleapis.com/v1/projects/newton-93d05/apps/1%3A697007558928%3Aweb%3Ac4ff7f4bf936f340be5595";
 const AC_KEY = `?key=${import.meta.env.VITE_FIREBASE_API_KEY}`;
 
-// Load reCAPTCHA v3 script only in production (dev uses a debug token instead)
-if (!import.meta.env.DEV) {
-  const s = document.createElement("script");
-  s.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
-  document.head.appendChild(s);
-}
 // This UUID is registered in Firebase Console → App Check → Manage debug tokens
 const DEV_DEBUG_TOKEN = "7f3d2c1b-a4e5-4f8a-9b2c-3d4e5f6a7b8c";
 
 let _acToken = null;
 let _acExpiry = 0;
+let _acPending = null; // deduplicate concurrent callers
 
 async function getAppCheckToken() {
   if (_acToken && Date.now() < _acExpiry) return _acToken;
-  let data;
-  if (import.meta.env.DEV) {
-    const r = await fetch(`${AC_BASE}:exchangeDebugToken${AC_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ debug_token: DEV_DEBUG_TOKEN }),
-    });
-    data = await r.json();
-  } else {
-    await new Promise(resolve => {
-      if (window.grecaptcha) { window.grecaptcha.ready(resolve); }
-      else {
-        const iv = setInterval(() => { if (window.grecaptcha) { clearInterval(iv); window.grecaptcha.ready(resolve); } }, 50);
-      }
-    });
-    const rcToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: "firebase" });
-    const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token${AC_KEY}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recaptchaV3Token: rcToken }),
-    });
-    data = await r.json();
-  }
-  if (!data.token) throw new Error(`App Check exchange failed: ${JSON.stringify(data)}`);
-  _acToken = data.token;
-  _acExpiry = Date.now() + (parseInt(data.ttl) - 60) * 1000;
-  return _acToken;
+  if (_acPending) return _acPending;
+  _acPending = (async () => {
+    let data;
+    if (import.meta.env.DEV) {
+      const r = await fetch(`${AC_BASE}:exchangeDebugToken${AC_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ debug_token: DEV_DEBUG_TOKEN }),
+      });
+      data = await r.json();
+    } else {
+      await new Promise(resolve => window.grecaptcha
+        ? window.grecaptcha.ready(resolve)
+        : window.addEventListener("load", () => window.grecaptcha.ready(resolve), { once: true })
+      );
+      const rcToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: "firebase" });
+      const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token${AC_KEY}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ recaptchaV3Token: rcToken }),
+      });
+      data = await r.json();
+    }
+    if (!data.token) throw new Error(`App Check exchange failed: ${JSON.stringify(data)}`);
+    _acToken = data.token;
+    _acExpiry = Date.now() + (parseInt(data.ttl) - 60) * 1000;
+    return _acToken;
+  })().finally(() => { _acPending = null; });
+  return _acPending;
 }
+
+// Pre-warm: kick off the token fetch immediately at module load so it's
+// ready (or already resolved) by the time the component calls fbConnectTest()
+if (!import.meta.env.DEV) getAppCheckToken().catch(() => {});
 
 const FIREBASE = "https://newton-93d05-default-rtdb.firebaseio.com";
 
