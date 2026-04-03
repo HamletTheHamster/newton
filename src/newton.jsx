@@ -1,35 +1,44 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
-import { initializeApp } from "firebase/app";
-import { initializeAppCheck, ReCaptchaV3Provider, getToken } from "firebase/app-check";
 
-// ── Firebase setup ────────────────────────────────────────────────────────────
-const firebaseApp = initializeApp({
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
-  authDomain: "newton-93d05.firebaseapp.com",
-  databaseURL: "https://newton-93d05-default-rtdb.firebaseio.com",
-  projectId: "newton-93d05",
-  storageBucket: "newton-93d05.firebasestorage.app",
-  messagingSenderId: "697007558928",
-  appId: "1:697007558928:web:c4ff7f4bf936f340be5595",
-});
+// ── App Check (REST, no SDK) ──────────────────────────────────────────────────
+const RECAPTCHA_SITE_KEY = "6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23";
+const AC_BASE = "https://firebaseappcheck.googleapis.com/v1/projects/newton-93d05/apps/1%3A697007558928%3Aweb%3Ac4ff7f4bf936f340be5595";
+// This UUID is registered in Firebase Console → App Check → Manage debug tokens
+const DEV_DEBUG_TOKEN = "7f3d2c1b-a4e5-4f8a-9b2c-3d4e5f6a7b8c";
 
-// Local dev: App Check debug mode — on first run, a debug token is printed to the
-// browser console. Register it once at:
-// Firebase Console → App Check → your app → Manage debug tokens
-if (import.meta.env.DEV) {
-  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+let _acToken = null;
+let _acExpiry = 0;
+
+async function getAppCheckToken() {
+  if (_acToken && Date.now() < _acExpiry) return _acToken;
+  let data;
+  if (import.meta.env.DEV) {
+    const r = await fetch(`${AC_BASE}:exchangeDebugToken`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ debug_token: DEV_DEBUG_TOKEN }),
+    });
+    data = await r.json();
+  } else {
+    while (!window.grecaptcha?.execute) await new Promise(r => setTimeout(r, 50));
+    const rcToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: "firebase" });
+    const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ recaptcha_token: rcToken }),
+    });
+    data = await r.json();
+  }
+  _acToken = data.token;
+  _acExpiry = Date.now() + (parseInt(data.ttl) - 60) * 1000;
+  return _acToken;
 }
-
-const appCheck = initializeAppCheck(firebaseApp, {
-  provider: new ReCaptchaV3Provider("6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23"),
-  isTokenAutoRefreshEnabled: true,
-});
 
 const FIREBASE = "https://newton-93d05-default-rtdb.firebaseio.com";
 
 // ── Firebase helpers ──────────────────────────────────────────────────────────
 async function fbGet(path) {
-  const { token } = await getToken(appCheck);
+  const token = await getAppCheckToken();
   const r = await fetch(`${FIREBASE}/${path}.json`, {
     headers: { "X-Firebase-AppCheck": token },
   });
@@ -37,7 +46,7 @@ async function fbGet(path) {
   return await r.json();
 }
 async function fbSet(path, data) {
-  const { token } = await getToken(appCheck);
+  const token = await getAppCheckToken();
   const r = await fetch(`${FIREBASE}/${path}.json`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": token },
