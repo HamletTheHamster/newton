@@ -780,7 +780,7 @@ export default function App(){
                     <span>{quiz.questions.length} question{quiz.questions.length>1?"s":""}  •  10 pts</span>
                     {quiz.questions.some(q=>q.requiresImage)&&<span style={{color:"#a78bfa"}}>Drawing required</span>}
                     {completed&&sub?<span style={{color:sub.score>=8?"#4ade80":sub.score>=6?"#facc15":sub.score>=4?"#fb923c":"#f87171",fontWeight:600}}>Score: {sub.score}/10{sub.late?" · submitted late":""}{sub.imported?" · graded off-platform":""}</span>
-                      :quiz.dueDate&&<span style={{color:late?"#f87171":"#4ade80"}}>{late?"Past due (½ credit)":"Due "+dueToDate(quiz.dueDate).toLocaleDateString('en-US',{timeZone:'America/New_York'})+" · 11:59 PM ET"}</span>}
+                      :quiz.dueDate&&<span style={{color:late?"#f87171":"#4ade80"}}>{late?"Past due! (submit for ½ credit)":"Due "+dueToDate(quiz.dueDate).toLocaleDateString('en-US',{timeZone:'America/New_York'})+" · 11:59 PM ET"}</span>}
                   </div>
                 </div>
                 {completed
