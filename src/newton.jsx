@@ -31,7 +31,7 @@ async function getAppCheckToken() {
     const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token${AC_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ recaptcha_token: rcToken }),
+      body: JSON.stringify({ recaptchaToken: rcToken }),
     });
     data = await r.json();
   }
