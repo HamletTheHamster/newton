@@ -3,6 +3,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 // ── App Check (REST, no SDK) ──────────────────────────────────────────────────
 const RECAPTCHA_SITE_KEY = "6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23";
 const AC_BASE = "https://firebaseappcheck.googleapis.com/v1/projects/newton-93d05/apps/1%3A697007558928%3Aweb%3Ac4ff7f4bf936f340be5595";
+const AC_KEY = `?key=${import.meta.env.VITE_FIREBASE_API_KEY}`;
 // This UUID is registered in Firebase Console → App Check → Manage debug tokens
 const DEV_DEBUG_TOKEN = "7f3d2c1b-a4e5-4f8a-9b2c-3d4e5f6a7b8c";
 
@@ -13,7 +14,7 @@ async function getAppCheckToken() {
   if (_acToken && Date.now() < _acExpiry) return _acToken;
   let data;
   if (import.meta.env.DEV) {
-    const r = await fetch(`${AC_BASE}:exchangeDebugToken`, {
+    const r = await fetch(`${AC_BASE}:exchangeDebugToken${AC_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ debug_token: DEV_DEBUG_TOKEN }),
@@ -27,7 +28,7 @@ async function getAppCheckToken() {
       }
     });
     const rcToken = await window.grecaptcha.execute(RECAPTCHA_SITE_KEY, { action: "firebase" });
-    const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token`, {
+    const r = await fetch(`${AC_BASE}:exchangeRecaptchaV3Token${AC_KEY}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ recaptcha_token: rcToken }),
