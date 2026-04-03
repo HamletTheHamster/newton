@@ -712,7 +712,7 @@ export default function App(){
           {nameQuery.trim().length>0&&filteredRoster.length===0&&roster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 16px",color:MUTED,fontSize:13,zIndex:10}}>No matches found. Check your spelling.</div>)}
         </div>
       </div>
-      <p style={{position:"fixed",bottom:8,left:0,right:0,textAlign:"center",fontSize:11,color:"rgba(255,255,255,0.2)",margin:0}}>Protected by reCAPTCHA · <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.2)"}}>Privacy</a> · <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.2)"}}>Terms</a></p>
+      {!import.meta.env.DEV&&<p style={{position:"fixed",bottom:8,right:12,fontSize:11,color:"rgba(255,255,255,0.2)",margin:0,textAlign:"right"}}>Protected by reCAPTCHA · <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.2)"}}>Privacy</a> · <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.2)"}}>Terms</a></p>}
     </div>
   );
 
