@@ -4,7 +4,7 @@ import { initializeAppCheck, ReCaptchaV3Provider, getToken } from "firebase/app-
 
 // ── Firebase setup ────────────────────────────────────────────────────────────
 const firebaseApp = initializeApp({
-  apiKey: "AIzaSyA1frV6sW-iCtIJSg6LqO8yFXB8OaY7TOY",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: "newton-93d05.firebaseapp.com",
   databaseURL: "https://newton-93d05-default-rtdb.firebaseio.com",
   projectId: "newton-93d05",
