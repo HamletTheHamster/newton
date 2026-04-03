@@ -1,18 +1,47 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { initializeApp } from "firebase/app";
+import { initializeAppCheck, ReCaptchaV3Provider, getToken } from "firebase/app-check";
+
+// ── Firebase setup ────────────────────────────────────────────────────────────
+const firebaseApp = initializeApp({
+  apiKey: "AIzaSyA1frV6sW-iCtIJSg6LqO8yFXB8OaY7TOY",
+  authDomain: "newton-93d05.firebaseapp.com",
+  databaseURL: "https://newton-93d05-default-rtdb.firebaseio.com",
+  projectId: "newton-93d05",
+  storageBucket: "newton-93d05.firebasestorage.app",
+  messagingSenderId: "697007558928",
+  appId: "1:697007558928:web:c4ff7f4bf936f340be5595",
+});
+
+// Local dev: App Check debug mode — on first run, a debug token is printed to the
+// browser console. Register it once at:
+// Firebase Console → App Check → your app → Manage debug tokens
+if (import.meta.env.DEV) {
+  self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+}
+
+const appCheck = initializeAppCheck(firebaseApp, {
+  provider: new ReCaptchaV3Provider("6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23"),
+  isTokenAutoRefreshEnabled: true,
+});
 
 const FIREBASE = "https://newton-93d05-default-rtdb.firebaseio.com";
 
 // ── Firebase helpers ──────────────────────────────────────────────────────────
 async function fbGet(path) {
-  const r = await fetch(`${FIREBASE}/${path}.json`);
+  const { token } = await getToken(appCheck);
+  const r = await fetch(`${FIREBASE}/${path}.json`, {
+    headers: { "X-Firebase-AppCheck": token },
+  });
   if (!r.ok) throw new Error(`GET ${path} → HTTP ${r.status}`);
   return await r.json();
 }
 async function fbSet(path, data) {
+  const { token } = await getToken(appCheck);
   const r = await fetch(`${FIREBASE}/${path}.json`, {
     method: "PUT",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify(data)
+    headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": token },
+    body: JSON.stringify(data),
   });
   if (!r.ok) throw new Error(`PUT ${path} → HTTP ${r.status}: ${await r.text()}`);
 }
@@ -578,10 +607,9 @@ export default function App(){
   if(fbConnStatus==='error')return(
     <div style={{...s.page,display:"flex",alignItems:"center",justifyContent:"center",padding:24}}>
       <div style={{maxWidth:520,width:"100%",...s.card,padding:32,display:"flex",flexDirection:"column",gap:16}}>
-        <h2 style={{color:"#f87171",fontWeight:700,fontSize:20,margin:0}}>⚠️ Firebase Unreachable</h2>
-        <p style={{...s.muted,margin:0,lineHeight:1.6}}>The app cannot connect to Firebase. This is likely because the Claude artifact sandbox restricts outbound connections to <code style={{background:"rgba(255,255,255,0.08)",padding:"1px 6px",borderRadius:4}}>firebaseio.com</code>.</p>
+        <h2 style={{color:"#f87171",fontWeight:700,fontSize:20,margin:0}}>⚠️ Cannot Reach Database</h2>
+        <p style={{...s.muted,margin:0,lineHeight:1.6}}>The app could not connect to Firebase. This is usually caused by a network issue, a firewall, or a temporary Firebase outage. Check your internet connection and try refreshing.</p>
         <div style={{background:"rgba(248,113,113,0.08)",border:"1px solid rgba(248,113,113,0.3)",borderRadius:10,padding:"12px 16px",fontFamily:"monospace",fontSize:12,color:"#fca5a5",wordBreak:"break-all"}}>{fbConnError}</div>
-        <p style={{...s.muted,margin:0,lineHeight:1.6}}>Please share this error message so we can find a working alternative.</p>
       </div>
     </div>
   );
