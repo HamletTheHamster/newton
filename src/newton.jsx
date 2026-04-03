@@ -4,6 +4,13 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 const RECAPTCHA_SITE_KEY = "6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23";
 const AC_BASE = "https://firebaseappcheck.googleapis.com/v1/projects/newton-93d05/apps/1%3A697007558928%3Aweb%3Ac4ff7f4bf936f340be5595";
 const AC_KEY = `?key=${import.meta.env.VITE_FIREBASE_API_KEY}`;
+
+// Load reCAPTCHA v3 script only in production (dev uses a debug token instead)
+if (!import.meta.env.DEV) {
+  const s = document.createElement("script");
+  s.src = `https://www.google.com/recaptcha/api.js?render=${RECAPTCHA_SITE_KEY}`;
+  document.head.appendChild(s);
+}
 // This UUID is registered in Firebase Console → App Check → Manage debug tokens
 const DEV_DEBUG_TOKEN = "7f3d2c1b-a4e5-4f8a-9b2c-3d4e5f6a7b8c";
 
