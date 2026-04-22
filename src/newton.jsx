@@ -448,15 +448,20 @@ export default function App(){
   const saveSettings=async s=>{setSettings(s);await fbSave('settings',s);};
   const saveChecked=async c=>{setCheckedSubs(c);await fbSave('checkedSubs',c);};
 
-  const saveSubs=async newSubs=>{
+  const saveSubs=async(newSubs,studentId=null)=>{
     setSubmissions(newSubs);
-    // Group by studentId — each student's submissions live under /submissions/{studentId}
     const byStudent={};
     newSubs.forEach(s=>{
       if(!byStudent[s.studentId])byStudent[s.studentId]=[];
       byStudent[s.studentId].push(s);
     });
-    await fbSave('submissions',byStudent);
+    if(studentId){
+      // Write only this student's subtree — avoids overwriting concurrent submissions from other students
+      await fbSave(`submissions/${studentId}`,byStudent[studentId]||[]);
+    }else{
+      // Bulk write (restore/clear) — writes entire tree
+      await fbSave('submissions',byStudent);
+    }
   };
 
   // ── Backup export ──────────────────────────────────────────────────────────
@@ -625,15 +630,15 @@ export default function App(){
     setQuizDone(true);setMessages([...curMsgs,resultMsg]);
     if(!practiceMode){
       const sub={id:"sub_"+Date.now(),studentName:loggedInStudent.fullName,studentId:loggedInStudent.studentId,quizId:quiz.id,quizTitle:quiz.title,rawScore:raw,score:final,late,timestamp:new Date().toISOString(),dialogue:[...curMsgs,resultMsg].map(({imageUrl,...m})=>m)};
-      setPendingSub({sub,allSubs:[...submissions,sub]});
-      try{await saveSubs([...submissions,sub]);setSubSaveError(false);setPendingSub(null);}
+      setPendingSub({sub,allSubs:[...submissions,sub],studentId:sub.studentId});
+      try{await saveSubs([...submissions,sub],sub.studentId);setSubSaveError(false);setPendingSub(null);}
       catch{setSubSaveError(true);}
     }
   };
 
   const retrySaveSub=async()=>{
     if(!pendingSub)return;
-    try{await saveSubs(pendingSub.allSubs);setSubSaveError(false);setPendingSub(null);}
+    try{await saveSubs(pendingSub.allSubs,pendingSub.studentId);setSubSaveError(false);setPendingSub(null);}
     catch{setSubSaveError(true);}
   };
 
