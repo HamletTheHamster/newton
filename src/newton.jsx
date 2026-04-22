@@ -11,6 +11,16 @@ const DEV_DEBUG_TOKEN = "7f3d2c1b-a4e5-4f8a-9b2c-3d4e5f6a7b8c";
 let _acToken = null;
 let _acExpiry = 0;
 let _acPending = null; // deduplicate concurrent callers
+let _acRefreshTimer = null; // proactive pre-expiry refresh
+
+function scheduleAcRefresh(msUntilExpiry) {
+  clearTimeout(_acRefreshTimer);
+  const delay = Math.max(0, msUntilExpiry - 10 * 60 * 1000); // refresh 10 min before expiry
+  _acRefreshTimer = setTimeout(() => {
+    _acToken = null; // invalidate so next getAppCheckToken() fetches fresh
+    getAppCheckToken().catch(() => {}); // best-effort; errors are non-fatal here
+  }, delay);
+}
 
 async function getAppCheckToken() {
   if (_acToken && Date.now() < _acExpiry) return _acToken;
@@ -39,7 +49,9 @@ async function getAppCheckToken() {
     }
     if (!data.token) throw new Error(`App Check exchange failed: ${JSON.stringify(data)}`);
     _acToken = data.token;
-    _acExpiry = Date.now() + (parseInt(data.ttl) - 60) * 1000;
+    const msUntilExpiry = (parseInt(data.ttl) - 60) * 1000;
+    _acExpiry = Date.now() + msUntilExpiry;
+    scheduleAcRefresh(msUntilExpiry);
     return _acToken;
   })().finally(() => { _acPending = null; });
   return _acPending;
@@ -311,6 +323,7 @@ export default function App(){
   const[input,setInput]=useState("");const[pendingFile,setPendingFile]=useState(null);
   const[pasteWarning,setPasteWarning]=useState(false);
   const[busy,setBusy]=useState(false);const[quizDone,setQuizDone]=useState(false);
+  const[subSaveError,setSubSaveError]=useState(false);const[pendingSub,setPendingSub]=useState(null);
 
   const[instPw,setInstPw]=useState("");const[instErr,setInstErr]=useState("");
   const[instTab,setInstTab]=useState("submissions");
@@ -423,6 +436,7 @@ export default function App(){
       setSyncError(msg);
       setSyncStatus('error');
       syncTimer.current=setTimeout(()=>setSyncStatus('idle'),8000);
+      throw e;
     }
   };
 
@@ -542,7 +556,7 @@ export default function App(){
   const startQuiz=(quiz,isPractice=false)=>{
     setPracticeMode(isPractice);setActiveQuiz(quiz);setQIdx(0);setApiHist([]);
     setQScores(new Array(quiz.questions.length).fill(null));
-    setQuizDone(false);setInput("");setPendingFile(null);setBusy(false);setShowLeaveConfirm(false);
+    setQuizDone(false);setInput("");setPendingFile(null);setBusy(false);setShowLeaveConfirm(false);setSubSaveError(false);setPendingSub(null);
     const late=isLate(quiz.dueDate);
     setMessages([
       {id:0,type:"system",text:(isPractice?"Practice Mode — this run will not be submitted for a grade\n\n":"")+"📚 "+quiz.title+"  •  "+(loggedInStudent.altName||loggedInStudent.fullName)+(late&&!isPractice?"\n\n⚠️ This quiz is past the due date. Your score will be halved.":"")},
@@ -551,7 +565,7 @@ export default function App(){
     setScreen("quiz");
     history.pushState({newton:"quiz"},"","");
   };
-  const handleLeaveQuiz=()=>{if(quizDone){setScreen("student-portal");return;}setShowLeaveConfirm(true);};
+  const handleLeaveQuiz=()=>{if(quizDone&&!subSaveError){setScreen("student-portal");return;}if(!quizDone)setShowLeaveConfirm(true);};
   const confirmLeave=()=>{setShowLeaveConfirm(false);setScreen("student-portal");};
   const onFileSelect=async e=>{
     const file=e.target.files[0];if(!file)return;
@@ -611,8 +625,16 @@ export default function App(){
     setQuizDone(true);setMessages([...curMsgs,resultMsg]);
     if(!practiceMode){
       const sub={id:"sub_"+Date.now(),studentName:loggedInStudent.fullName,studentId:loggedInStudent.studentId,quizId:quiz.id,quizTitle:quiz.title,rawScore:raw,score:final,late,timestamp:new Date().toISOString(),dialogue:[...curMsgs,resultMsg].map(({imageUrl,...m})=>m)};
-      await saveSubs([...submissions,sub]);
+      setPendingSub({sub,allSubs:[...submissions,sub]});
+      try{await saveSubs([...submissions,sub]);setSubSaveError(false);setPendingSub(null);}
+      catch{setSubSaveError(true);}
     }
+  };
+
+  const retrySaveSub=async()=>{
+    if(!pendingSub)return;
+    try{await saveSubs(pendingSub.allSubs);setSubSaveError(false);setPendingSub(null);}
+    catch{setSubSaveError(true);}
   };
 
   const toggleChecked=async subId=>{
@@ -806,7 +828,7 @@ export default function App(){
       </div>)}
       <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:14}}>
-          <button onClick={handleLeaveQuiz} style={{...s.btnGhost,padding:"6px 12px",width:"auto"}}>← Back</button>
+          <button onClick={handleLeaveQuiz} disabled={subSaveError} title={subSaveError?"Please retry saving before leaving":""}  style={{...s.btnGhost,padding:"6px 12px",width:"auto",opacity:subSaveError?0.35:1,cursor:subSaveError?"not-allowed":"pointer"}}>← Back</button>
           <div style={{width:1,height:20,background:BORDER}}/>
           <div><div style={{color:"#fff",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",gap:8}}>{activeQuiz?.title}{practiceMode&&<span style={s.badge(TEAL)}>Practice</span>}</div><p style={{...s.muted,fontSize:12,margin:0}}>{loggedInStudent?.fullName}</p></div>
         </div>
@@ -814,6 +836,11 @@ export default function App(){
       </div>
       <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"20px 16px",display:"flex",flexDirection:"column",gap:14,maxWidth:720,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
         <ChatMessages messages={messages} busy={busy}/>
+        {quizDone&&subSaveError&&<div style={{background:"rgba(248,113,113,0.12)",border:"1px solid rgba(248,113,113,0.4)",borderRadius:12,padding:"16px 20px",marginTop:8,display:"flex",flexDirection:"column",gap:10}}>
+          <p style={{color:"#f87171",fontWeight:700,fontSize:14,margin:0}}>⚠️ Your submission could not be saved</p>
+          <p style={{color:"rgba(255,255,255,0.75)",fontSize:13,margin:0,lineHeight:1.5}}>There was a network or server error. Please check your internet connection and tap Retry. If it keeps failing, contact your instructor and show them this screen.</p>
+          <button onClick={retrySaveSub} style={{...s.btnPri,background:"#b91c1c",border:"1px solid #f87171"}}>Retry saving submission</button>
+        </div>}
         {quizDone&&<button onClick={()=>setScreen("student-portal")} style={{...s.btnPri,marginTop:8}}>Back to Quiz List</button>}
       </div>
       {!quizDone&&(<div style={{background:CARD,borderTop:`1px solid ${BORDER}`,padding:16,flexShrink:0}}>
