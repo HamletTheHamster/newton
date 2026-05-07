@@ -966,7 +966,7 @@ export default function App(){
           {submissions.length===0?<div style={{...s.card,padding:40,textAlign:"center",color:MUTED}}>No submissions yet.</div>:(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
               {QUIZZES.map(quiz=>{
-                const subs=(subsByQuiz[quiz.id]||[]).slice().sort((a,b)=>new Date(b.timestamp)-new Date(a.timestamp));
+                const subs=(subsByQuiz[quiz.id]||[]).slice().sort((a,b)=>{const aUnchecked=!checkedSubs[a.id]&&!a.imported,bUnchecked=!checkedSubs[b.id]&&!b.imported;if(aUnchecked!==bUnchecked)return aUnchecked?-1:1;return new Date(b.timestamp)-new Date(a.timestamp);});
                 if(!subs.length)return null;
                 const isOpen=!!openQuizzes[quiz.id],unchecked=subs.filter(s=>!checkedSubs[s.id]&&!s.imported).length;
                 return(<div key={quiz.id} style={{...s.card,overflow:"hidden"}}>
