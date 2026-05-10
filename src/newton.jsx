@@ -113,17 +113,17 @@ const FIREBASE = "https://newton-93d05-default-rtdb.firebaseio.com";
 // ── Firebase helpers ──────────────────────────────────────────────────────────
 async function fbGet(path) {
   const [acToken, authToken] = await Promise.all([getAppCheckToken(), getAuthToken()]);
-  const r = await fetch(`${FIREBASE}/${path}.json`, {
-    headers: { "X-Firebase-AppCheck": acToken, "Authorization": `Bearer ${authToken}` },
+  const r = await fetch(`${FIREBASE}/${path}.json?auth=${authToken}`, {
+    headers: { "X-Firebase-AppCheck": acToken },
   });
   if (!r.ok) throw new Error(`GET ${path} → HTTP ${r.status}`);
   return await r.json();
 }
 async function fbSet(path, data) {
   const [acToken, authToken] = await Promise.all([getAppCheckToken(), getAuthToken()]);
-  const r = await fetch(`${FIREBASE}/${path}.json`, {
+  const r = await fetch(`${FIREBASE}/${path}.json?auth=${authToken}`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": acToken, "Authorization": `Bearer ${authToken}` },
+    headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": acToken },
     body: JSON.stringify(data),
   });
   if (!r.ok) throw new Error(`PUT ${path} → HTTP ${r.status}: ${await r.text()}`);
