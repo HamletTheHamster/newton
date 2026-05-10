@@ -61,22 +61,69 @@ async function getAppCheckToken() {
 // ready (or already resolved) by the time the component calls fbConnectTest()
 if (!import.meta.env.DEV) getAppCheckToken().catch(() => {});
 
+// ── Anonymous Auth (REST, no SDK) ─────────────────────────────────────────────
+const AUTH_SIGN_UP = `https://identitytoolkit.googleapis.com/v1/accounts:signUp${AC_KEY}`;
+const AUTH_REFRESH = `https://securetoken.googleapis.com/v1/token${AC_KEY}`;
+
+let _authToken = null;
+let _authExpiry = 0;
+let _authRefreshToken = null;
+let _authPending = null;
+
+async function getAuthToken() {
+  if (_authToken && Date.now() < _authExpiry) return _authToken;
+  if (_authPending) return _authPending;
+  _authPending = (async () => {
+    let idToken, expiresIn, refreshToken;
+    if (_authRefreshToken) {
+      const r = await fetch(AUTH_REFRESH, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `grant_type=refresh_token&refresh_token=${_authRefreshToken}`,
+      });
+      const data = await r.json();
+      if (!data.id_token) throw new Error(`Auth refresh failed: ${JSON.stringify(data)}`);
+      idToken = data.id_token;
+      expiresIn = parseInt(data.expires_in);
+      refreshToken = data.refresh_token;
+    } else {
+      const r = await fetch(AUTH_SIGN_UP, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ returnSecureToken: true }),
+      });
+      const data = await r.json();
+      if (!data.idToken) throw new Error(`Anonymous sign-in failed: ${JSON.stringify(data)}`);
+      idToken = data.idToken;
+      expiresIn = parseInt(data.expiresIn);
+      refreshToken = data.refreshToken;
+    }
+    _authToken = idToken;
+    _authExpiry = Date.now() + (expiresIn - 60) * 1000;
+    _authRefreshToken = refreshToken;
+    return _authToken;
+  })().finally(() => { _authPending = null; });
+  return _authPending;
+}
+
+getAuthToken().catch(() => {});
+
 const FIREBASE = "https://newton-93d05-default-rtdb.firebaseio.com";
 
 // ── Firebase helpers ──────────────────────────────────────────────────────────
 async function fbGet(path) {
-  const token = await getAppCheckToken();
+  const [acToken, authToken] = await Promise.all([getAppCheckToken(), getAuthToken()]);
   const r = await fetch(`${FIREBASE}/${path}.json`, {
-    headers: { "X-Firebase-AppCheck": token },
+    headers: { "X-Firebase-AppCheck": acToken, "Authorization": `Bearer ${authToken}` },
   });
   if (!r.ok) throw new Error(`GET ${path} → HTTP ${r.status}`);
   return await r.json();
 }
 async function fbSet(path, data) {
-  const token = await getAppCheckToken();
+  const [acToken, authToken] = await Promise.all([getAppCheckToken(), getAuthToken()]);
   const r = await fetch(`${FIREBASE}/${path}.json`, {
     method: "PUT",
-    headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": token },
+    headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": acToken, "Authorization": `Bearer ${authToken}` },
     body: JSON.stringify(data),
   });
   if (!r.ok) throw new Error(`PUT ${path} → HTTP ${r.status}: ${await r.text()}`);

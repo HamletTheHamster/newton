@@ -1,0 +1,6 @@
+{
+  "rules": {
+    ".read": "request.app.token.valid",
+    ".write": "request.app.token.valid"
+  }
+}
