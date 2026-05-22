@@ -1,0 +1,15 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Local env file with secrets
+.env
+.env.local
+
+# Netlify
+.netlify/
+
+# OS
+.DS_Store

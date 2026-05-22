@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import QRCode from 'qrcode';
 
 // ── App Check (REST, no SDK) ──────────────────────────────────────────────────
 const RECAPTCHA_SITE_KEY = "6LeWGaUsAAAAALJprup9vtheAIT9tnMqP7V4Pk23";
@@ -173,6 +174,15 @@ async function hashPw(pw,salt){const b=await crypto.subtle.digest("SHA-256",new 
 function genSalt(){const a=new Uint8Array(16);crypto.getRandomValues(a);return Array.from(a).map(b=>b.toString(16).padStart(2,"0")).join("");}
 async function verifyPw(input,hash,salt){return(await hashPw(input,salt))===hash;}
 async function makeHash(pw){const salt=genSalt();return{hash:await hashPw(pw,salt),salt};}
+
+// ── TOTP (RFC 6238) helpers ───────────────────────────────────────────────────
+const B32='ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function b32ToBytes(s){const str=s.toUpperCase().replace(/=+$/,'');let bits=0,val=0;const out=[];for(const c of str){val=(val<<5)|B32.indexOf(c);bits+=5;if(bits>=8){bits-=8;out.push((val>>bits)&255);}}return new Uint8Array(out);}
+function genTotpSecret(){const bytes=new Uint8Array(20);crypto.getRandomValues(bytes);let r='',bits=0,val=0;for(const b of bytes){val=(val<<8)|b;bits+=8;while(bits>=5){bits-=5;r+=B32[(val>>bits)&31];}};if(bits>0)r+=B32[(val<<(5-bits))&31];while(r.length%8)r+='=';return r;}
+async function totpCode(secret,counter){const key=await crypto.subtle.importKey('raw',b32ToBytes(secret),{name:'HMAC',hash:'SHA-1'},false,['sign']);const ctr=new Uint8Array(8);let c=counter;for(let i=7;i>=0;i--){ctr[i]=c&0xff;c=Math.floor(c/256);}const sig=new Uint8Array(await crypto.subtle.sign('HMAC',key,ctr));const off=sig[19]&0xf;const code=((sig[off]&0x7f)<<24)|(sig[off+1]<<16)|(sig[off+2]<<8)|sig[off+3];return String(code%1000000).padStart(6,'0');}
+async function verifyTotp(secret,userCode){const win=Math.floor(Date.now()/30000);for(const w of[win-1,win,win+1]){if(await totpCode(secret,w)===userCode.trim())return true;}return false;}
+function genDeviceToken(){const b=new Uint8Array(32);crypto.getRandomValues(b);return Array.from(b).map(x=>x.toString(16).padStart(2,'0')).join('');}
+async function hashToken(tok){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(tok));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
 
 function parseRoster(text){
   return text.split("\n").map(l=>l.trim()).filter(Boolean).reduce((acc,line)=>{
@@ -373,6 +383,10 @@ export default function App(){
   const[subSaveError,setSubSaveError]=useState(false);const[pendingSub,setPendingSub]=useState(null);
 
   const[instPw,setInstPw]=useState("");const[instErr,setInstErr]=useState("");
+  const[instLoginStep,setInstLoginStep]=useState("password");
+  const[totpInput,setTotpInput]=useState("");const[totpErr,setTotpErr]=useState("");const[rememberDevice,setRememberDevice]=useState(false);
+  const[totpSetupState,setTotpSetupState]=useState(null);const[totpSetupCode,setTotpSetupCode]=useState("");const[totpSetupErr,setTotpSetupErr]=useState("");
+  const[clearDevicesMsg,setClearDevicesMsg]=useState("");
   const[instTab,setInstTab]=useState("submissions");
   const[editPw,setEditPw]=useState("");const[editPw2,setEditPw2]=useState("");const[editPwMsg,setEditPwMsg]=useState("");
   const[openQuizzes,setOpenQuizzes]=useState({});
@@ -567,7 +581,48 @@ export default function App(){
   const doLogin=async()=>{
     if(!settings.passwordHash){setInstErr("Settings still loading.");return;}
     const ok=await verifyPw(instPw,settings.passwordHash,settings.passwordSalt);
-    if(ok){setInstErr("");setEditPw("");setScreen("instructor");}else setInstErr("Incorrect password.");
+    if(!ok){setInstErr("Incorrect password.");return;}
+    if(!settings.totpSecret){setInstErr("");setEditPw("");setScreen("instructor");return;}
+    const deviceToken=localStorage.getItem('newton_device_token');
+    if(deviceToken){const tokenHash=await hashToken(deviceToken);if(settings.trustedDevices?.[tokenHash]){setInstErr("");setEditPw("");setScreen("instructor");return;}}
+    setInstErr("");setTotpInput("");setTotpErr("");setInstLoginStep("totp");
+  };
+  const doTotpVerify=async()=>{
+    const code=totpInput.trim();
+    if(!/^\d{6}$/.test(code)){setTotpErr("Enter the 6-digit code.");return;}
+    const valid=await verifyTotp(settings.totpSecret,code);
+    if(!valid){setTotpErr("Incorrect code. Try again.");setTotpInput("");return;}
+    if(rememberDevice){
+      const token=genDeviceToken();const tokenHash=await hashToken(token);
+      localStorage.setItem('newton_device_token',token);
+      await saveSettings({...settings,trustedDevices:{...(settings.trustedDevices||{}),[tokenHash]:{created:new Date().toISOString()}}});
+    }
+    setTotpErr("");setTotpInput("");setInstLoginStep("password");setRememberDevice(false);setScreen("instructor");
+  };
+  const startTotpSetup=async()=>{
+    const secret=genTotpSecret();
+    const otpauthUrl=`otpauth://totp/Newton?secret=${secret}&issuer=Newton&digits=6&period=30`;
+    let qrDataUrl='';
+    try{qrDataUrl=await QRCode.toDataURL(otpauthUrl,{width:176,margin:1,color:{dark:'#000',light:'#fff'}});}catch(e){console.error(e);}
+    setTotpSetupState({secret,qrDataUrl});setTotpSetupCode("");setTotpSetupErr("");
+  };
+  const confirmTotpSetup=async()=>{
+    if(!/^\d{6}$/.test(totpSetupCode.trim())){setTotpSetupErr("Enter the 6-digit code.");return;}
+    const valid=await verifyTotp(totpSetupState.secret,totpSetupCode);
+    if(!valid){setTotpSetupErr("Code didn't match. Check you scanned the right QR code and try again.");return;}
+    await saveSettings({...settings,totpSecret:totpSetupState.secret});
+    setTotpSetupState(null);setTotpSetupCode("");setTotpSetupErr("");
+  };
+  const disableTotp=()=>{
+    confirmDanger("disable two-factor authentication",async()=>{
+      await saveSettings({...settings,totpSecret:null,trustedDevices:{}});
+      localStorage.removeItem('newton_device_token');
+    });
+  };
+  const clearTrustedDevices=async()=>{
+    await saveSettings({...settings,trustedDevices:{}});
+    localStorage.removeItem('newton_device_token');
+    setClearDevicesMsg("✅ All trusted devices cleared.");setTimeout(()=>setClearDevicesMsg(""),3000);
   };
   const submitBugReport=async()=>{
     if(!bugInput.trim()||bugSubmitting)return;
@@ -946,9 +1001,25 @@ export default function App(){
         <div style={{textAlign:"center",marginBottom:32}}>
           <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
         </div>
-        <input type="password" style={{...s.input,marginBottom:10}} placeholder="Instructor password…" value={instPw} onChange={e=>setInstPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} autoFocus/>
-        {instErr&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{instErr}</p>}
-        <button onClick={doLogin} style={s.btnPri}>Login</button>
+        {instLoginStep==="password"?(
+          <>
+            <input type="password" style={{...s.input,marginBottom:10}} placeholder="Instructor password…" value={instPw} onChange={e=>setInstPw(e.target.value)} onKeyDown={e=>e.key==="Enter"&&doLogin()} autoFocus/>
+            {instErr&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{instErr}</p>}
+            <button onClick={doLogin} style={s.btnPri}>Login</button>
+          </>
+        ):(
+          <>
+            <p style={{color:MUTED,fontSize:13,textAlign:"center",margin:"0 0 16px"}}>Enter the 6-digit code from your authenticator app.</p>
+            <input type="text" inputMode="numeric" pattern="\d{6}" maxLength={6} style={{...s.input,marginBottom:10,textAlign:"center",letterSpacing:"0.3em",fontSize:20}} placeholder="000000" value={totpInput} onChange={e=>setTotpInput(e.target.value.replace(/\D/g,''))} onKeyDown={e=>e.key==="Enter"&&doTotpVerify()} autoFocus/>
+            {totpErr&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 10px"}}>{totpErr}</p>}
+            <label style={{display:"flex",alignItems:"center",gap:8,marginBottom:14,cursor:"pointer"}}>
+              <input type="checkbox" checked={rememberDevice} onChange={e=>setRememberDevice(e.target.checked)} style={{accentColor:TEAL,width:16,height:16}}/>
+              <span style={{color:MUTED,fontSize:13}}>Remember this device</span>
+            </label>
+            <button onClick={doTotpVerify} style={s.btnPri}>Verify</button>
+            <button onClick={()=>{setInstLoginStep("password");setTotpInput("");setTotpErr("");}} style={{...s.btnSec,marginTop:10}}>← Back</button>
+          </>
+        )}
         <div style={{marginTop:32,textAlign:"center"}}>
           <button onClick={()=>setScreen("student-search")} style={{background:"transparent",border:"none",color:MUTED,fontSize:12,cursor:"pointer",padding:"4px 8px"}}>← Student Login</button>
         </div>
@@ -1146,11 +1217,50 @@ export default function App(){
                   if(!editPw.trim()){setEditPwMsg("Password cannot be empty.");return;}
                   if(editPw!==editPw2){setEditPwMsg("Passwords do not match.");return;}
                   if(editPw.length<4){setEditPwMsg("Password must be at least 4 characters.");return;}
-                  const h=await makeHash(editPw.trim());await saveSettings({passwordHash:h.hash,passwordSalt:h.salt});
+                  const h=await makeHash(editPw.trim());await saveSettings({...settings,passwordHash:h.hash,passwordSalt:h.salt});
                   setEditPw("");setEditPw2("");setEditPwMsg("✅ Password updated!");
                 }} style={s.btnPri}>Update Password</button>
               </div>
             </div>
+          </div>
+
+          <div style={{marginBottom:36}}>
+            <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 16px"}}>Two-Factor Authentication</p>
+            {!settings.totpSecret?(
+              <div>
+                <p style={{...s.muted,lineHeight:1.5,margin:"0 0 14px"}}>2FA is not enabled. Protect your instructor login with a time-based one-time password.</p>
+                {!totpSetupState?(
+                  <button onClick={startTotpSetup} style={{...s.btnPri,width:"auto",padding:"10px 20px"}}>Enable 2FA</button>
+                ):(
+                  <div>
+                    <p style={{...s.muted,margin:"0 0 12px"}}>Scan this QR code with Google Authenticator, Authy, or any TOTP app:</p>
+                    {totpSetupState.qrDataUrl&&<div style={{background:"#fff",padding:8,borderRadius:8,display:"inline-block",marginBottom:16}}><img src={totpSetupState.qrDataUrl} alt="TOTP QR Code" style={{display:"block"}}/></div>}
+                    <p style={{...s.muted,fontSize:12,margin:"0 0 14px"}}>Or enter manually: <code style={{color:"#fff",background:"rgba(255,255,255,0.08)",padding:"2px 8px",borderRadius:4,fontFamily:"monospace",userSelect:"all"}}>{totpSetupState.secret}</code></p>
+                    <p style={{...s.muted,margin:"0 0 8px",fontSize:13}}>Enter the 6-digit code from your app to confirm:</p>
+                    <input type="text" inputMode="numeric" maxLength={6} style={{...s.input,width:160,textAlign:"center",letterSpacing:"0.3em",fontSize:18,marginBottom:8}} placeholder="000000" value={totpSetupCode} onChange={e=>setTotpSetupCode(e.target.value.replace(/\D/g,''))} onKeyDown={e=>e.key==="Enter"&&confirmTotpSetup()}/>
+                    {totpSetupErr&&<p style={{color:"#f87171",fontSize:13,margin:"0 0 8px"}}>{totpSetupErr}</p>}
+                    <div style={{display:"flex",gap:10,marginTop:4}}>
+                      <button onClick={confirmTotpSetup} style={{...s.btnPri,width:"auto",padding:"10px 20px"}}>Confirm & Enable</button>
+                      <button onClick={()=>{setTotpSetupState(null);setTotpSetupCode("");setTotpSetupErr("");}} style={{...s.btnSec,width:"auto",padding:"10px 20px"}}>Cancel</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ):(
+              <div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}}>
+                  <span style={s.badge("#4ade80")}>Enabled</span>
+                  <span style={{...s.muted,fontSize:13}}>{Object.keys(settings.trustedDevices||{}).length} trusted device(s)</span>
+                </div>
+                <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
+                  <button onClick={disableTotp} style={{...s.btnDanger,width:"auto",flex:"none"}}>Disable 2FA</button>
+                  {Object.keys(settings.trustedDevices||{}).length>0&&(
+                    <button onClick={clearTrustedDevices} style={{...s.btnDanger,width:"auto",flex:"none"}}>Clear Trusted Devices</button>
+                  )}
+                </div>
+                {clearDevicesMsg&&<p style={{fontSize:13,margin:"10px 0 0",color:"#4ade80"}}>{clearDevicesMsg}</p>}
+              </div>
+            )}
           </div>
 
           <hr style={{border:"none",borderTop:`1px solid ${BORDER}`,margin:"0 0 32px"}}/>
