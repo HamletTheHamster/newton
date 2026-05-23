@@ -226,15 +226,17 @@ function parseGradesCSV(text){
 }
 
 async function checkImageReadability(imgData){
-  const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:200,system:"You are checking whether a student's uploaded photo of a hand-drawn physics graph is legible enough to evaluate. Reply ONLY with valid JSON: {\"readable\":true} if the drawing is clear enough to assess, or {\"readable\":false,\"reason\":\"one short sentence telling the student specifically what to fix\"} if not.",messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:imgData.type,data:imgData.data}},{type:"text",text:"Is this image of a hand-drawn physics graph clear and legible enough to evaluate?"}]}]})});
+  const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-opus-4-7",max_tokens:200,system:"You are checking whether a student's uploaded photo of a hand-drawn physics graph is legible enough to evaluate. Reply ONLY with valid JSON: {\"readable\":true} if the drawing is clear enough to assess, or {\"readable\":false,\"reason\":\"one short sentence telling the student specifically what to fix\"} if not.",messages:[{role:"user",content:[{type:"image",source:{type:"base64",media_type:imgData.type,data:imgData.data}},{type:"text",text:"Is this image of a hand-drawn physics graph clear and legible enough to evaluate?"}]}]})});
   const data=await res.json();
   const text=data.content?.map(b=>b.text||"").join("")||"";
   try{return JSON.parse(text.replace(/```json\n?|```/g,"").trim());}catch{return{readable:true};}
 }
-async function evaluateAnswer(question,answer,history,imageData){
-  const system="You are a Physics 1 teaching assistant evaluating student understanding.\n\nCRITICAL RULE: If the student's answer captures the essential correct idea — even if informal, incomplete in detail, or not perfectly worded — mark it CORRECT. You are checking for conceptual understanding, not a textbook-perfect response. When in doubt, mark it correct.\n\nOnly mark INCORRECT if the answer contains a clear conceptual error, is substantially missing the key idea, or is too vague to demonstrate any understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
+async function evaluateAnswer(question,answer,history,imageData,attemptNum=1){
+  let system="You are an encouraging Physics 1 tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
+  if(attemptNum===4)system+="\n\nThis is the student's 4th attempt. Give a more direct hint — point clearly toward the key concept without stating the full answer. They have one more try after this.";
+  if(attemptNum>=5)system+="\n\nThis is the student's final (5th) attempt. If still incorrect, kindly tell them the correct answer directly and encourage them to review the concept before moving on.";
   const userContent=imageData?[{type:"text",text:"Physics Question: "+question+"\n\nThe student submitted a drawing."+(answer?"\nNote: "+answer:"")},{type:"image",source:{type:"base64",media_type:imageData.type,data:imageData.data}}]:"Physics Question: "+question+"\n\nStudent Answer: "+answer;
-  const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system,messages:[...history,{role:"user",content:userContent}]})});
+  const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-opus-4-7",max_tokens:1000,system,messages:[...history,{role:"user",content:userContent}]})});
   const data=await res.json();
   const text=data.content?.map(b=>b.text||"").join("")||"";
   try{return JSON.parse(text.replace(/```json\n?|```/g,"").trim());}catch{return{status:"incorrect",message:text||"Can you elaborate a bit more?"};}
@@ -379,7 +381,7 @@ export default function App(){
   const[messages,setMessages]=useState([]);const[qScores,setQScores]=useState([]);
   const[input,setInput]=useState("");const[pendingFile,setPendingFile]=useState(null);
   const[pasteWarning,setPasteWarning]=useState(false);
-  const[busy,setBusy]=useState(false);const[quizDone,setQuizDone]=useState(false);
+  const[busy,setBusy]=useState(false);const[quizDone,setQuizDone]=useState(false);const[attemptCount,setAttemptCount]=useState(0);
   const[subSaveError,setSubSaveError]=useState(false);const[pendingSub,setPendingSub]=useState(null);
 
   const[instPw,setInstPw]=useState("");const[instErr,setInstErr]=useState("");
@@ -658,10 +660,10 @@ export default function App(){
 
   const advanceOrFinish=async(quiz,nScores,afterMsgs,nextIdx)=>{
     if(nextIdx>=quiz.questions.length){await finishQuiz(quiz,nScores,afterMsgs);}
-    else{const nPts=ptsPer(quiz.questions.length);setMessages([...afterMsgs,{id:Date.now()+2,type:"question",q:quiz.questions[nextIdx],num:nextIdx+1,total:quiz.questions.length,pts:nPts[nextIdx]}]);setQIdx(nextIdx);setApiHist([]);}
+    else{const nPts=ptsPer(quiz.questions.length);setMessages([...afterMsgs,{id:Date.now()+2,type:"question",q:quiz.questions[nextIdx],num:nextIdx+1,total:quiz.questions.length,pts:nPts[nextIdx]}]);setQIdx(nextIdx);setApiHist([]);setAttemptCount(0);}
   };
   const startQuiz=(quiz,isPractice=false)=>{
-    setPracticeMode(isPractice);setActiveQuiz(quiz);setQIdx(0);setApiHist([]);
+    setPracticeMode(isPractice);setActiveQuiz(quiz);setQIdx(0);setApiHist([]);setAttemptCount(0);
     setQScores(new Array(quiz.questions.length).fill(null));
     setQuizDone(false);setInput("");setPendingFile(null);setBusy(false);setShowLeaveConfirm(false);setSubSaveError(false);setPendingSub(null);
     const late=isLate(quiz.dueDate);
@@ -712,15 +714,20 @@ export default function App(){
     const ans=input.trim(),imgData=pendingFile?.base64||null,previewUrl=pendingFile?.previewUrl||null;
     setInput("");clearFile();setBusy(true);
     const q=activeQuiz.questions[qIdx],pts=ptsPer(activeQuiz.questions.length),qPts=pts[qIdx];
+    const currentAttempt=attemptCount+1;
+    setAttemptCount(currentAttempt);
     const newMsgs=[...messages,{id:Date.now(),type:"student",text:ans||null,imageUrl:previewUrl}];
     setMessages(newMsgs);
     try{
-      const result=await evaluateAnswer(q.text,ans,apiHist,imgData);
+      const result=await evaluateAnswer(q.text,ans,apiHist,imgData,currentAttempt);
       const histUser=imgData?"Physics Question: "+q.text+"\n\n[Student submitted a drawing"+(ans?". Note: "+ans:"")+"]":"Physics Question: "+q.text+"\n\nStudent Answer: "+ans;
       setApiHist([...apiHist,{role:"user",content:histUser},{role:"assistant",content:JSON.stringify(result)}]);
       if(result.status==="correct"){
         const nScores=[...qScores];nScores[qIdx]=qPts;setQScores(nScores);
         await advanceOrFinish(activeQuiz,nScores,[...newMsgs,{id:Date.now()+1,type:"tutor",text:"✅ "+result.message,correct:true}],qIdx+1);
+      }else if(currentAttempt>=5){
+        const nScores=[...qScores];nScores[qIdx]=qPts/2;setQScores(nScores);
+        await advanceOrFinish(activeQuiz,nScores,[...newMsgs,{id:Date.now()+1,type:"tutor",text:result.message}],qIdx+1);
       }else{setMessages([...newMsgs,{id:Date.now()+1,type:"tutor",text:result.message}]);}
     }catch{setMessages([...newMsgs,{id:Date.now()+1,type:"tutor",text:"⚠️ Error evaluating your answer. Please try again."}]);}
     setBusy(false);
@@ -939,7 +946,10 @@ export default function App(){
           <div style={{width:1,height:20,background:BORDER}}/>
           <div><div style={{color:"#fff",fontWeight:700,fontSize:14,display:"flex",alignItems:"center",gap:8}}>{activeQuiz?.title}{practiceMode&&<span style={s.badge(TEAL)}>Practice</span>}</div><p style={{...s.muted,fontSize:12,margin:0}}>{loggedInStudent?.fullName}</p></div>
         </div>
-        {!quizDone&&<div style={{...s.muted,fontFamily:"monospace"}}>Q{qIdx+1}/{activeQuiz?.questions.length}</div>}
+        {!quizDone&&<div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
+          <div style={{...s.muted,fontFamily:"monospace"}}>Q{qIdx+1}/{activeQuiz?.questions.length}</div>
+          {!isYesNoQ&&!isDragDropQ&&<div style={{...s.muted,fontFamily:"monospace",fontSize:11}}>{Math.max(0,5-attemptCount)} attempt{Math.max(0,5-attemptCount)!==1?"s":""} left</div>}
+        </div>}
       </div>
       <div ref={chatRef} style={{flex:1,overflowY:"auto",padding:"20px 16px",display:"flex",flexDirection:"column",gap:14,maxWidth:720,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
         <ChatMessages messages={messages} busy={busy}/>
