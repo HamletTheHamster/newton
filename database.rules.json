@@ -1,6 +1,21 @@
 {
   "rules": {
     ".read": "request.app.token.valid",
-    ".write": "request.app.token.valid"
+    ".write": "request.app.token.valid",
+    "classes": {
+      "$classId": {
+        "metadata": {
+          ".validate": "newData.hasChildren(['name','courseType','active'])"
+        },
+        "roster": {},
+        "studentPws": {},
+        "submissions": {},
+        "checkedSubs": {},
+        "dueDates": {}
+      }
+    },
+    "settings": {},
+    "bugReports": {},
+    "_test": {}
   }
 }

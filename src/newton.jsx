@@ -138,7 +138,7 @@ async function fbConnectTest() {
   return true;
 }
 
-const QUIZZES = [
+const QUIZZES_PHYSICS1 = [
   { id:"q1",  title:"Quiz 1: Course Access",          questions:[{id:"q1_1",text:"Do you have access to the course textbook (digital or physical)?",yesNo:true},{id:"q1_2",text:"Can you access the online homework assignments?",yesNo:true}] },
   { id:"q2",  title:"Quiz 2: Vectors & Measurements", questions:[{id:"q2_1",text:"What is the difference between precision and accuracy?"},{id:"q2_2",text:"What is a vector component?"},{id:"q2_3",text:"Complete the sentence by dragging the correct words into the blanks:",displaySentence:"A dot product results in a ___, a cross product results in a ___.",blanksLabel:["dot product →","cross product →"],wordBank:["scalar","vector"],correctBlanks:["scalar","vector"],dragDrop:true}]},
   { id:"q3",  title:"Quiz 3: Motion Graphs",          questions:[{id:"q3_1",requiresImage:true,formatLabel:"PNG, JPG, WEBP, or GIF",acceptedFormats:["image/png","image/jpeg","image/webp","image/gif"],text:"Draw the position, velocity, and acceleration plots that describe the following motion, then upload a photo or image of your drawing:\n\nI start at rest at the origin. I then walk forward (+ direction) slowly for 2 seconds. Then I stop for 1 second. Then I walk backward (− direction) twice as fast for 2 seconds. Then I stop again for 2 seconds. Finally, I walk forward again for 2 seconds, increasing my speed with constant acceleration until I reach my starting position at the origin."}]},
@@ -154,6 +154,38 @@ const QUIZZES = [
   { id:"q13", title:"Quiz 13: Fluids",                questions:[{id:"q13_1",text:"Why do big heavy cargo ships float in water?"},{id:"q13_2",text:"How do airplane wings generate lift to keep the plane in the air?"}]},
   { id:"q14", title:"Quiz 14: Gravitation",           questions:[{id:"q14_1",text:"A student wrote: \"The only reason an apple falls downward to meet the earth instead of the earth rising upward to meet the apple is that the earth is much more massive and so exerts a much greater pull.\" Please comment."},{id:"q14_2",text:"As defined in lecture 7, gravitational potential energy is U = mgy (positive above Earth's surface). But in this lecture, gravitational potential energy is U = −GmₑM/r (negative above Earth's surface). How can you reconcile these seemingly incompatible descriptions of gravitational potential energy?"}]},
 ];
+
+const QUIZZES_PHYSICS2 = [];
+
+const QUIZZES_BY_COURSE = {
+  physics1: QUIZZES_PHYSICS1,
+  physics2: QUIZZES_PHYSICS2,
+};
+
+const COURSE_LABELS = {
+  physics1: "Physics 1",
+  physics2: "Physics 2",
+};
+
+const COURSE_OPTIONS = Object.keys(QUIZZES_BY_COURSE).map(k=>({value:k,label:COURSE_LABELS[k]}));
+
+function quizzesForCourse(courseType){
+  return QUIZZES_BY_COURSE[courseType]||[];
+}
+
+const classPath=(classId,suffix)=>`classes/${classId}/${suffix}`;
+
+function slugifyClassId(name){
+  const base=(name||"").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/^-+|-+$/g,"").slice(0,40);
+  return base||"class";
+}
+function uniqueClassId(name,existingIds){
+  const base=slugifyClassId(name);
+  const set=existingIds instanceof Set?existingIds:new Set(existingIds||[]);
+  if(!set.has(base))return base;
+  for(let i=2;i<1000;i++){const c=`${base}-${i}`;if(!set.has(c))return c;}
+  return `${base}-${Date.now()}`;
+}
 
 const ACCEPTED_IMG=["image/png","image/jpeg","image/webp","image/gif"];
 const BG="#1c1d1f",CARD="rgba(23,23,23,0.85)",TEAL="#00828c",TEAL_DIM="rgba(0,130,140,0.15)",MUTED="#a0a0a0",BORDER="rgba(255,255,255,0.08)";
@@ -232,16 +264,17 @@ async function checkImageReadability(imgData){
   try{return JSON.parse(text.replace(/```json\n?|```/g,"").trim());}catch{return{readable:true};}
 }
 const detectParts=text=>{const labels=[...new Set([...text.matchAll(/\(([a-z])\)/g)].map(m=>m[1]))];return labels.length>=2?labels:null;};
-async function evaluateAnswer(question,answer,history,imageData,attemptNum=1,parts=null,completedParts=[]){
+async function evaluateAnswer(question,answer,history,imageData,attemptNum=1,parts=null,completedParts=[],courseType="physics1"){
   const remaining=parts?parts.filter(p=>!completedParts.includes(p)):null;
+  const courseLabel=COURSE_LABELS[courseType]||"Physics";
   let system;
   if(remaining&&remaining.length>0){
     const doneStr=completedParts.length>0?"("+completedParts.join("), (")+")":"none yet";
     const remStr="("+remaining.join("), (")+")";
     const partsStr="("+parts.join("), (")+")";
-    system="You are an encouraging Physics 1 tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nThis is a MULTI-PART question with parts "+partsStr+". The student has already correctly answered: "+doneStr+". Still needed: "+remStr+".\n\nEvaluate ONLY the parts the student EXPLICITLY addresses in their latest answer. Do NOT mark a part as complete unless the student clearly addressed it — do not infer or assume completion from related reasoning. Do not re-evaluate parts already complete.\n\nFor each remaining part the student attempted, decide whether their reasoning demonstrates conceptual understanding (informal wording is fine, but the core physics must be accurate and the key idea present).\n\nReply ONLY with valid JSON, exactly one of these forms:\n- All remaining parts now correctly addressed: {\"status\":\"correct\",\"newlyCompleted\":[\"a\",...],\"message\":\"1-2 sentences confirming what they got across all parts\"}\n- Some new parts correct, others still needed: {\"status\":\"partial\",\"newlyCompleted\":[\"a\"],\"message\":\"Acknowledge by letter what they got, then prompt by letter for the remaining part(s)\"}\n- No new parts correctly addressed (wrong, vague, or didn't address remaining parts): {\"status\":\"incorrect\",\"newlyCompleted\":[],\"message\":\"One focused Socratic question targeting the gap on the part(s) they attempted\"}";
+    system="You are an encouraging "+courseLabel+" tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nThis is a MULTI-PART question with parts "+partsStr+". The student has already correctly answered: "+doneStr+". Still needed: "+remStr+".\n\nEvaluate ONLY the parts the student EXPLICITLY addresses in their latest answer. Do NOT mark a part as complete unless the student clearly addressed it — do not infer or assume completion from related reasoning. Do not re-evaluate parts already complete.\n\nFor each remaining part the student attempted, decide whether their reasoning demonstrates conceptual understanding (informal wording is fine, but the core physics must be accurate and the key idea present).\n\nReply ONLY with valid JSON, exactly one of these forms:\n- All remaining parts now correctly addressed: {\"status\":\"correct\",\"newlyCompleted\":[\"a\",...],\"message\":\"1-2 sentences confirming what they got across all parts\"}\n- Some new parts correct, others still needed: {\"status\":\"partial\",\"newlyCompleted\":[\"a\"],\"message\":\"Acknowledge by letter what they got, then prompt by letter for the remaining part(s)\"}\n- No new parts correctly addressed (wrong, vague, or didn't address remaining parts): {\"status\":\"incorrect\",\"newlyCompleted\":[],\"message\":\"One focused Socratic question targeting the gap on the part(s) they attempted\"}";
   }else{
-    system="You are an encouraging Physics 1 tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
+    system="You are an encouraging "+courseLabel+" tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
   }
   if(attemptNum===4)system+="\n\nThis is the student's 4th attempt on the current part(s). Give a more direct hint — point clearly toward the key concept without stating the full answer. They have one more try after this.";
   if(attemptNum>=5)system+="\n\nThis is the student's final (5th) attempt on the current part(s). If still incorrect, kindly tell them the correct answer directly and encourage them to review the concept before moving on.";
@@ -361,6 +394,16 @@ function SyncBadge({status,error}){
 }
 
 export default function App(){
+  const[classes,setClasses]=useState({});
+  const[currentClassId,setCurrentClassIdState]=useState(()=>{
+    try{return localStorage.getItem("newton_current_class_id")||null;}catch{return null;}
+  });
+  const setCurrentClassId=id=>{
+    setCurrentClassIdState(id);
+    try{if(id)localStorage.setItem("newton_current_class_id",id);else localStorage.removeItem("newton_current_class_id");}catch{}
+  };
+  const classMeta=currentClassId?classes[currentClassId]?.metadata||null:null;
+
   const[roster,setRoster]=useState([]);
   const[studentPws,setStudentPws]=useState({});
   const[dueDates,setDueDates]=useState({});
@@ -368,6 +411,7 @@ export default function App(){
   const[checkedSubs,setCheckedSubs]=useState({});
   const[settings,setSettings]=useState({passwordHash:null,passwordSalt:null});
   const[ready,setReady]=useState(false);
+  const[classDataLoading,setClassDataLoading]=useState(false);
   const[syncStatus,setSyncStatus]=useState('idle');
   const[syncError,setSyncError]=useState('');
   const[fbConnStatus,setFbConnStatus]=useState('checking'); // 'checking'|'ok'|'error'
@@ -410,6 +454,8 @@ export default function App(){
   const[viewingSub,setViewingSub]=useState(null);
   const[backupModal,setBackupModal]=useState(null);
   const[rosterMsg,setRosterMsg]=useState("");const[backupMsg,setBackupMsg]=useState("");
+  const[newClassName,setNewClassName]=useState("");const[newClassCourse,setNewClassCourse]=useState(COURSE_OPTIONS[0]?.value||"physics1");const[newClassMsg,setNewClassMsg]=useState("");
+  const[deleteClassTarget,setDeleteClassTarget]=useState(null);
   const[bugReports,setBugReports]=useState({});
   const[bugReportOpen,setBugReportOpen]=useState(false);
   const[bugInput,setBugInput]=useState("");
@@ -438,19 +484,13 @@ export default function App(){
         return; // No point loading if Firebase is unreachable
       }
       try{
-        const[rosterData,pwsData,datesData,settingsData,checkedData,subsData,bugsData]=await Promise.all([
-          fbGet('roster').catch(()=>null),
-          fbGet('studentPws').catch(()=>null),
-          fbGet('dueDates').catch(()=>null),
+        const[classesData,settingsData,bugsData]=await Promise.all([
+          fbGet('classes').catch(()=>null),
           fbGet('settings').catch(()=>null),
-          fbGet('checkedSubs').catch(()=>null),
-          fbGet('submissions').catch(()=>null),
           fbGet('bugReports').catch(()=>null),
         ]);
-        if(Array.isArray(rosterData))setRoster(rosterData);
-        if(pwsData&&typeof pwsData==='object')setStudentPws(pwsData);
-        if(datesData&&typeof datesData==='object')setDueDates(datesData);
-        if(checkedData&&typeof checkedData==='object')setCheckedSubs(checkedData);
+        const loadedClasses=(classesData&&typeof classesData==='object')?classesData:{};
+        setClasses(loadedClasses);
         if(settingsData?.passwordHash){
           setSettings(settingsData);
         }else{
@@ -459,15 +499,53 @@ export default function App(){
           setSettings(ns);
           await fbSet('settings',ns);
         }
-        if(subsData&&typeof subsData==='object'){
-          const allSubs=Object.values(subsData).flat().filter(Boolean);
-          setSubmissions(allSubs);
-        }
         if(bugsData&&typeof bugsData==='object')setBugReports(bugsData);
+        // If a previously selected class is still present, hydrate per-class state
+        const storedId=(()=>{try{return localStorage.getItem("newton_current_class_id");}catch{return null;}})();
+        if(storedId&&loadedClasses[storedId]){
+          const c=loadedClasses[storedId];
+          if(Array.isArray(c.roster))setRoster(c.roster);
+          if(c.studentPws&&typeof c.studentPws==='object')setStudentPws(c.studentPws);
+          if(c.dueDates&&typeof c.dueDates==='object')setDueDates(c.dueDates);
+          if(c.checkedSubs&&typeof c.checkedSubs==='object')setCheckedSubs(c.checkedSubs);
+          if(c.submissions&&typeof c.submissions==='object'){
+            const allSubs=Object.values(c.submissions).flat().filter(Boolean);
+            setSubmissions(allSubs);
+          }
+        }else if(storedId){
+          // Stored class no longer exists — clear the stale id
+          setCurrentClassId(null);
+        }
       }catch(e){console.error("Startup load error:",e);}
       setReady(true);
     })();
   },[]);
+
+  // ── Load a class's full per-class data into state (and into the classes map) ──
+  const loadClassData=async classId=>{
+    if(!classId)return;
+    setClassDataLoading(true);
+    try{
+      const[rosterData,pwsData,datesData,checkedData,subsData]=await Promise.all([
+        fbGet(classPath(classId,'roster')).catch(()=>null),
+        fbGet(classPath(classId,'studentPws')).catch(()=>null),
+        fbGet(classPath(classId,'dueDates')).catch(()=>null),
+        fbGet(classPath(classId,'checkedSubs')).catch(()=>null),
+        fbGet(classPath(classId,'submissions')).catch(()=>null),
+      ]);
+      const rosterArr=Array.isArray(rosterData)?rosterData:[];
+      const pwsObj=(pwsData&&typeof pwsData==='object')?pwsData:{};
+      const datesObj=(datesData&&typeof datesData==='object')?datesData:{};
+      const checkedObj=(checkedData&&typeof checkedData==='object')?checkedData:{};
+      const subsArr=(subsData&&typeof subsData==='object')?Object.values(subsData).flat().filter(Boolean):[];
+      setRoster(rosterArr);
+      setStudentPws(pwsObj);
+      setDueDates(datesObj);
+      setCheckedSubs(checkedObj);
+      setSubmissions(subsArr);
+      setClasses(prev=>({...prev,[classId]:{...(prev[classId]||{}),roster:rosterArr,studentPws:pwsObj,dueDates:datesObj,checkedSubs:checkedObj,submissions:subsData||{}}}));
+    }finally{setClassDataLoading(false);}
+  };
 
   // ── Scroll / focus ──────────────────────────────────────────────────────────
   const doScroll=useCallback(()=>{const el=chatRef.current;if(!el)return;el.scrollTop=el.scrollHeight-el.clientHeight;},[]);
@@ -514,36 +592,80 @@ export default function App(){
   };
 
   // ── Persist functions ──────────────────────────────────────────────────────
-  const saveRoster=async r=>{setRoster(r);await fbSave('roster',r);};
+  const requireClass=()=>{
+    if(!currentClassId)throw new Error("No class selected — cannot save.");
+    return currentClassId;
+  };
+  const updateClassCache=(classId,key,value)=>{
+    setClasses(prev=>({...prev,[classId]:{...(prev[classId]||{}),[key]:value}}));
+  };
+  const saveRoster=async r=>{const cid=requireClass();setRoster(r);updateClassCache(cid,'roster',r);await fbSave(classPath(cid,'roster'),r);};
   const saveAltName=async stu=>{const val=altNameInput.trim();const updated=roster.map(r=>r.studentId===stu.studentId?{...r,altName:val||undefined}:r);await saveRoster(updated);setEditingAltName(null);};
-  const saveStudentPws=async p=>{setStudentPws(p);await fbSave('studentPws',p);};
-  const saveDueDates=async d=>{setDueDates(d);await fbSave('dueDates',d);};
+  const saveStudentPws=async p=>{const cid=requireClass();setStudentPws(p);updateClassCache(cid,'studentPws',p);await fbSave(classPath(cid,'studentPws'),p);};
+  const saveDueDates=async d=>{const cid=requireClass();setDueDates(d);updateClassCache(cid,'dueDates',d);await fbSave(classPath(cid,'dueDates'),d);};
   const saveSettings=async s=>{setSettings(s);await fbSave('settings',s);};
-  const saveChecked=async c=>{setCheckedSubs(c);await fbSave('checkedSubs',c);};
+  const saveChecked=async c=>{const cid=requireClass();setCheckedSubs(c);updateClassCache(cid,'checkedSubs',c);await fbSave(classPath(cid,'checkedSubs'),c);};
 
   const saveSubs=async(newSubs,studentId=null)=>{
+    const cid=requireClass();
     setSubmissions(newSubs);
     const byStudent={};
     newSubs.forEach(s=>{
       if(!byStudent[s.studentId])byStudent[s.studentId]=[];
       byStudent[s.studentId].push(s);
     });
+    updateClassCache(cid,'submissions',byStudent);
     if(studentId){
       // Write only this student's subtree — avoids overwriting concurrent submissions from other students
-      await fbSave(`submissions/${studentId}`,byStudent[studentId]||[]);
+      await fbSave(classPath(cid,`submissions/${studentId}`),byStudent[studentId]||[]);
     }else{
       // Bulk write (restore/clear) — writes entire tree
-      await fbSave('submissions',byStudent);
+      await fbSave(classPath(cid,'submissions'),byStudent);
+    }
+  };
+
+  // ── Class management ──────────────────────────────────────────────────────
+  const switchToClass=async classId=>{
+    if(!classId||classId===currentClassId)return;
+    setCurrentClassId(classId);
+    setActiveQuiz(null);setMessages([]);setQScores([]);setQIdx(0);
+    setLoggedInStudent(null);setSelectedStudent(null);setNameQuery("");
+    setOpenQuizzes({});setViewingSub(null);
+    await loadClassData(classId);
+  };
+  const createClass=async(name,courseType)=>{
+    const trimmed=(name||"").trim();
+    if(!trimmed)throw new Error("Class name is required.");
+    if(!QUIZZES_BY_COURSE[courseType])throw new Error("Unknown course type.");
+    const id=uniqueClassId(trimmed,new Set(Object.keys(classes)));
+    const metadata={name:trimmed,courseType,active:true,createdAt:new Date().toISOString()};
+    await fbSave(classPath(id,'metadata'),metadata);
+    setClasses(prev=>({...prev,[id]:{metadata,roster:[]}}));
+    return id;
+  };
+  const setClassActive=async(classId,active)=>{
+    const cur=classes[classId]?.metadata;if(!cur)return;
+    const updated={...cur,active:!!active};
+    await fbSave(classPath(classId,'metadata'),updated);
+    setClasses(prev=>({...prev,[classId]:{...(prev[classId]||{}),metadata:updated}}));
+  };
+  const deleteClass=async classId=>{
+    await fbSave(`classes/${classId}`,null);
+    setClasses(prev=>{const n={...prev};delete n[classId];return n;});
+    if(currentClassId===classId){
+      setCurrentClassId(null);
+      setRoster([]);setStudentPws({});setDueDates({});setCheckedSubs({});setSubmissions([]);
     }
   };
 
   // ── Backup export ──────────────────────────────────────────────────────────
   const exportAllData=()=>{
-    const snapshot={version:2,exportedAt:new Date().toISOString(),roster,studentPws,dueDates,submissions,checkedSubs,settings};
+    const snapshot={version:3,exportedAt:new Date().toISOString(),classId:currentClassId,classMeta,roster,studentPws,dueDates,submissions,checkedSubs,settings};
     const json=JSON.stringify(snapshot,null,2);
     const now=new Date(),pad=n=>String(n).padStart(2,"0");
     const stamp=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
-    const filename=`newton-backup-${stamp}.json`;
+    const slug=classMeta?.name?slugifyClassId(classMeta.name):"global";
+    const filename=`newton-backup-${slug}-${stamp}.json`;
     setBackupModal({filename,json});
     try{const blob=new Blob([json],{type:"application/json"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=filename;document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(()=>URL.revokeObjectURL(url),1000);}catch{}
   };
@@ -555,6 +677,7 @@ export default function App(){
       try{
         const data=JSON.parse(ev.target.result);
         if(!data.version){setBackupMsg("⚠️ Invalid backup file.");return;}
+        if(!currentClassId){setBackupMsg("⚠️ Select a class before restoring class data.");return;}
         if(data.submissions&&data.checkedSubs){
           const cids=new Set(Object.keys(data.checkedSubs));
           data.submissions=data.submissions.map(s=>cids.has(s.id)?{...s,dialogue:null}:s);
@@ -589,7 +712,12 @@ export default function App(){
     const h=await makeHash(newPw1);await saveStudentPws({...studentPws,[loggedInStudent.studentId]:h});
     setNewPw1("");setNewPw2("");setPwChangeMsg("✅ Password updated successfully!");
   };
-  const handleStudentLogout=()=>{setLoggedInStudent(null);setSelectedStudent(null);setNameQuery("");setShowStudentSettings(false);setScreen("student-search");};
+  const handleStudentLogout=()=>{
+    setLoggedInStudent(null);setSelectedStudent(null);setNameQuery("");setShowStudentSettings(false);
+    setCurrentClassId(null);
+    setRoster([]);setStudentPws({});setDueDates({});setCheckedSubs({});setSubmissions([]);
+    setScreen("student-search");
+  };
   const doLogin=async()=>{
     if(!settings.passwordHash){setInstErr("Settings still loading.");return;}
     const ok=await verifyPw(instPw,settings.passwordHash,settings.passwordSalt);
@@ -662,12 +790,22 @@ export default function App(){
   const unreadBugCount=Object.values(bugReports).filter(b=>!b.read).length;
 
   // ── Quiz helpers ───────────────────────────────────────────────────────────
-  const quizzes=QUIZZES.map(q=>({...q,dueDate:dueDates[q.id]||null}));
+  const courseQuizzes=quizzesForCourse(classMeta?.courseType);
+  const quizzes=courseQuizzes.map(q=>({...q,dueDate:dueDates[q.id]||null}));
   const currentQ=activeQuiz?.questions[qIdx];
   const isImageQ=!!currentQ?.requiresImage,isYesNoQ=!!currentQ?.yesNo,isDragDropQ=!!currentQ?.dragDrop;
   const currentParts=currentQ&&!isYesNoQ&&!isDragDropQ?detectParts(currentQ.text):null;
   const completedQuizIds=new Set(submissions.filter(s=>s.studentId===loggedInStudent?.studentId).map(s=>s.quizId));
-  const filteredRoster=nameQuery.trim().length===0?[]:roster.filter(s=>{const q=nameQuery.toLowerCase();return(s.altName&&s.altName.toLowerCase().includes(q))||s.fullName.toLowerCase().includes(q)||s.lastName.toLowerCase().includes(q)||s.firstName.toLowerCase().includes(q);}).slice(0,8);
+  // Flattened student search across all active classes (used on the student-search screen).
+  const allActiveStudents=[];
+  for(const[cid,c] of Object.entries(classes)){
+    if(!c?.metadata?.active)continue;
+    const className=c.metadata.name;
+    const r=Array.isArray(c.roster)?c.roster:[];
+    for(const stu of r)allActiveStudents.push({...stu,classId:cid,className});
+  }
+  const filteredRoster=nameQuery.trim().length===0?[]:allActiveStudents.filter(s=>{const q=nameQuery.toLowerCase();return(s.altName&&s.altName.toLowerCase().includes(q))||s.fullName.toLowerCase().includes(q)||s.lastName.toLowerCase().includes(q)||s.firstName.toLowerCase().includes(q);}).slice(0,8);
+  const nameAppearsMultipleTimes=name=>{const q=name.toLowerCase();return filteredRoster.filter(s=>s.fullName.toLowerCase()===q||(s.altName||"").toLowerCase()===q).length>1;};
 
   const advanceOrFinish=async(quiz,nScores,afterMsgs,nextIdx)=>{
     if(nextIdx>=quiz.questions.length){await finishQuiz(quiz,nScores,afterMsgs);}
@@ -731,7 +869,7 @@ export default function App(){
     const newMsgs=[...messages,{id:Date.now(),type:"student",text:ans||null,imageUrl:previewUrl}];
     setMessages(newMsgs);
     try{
-      const result=await evaluateAnswer(q.text,ans,apiHist,imgData,currentAttempt,parts,completedParts);
+      const result=await evaluateAnswer(q.text,ans,apiHist,imgData,currentAttempt,parts,completedParts,classMeta?.courseType||"physics1");
       const histUser=imgData?"Physics Question: "+q.text+"\n\n[Student submitted a drawing"+(ans?". Note: "+ans:"")+"]":"Physics Question: "+q.text+"\n\nStudent Answer: "+ans;
       setApiHist([...apiHist,{role:"user",content:histUser},{role:"assistant",content:JSON.stringify(result)}]);
       if(parts){
@@ -826,7 +964,14 @@ export default function App(){
   );
 
 
-  const handleSelectStudent=st=>{setSelectedStudent(st);setPwInput("");setPwError("");setNameQuery("");setScreen("student-pw");history.pushState({newton:"student-pw"},"","");};
+  const handleSelectStudent=async st=>{
+    setSelectedStudent(st);setPwInput("");setPwError("");setNameQuery("");
+    if(st.classId&&st.classId!==currentClassId){
+      setCurrentClassId(st.classId);
+      await loadClassData(st.classId);
+    }
+    setScreen("student-pw");history.pushState({newton:"student-pw"},"","");
+  };
 
   const bugModalJsx=bugReportOpen&&(
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.75)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:50,padding:16}}>
@@ -866,7 +1011,7 @@ export default function App(){
         <div style={{textAlign:"center",marginBottom:32}}>
           <h1 style={{fontSize:72,fontWeight:700,color:TEAL,margin:0}}>Newton</h1>
         </div>
-        {roster.length===0&&<div style={{background:"rgba(202,138,4,0.1)",border:"1px solid rgba(202,138,4,0.3)",borderRadius:8,padding:"10px 14px",color:"#fde047",fontSize:13,marginBottom:16}}>No roster uploaded yet. Please contact your instructor.</div>}
+        {allActiveStudents.length===0&&<div style={{background:"rgba(202,138,4,0.1)",border:"1px solid rgba(202,138,4,0.3)",borderRadius:8,padding:"10px 14px",color:"#fde047",fontSize:13,marginBottom:16}}>No classes are currently available. Please contact your instructor.</div>}
         <div style={{position:"relative"}}>
           <input style={s.input} placeholder="Begin typing your name…" value={nameQuery}
             onChange={e=>{setNameQuery(e.target.value);setHighlightIdx(-1);}}
@@ -876,9 +1021,15 @@ export default function App(){
               else if(e.key==="Enter"){e.preventDefault();const st=highlightIdx>=0?filteredRoster[highlightIdx]:filteredRoster.length===1?filteredRoster[0]:null;if(st)handleSelectStudent(st);}
             }} autoFocus/>
           {filteredRoster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,overflow:"hidden",zIndex:10,boxShadow:"0 8px 32px rgba(0,0,0,0.5)"}}>
-            {filteredRoster.map((st,i)=>(<button key={st.studentId} onClick={()=>handleSelectStudent(st)} style={{width:"100%",textAlign:"left",padding:"12px 16px",background:highlightIdx===i?TEAL_DIM:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,color:highlightIdx===i?TEAL:"#fff",fontSize:14,cursor:"pointer",fontWeight:highlightIdx===i?600:400}} onMouseEnter={()=>setHighlightIdx(i)}>{st.altName||st.fullName}</button>))}
+            {filteredRoster.map((st,i)=>{
+              const showClass=nameAppearsMultipleTimes(st.altName||st.fullName);
+              return(<button key={st.classId+":"+st.studentId} onClick={()=>handleSelectStudent(st)} style={{width:"100%",textAlign:"left",padding:"12px 16px",background:highlightIdx===i?TEAL_DIM:"transparent",border:"none",borderBottom:`1px solid ${BORDER}`,color:highlightIdx===i?TEAL:"#fff",fontSize:14,cursor:"pointer",fontWeight:highlightIdx===i?600:400,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12}} onMouseEnter={()=>setHighlightIdx(i)}>
+                <span>{st.altName||st.fullName}</span>
+                {showClass&&<span style={{...s.muted,fontSize:12}}>{st.className}</span>}
+              </button>);
+            })}
           </div>)}
-          {nameQuery.trim().length>0&&filteredRoster.length===0&&roster.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 16px",color:MUTED,fontSize:13,zIndex:10}}>No matches found. Check your spelling.</div>)}
+          {nameQuery.trim().length>0&&filteredRoster.length===0&&allActiveStudents.length>0&&(<div style={{position:"absolute",top:"calc(100% + 4px)",left:0,right:0,background:"#252627",border:`1px solid ${BORDER}`,borderRadius:10,padding:"12px 16px",color:MUTED,fontSize:13,zIndex:10}}>No matches found. Check your spelling.</div>)}
         </div>
       </div>
       {!import.meta.env.DEV&&<p style={{position:"fixed",bottom:8,right:12,fontSize:11,color:"rgba(255,255,255,0.2)",margin:0,textAlign:"right"}}>Protected by reCAPTCHA · <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.2)"}}>Privacy</a> · <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" style={{color:"rgba(255,255,255,0.2)"}}>Terms</a></p>}
@@ -933,8 +1084,8 @@ export default function App(){
             </div>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:12,margin:"12px 0 20px"}}>
-            <div style={{flex:1,background:"rgba(255,255,255,0.08)",borderRadius:99,height:6,overflow:"hidden"}}><div style={{background:TEAL,height:6,borderRadius:99,width:(completedCount/QUIZZES.length*100)+"%",transition:"width 0.4s"}}/></div>
-            <span style={{...s.muted,fontSize:12,flexShrink:0}}>{completedCount}/{QUIZZES.length} completed</span>
+            <div style={{flex:1,background:"rgba(255,255,255,0.08)",borderRadius:99,height:6,overflow:"hidden"}}><div style={{background:TEAL,height:6,borderRadius:99,width:(quizzes.length?(completedCount/quizzes.length*100):0)+"%",transition:"width 0.4s"}}/></div>
+            <span style={{...s.muted,fontSize:12,flexShrink:0}}>{completedCount}/{quizzes.length} completed</span>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {quizzes.map(quiz=>{
@@ -1104,8 +1255,22 @@ export default function App(){
           <div style={{display:"flex",gap:10,marginTop:12}}><button onClick={()=>{setDangerAction(null);setDangerPw("");setDangerErr("");}} style={{...s.btnSec,flex:1}}>Cancel</button><button onClick={executeDanger} style={{...s.btnPri,flex:1,background:"#b91c1c"}}>Confirm</button></div>
         </div>
       </div>)}
-      <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:12}}><h1 style={{color:TEAL,fontWeight:700,fontSize:20,margin:0}}>Newton</h1><SyncBadge status={syncStatus} error={syncError}/></div>
+      <div style={{background:CARD,borderBottom:`1px solid ${BORDER}`,padding:"14px 24px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0,flexWrap:"wrap",gap:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <h1 style={{color:TEAL,fontWeight:700,fontSize:20,margin:0}}>Newton</h1>
+          {Object.keys(classes).length>0?(
+            <select value={currentClassId||""} onChange={e=>{const v=e.target.value;if(v)switchToClass(v);}} style={{...s.input,width:"auto",padding:"6px 28px 6px 12px",fontSize:13,cursor:"pointer"}}>
+              {!currentClassId&&<option value="">— Select a class —</option>}
+              {Object.entries(classes).sort((a,b)=>(a[1]?.metadata?.name||"").localeCompare(b[1]?.metadata?.name||"")).map(([cid,c])=>(
+                <option key={cid} value={cid}>{(c?.metadata?.name||cid)+(c?.metadata?.active===false?" (inactive)":"")}</option>
+              ))}
+            </select>
+          ):(
+            <span style={{...s.muted,fontSize:13}}>No classes yet — create one in Settings.</span>
+          )}
+          {classDataLoading&&<span style={{...s.muted,fontSize:12}}>Loading class data…</span>}
+          <SyncBadge status={syncStatus} error={syncError}/>
+        </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <button onClick={()=>setInstTab("bugs")} onMouseEnter={()=>setInstBugHover(true)} onMouseLeave={()=>setInstBugHover(false)} style={{background:"transparent",border:"none",cursor:"pointer",color:instTab==="bugs"?TEAL:unreadBugCount>0?"#f87171":MUTED,display:"flex",alignItems:"center",gap:5,padding:"4px 8px",borderRadius:6,transition:"transform 0.2s",transform:instBugHover?"rotate(30deg)":"rotate(0deg)"}} title="Bug reports">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2l1.5 1.5"/><path d="M14.5 3.5L16 2"/><circle cx="12" cy="8" r="4"/><path d="M4 13h16"/><path d="M4 17h16"/><path d="M8 21v-8"/><path d="M16 21v-8"/><path d="M3 10l2 2"/><path d="M19 10l2 2"/></svg>
@@ -1119,14 +1284,22 @@ export default function App(){
       </div>
       <div style={{flex:1,overflowY:"auto"}}><div style={{maxWidth:860,margin:"0 auto",padding:24}}>
 
-        {instTab==="submissions"&&(<div>
+        {!currentClassId&&instTab!=="settings"&&instTab!=="bugs"&&(
+          <div style={{...s.card,padding:32,textAlign:"center",color:MUTED}}>
+            <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 8px"}}>No class selected</p>
+            <p style={{margin:"0 0 16px"}}>{Object.keys(classes).length===0?"Create your first class in Settings → Classes to get started.":"Choose a class from the dropdown above, or create one in Settings → Classes."}</p>
+            <button onClick={()=>setInstTab("settings")} style={{...s.btnPri,width:"auto",padding:"10px 20px"}}>Open Class Settings</button>
+          </div>
+        )}
+
+        {currentClassId&&instTab==="submissions"&&(<div>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:24,flexWrap:"wrap",gap:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>{totalUnchecked>0&&<span style={s.badge("#facc15")}>{totalUnchecked} pending</span>}{totalUnchecked===0&&submissions.filter(s=>!s.imported).length>0&&<span style={s.badge("#4ade80")}>All entered ✓</span>}</div>
             <button onClick={()=>setOpenQuizzes({})} style={s.btnGhost}>Collapse all</button>
           </div>
           {submissions.length===0?<div style={{...s.card,padding:40,textAlign:"center",color:MUTED}}>No submissions yet.</div>:(
             <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {QUIZZES.map(quiz=>{
+              {courseQuizzes.map(quiz=>{
                 const subs=(subsByQuiz[quiz.id]||[]).slice().sort((a,b)=>{const aUnchecked=!checkedSubs[a.id]&&!a.imported,bUnchecked=!checkedSubs[b.id]&&!b.imported;if(aUnchecked!==bUnchecked)return aUnchecked?-1:1;return new Date(b.timestamp)-new Date(a.timestamp);});
                 if(!subs.length)return null;
                 const isOpen=!!openQuizzes[quiz.id],unchecked=subs.filter(s=>!checkedSubs[s.id]&&!s.imported).length;
@@ -1154,7 +1327,7 @@ export default function App(){
           )}
         </div>)}
 
-        {instTab==="quizzes"&&(<div>
+        {currentClassId&&instTab==="quizzes"&&(<div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {quizzes.map(quiz=>{
               const late=isLate(quiz.dueDate);
@@ -1175,7 +1348,7 @@ export default function App(){
           </div>
         </div>)}
 
-        {instTab==="roster"&&(<div>
+        {currentClassId&&instTab==="roster"&&(<div>
           <ManualAddStudent roster={roster} onAdd={async student=>{const updated=[...roster,student].sort((a,b)=>a.lastName.localeCompare(b.lastName));await saveRoster(updated);}}/>
           <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
             <div>
@@ -1232,6 +1405,66 @@ export default function App(){
 
         {instTab==="settings"&&(<div style={{paddingTop:40}}>
 
+          <div style={{marginBottom:32}}>
+            <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 16px"}}>Classes</p>
+            <div style={{...s.card,padding:16,marginBottom:16}}>
+              <p style={{...s.muted,fontSize:13,margin:"0 0 12px"}}>Create a new class</p>
+              <div style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap"}}>
+                <div style={{flex:"1 1 200px"}}>
+                  <label style={s.label}>Class name</label>
+                  <input style={s.input} placeholder="e.g., Physics 2 Fall 2026" value={newClassName} onChange={e=>setNewClassName(e.target.value)} onKeyDown={async e=>{if(e.key==="Enter"){e.preventDefault();try{setNewClassMsg("");const id=await createClass(newClassName,newClassCourse);setNewClassName("");setNewClassMsg("✅ Created.");await switchToClass(id);setTimeout(()=>setNewClassMsg(""),2500);}catch(err){setNewClassMsg("⚠️ "+(err.message||"Failed to create class."));}}}}/>
+                </div>
+                <div>
+                  <label style={s.label}>Course</label>
+                  <select style={{...s.input,width:"auto",paddingRight:32}} value={newClassCourse} onChange={e=>setNewClassCourse(e.target.value)}>
+                    {COURSE_OPTIONS.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+                <button onClick={async()=>{
+                  try{setNewClassMsg("");const id=await createClass(newClassName,newClassCourse);setNewClassName("");setNewClassMsg("✅ Created.");await switchToClass(id);setTimeout(()=>setNewClassMsg(""),2500);}
+                  catch(err){setNewClassMsg("⚠️ "+(err.message||"Failed to create class."));}
+                }} style={{...s.btnPri,width:"auto",padding:"10px 20px"}}>Create</button>
+              </div>
+              {newClassMsg&&<p style={{margin:"10px 0 0",fontSize:13,color:newClassMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{newClassMsg}</p>}
+            </div>
+
+            {Object.keys(classes).length===0?(
+              <div style={{...s.card,padding:24,textAlign:"center",color:MUTED}}>No classes yet. Use the form above to create one.</div>
+            ):(
+              <div style={{...s.card,overflow:"hidden"}}>
+                <div style={{overflowX:"auto"}}>
+                  <table style={{width:"100%",borderCollapse:"collapse",fontSize:14}}>
+                    <thead><tr style={{borderBottom:`1px solid ${BORDER}`}}>{["Class","Course","Visibility","Students",""].map(h=><th key={h} style={{textAlign:"left",color:MUTED,fontWeight:500,padding:"12px 16px",fontSize:13}}>{h}</th>)}</tr></thead>
+                    <tbody>
+                      {Object.entries(classes).sort((a,b)=>(a[1]?.metadata?.name||"").localeCompare(b[1]?.metadata?.name||"")).map(([cid,c],i,arr)=>{
+                        const m=c?.metadata||{};
+                        const rosterCount=Array.isArray(c?.roster)?c.roster.length:0;
+                        const isCurrent=currentClassId===cid;
+                        return(<tr key={cid} style={{borderBottom:i<arr.length-1?`1px solid ${BORDER}`:"none",background:isCurrent?"rgba(0,130,140,0.08)":"transparent"}}>
+                          <td style={{padding:"12px 16px",color:"#fff",fontWeight:500}}>{m.name||cid}{isCurrent&&<span style={{...s.badge(TEAL),marginLeft:8}}>selected</span>}</td>
+                          <td style={{padding:"12px 16px",color:MUTED}}>{COURSE_LABELS[m.courseType]||m.courseType||"—"}</td>
+                          <td style={{padding:"12px 16px"}}>
+                            <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>
+                              <input type="checkbox" checked={m.active!==false} onChange={e=>setClassActive(cid,e.target.checked)} style={{accentColor:TEAL,width:16,height:16}}/>
+                              <span style={{...s.muted,fontSize:12}}>{m.active!==false?"Visible to students":"Hidden"}</span>
+                            </label>
+                          </td>
+                          <td style={{padding:"12px 16px",color:MUTED,fontFamily:"monospace",fontSize:13}}>{rosterCount}</td>
+                          <td style={{padding:"8px 16px",textAlign:"right",whiteSpace:"nowrap"}}>
+                            {!isCurrent&&<button onClick={()=>switchToClass(cid)} style={{...s.btnGhost,padding:"4px 12px",fontSize:12,marginRight:6,width:"auto"}}>Switch to</button>}
+                            <button onClick={()=>confirmDanger(`delete class "${m.name||cid}" and all its data`,()=>deleteClass(cid))} style={{background:"rgba(127,29,29,0.3)",border:"1px solid rgba(127,29,29,0.5)",color:"#fca5a5",borderRadius:6,padding:"4px 12px",cursor:"pointer",fontSize:12,fontWeight:500}}>Delete</button>
+                          </td>
+                        </tr>);
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+          </div>
+
+          <hr style={{border:"none",borderTop:`1px solid ${BORDER}`,margin:"0 0 32px"}}/>
+
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:32,marginBottom:36}}>
             <div style={{display:"flex",flexDirection:"column",gap:20}}>
               <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -1242,10 +1475,11 @@ export default function App(){
                 {fbConnStatus==='error'&&<p style={{color:"#f87171",fontSize:11,margin:0,fontFamily:"monospace",wordBreak:"break-all"}}>{fbConnError}</p>}
               </div>
               <div>
-                <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 16px"}}>Backup & Restore</p>
+                <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 6px"}}>Backup & Restore</p>
+                <p style={{...s.muted,fontSize:12,margin:"0 0 12px"}}>{currentClassId&&classMeta?.name?<>Backs up <span style={{color:TEAL}}>{classMeta.name}</span> plus instructor settings.</>:"Select a class to back up its data."}</p>
                 <div style={{display:"flex",gap:10,flexWrap:"wrap"}}>
-                  <button onClick={exportAllData} style={{...s.btnPri,flex:1,minWidth:140}}>Download Backup</button>
-                  <label style={{...s.btnGhost,flex:1,minWidth:140,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center"}}>Restore from Backup<input ref={backupInputRef} type="file" accept=".json" onChange={onBackupImport} style={{display:"none"}}/></label>
+                  <button onClick={exportAllData} disabled={!currentClassId} style={{...s.btnPri,flex:1,minWidth:140,opacity:currentClassId?1:0.5,cursor:currentClassId?"pointer":"not-allowed"}}>Download Backup</button>
+                  <label style={{...s.btnGhost,flex:1,minWidth:140,cursor:currentClassId?"pointer":"not-allowed",display:"flex",alignItems:"center",justifyContent:"center",textAlign:"center",opacity:currentClassId?1:0.5}}>Restore from Backup<input ref={backupInputRef} type="file" accept=".json" onChange={onBackupImport} disabled={!currentClassId} style={{display:"none"}}/></label>
                 </div>
                 {backupMsg&&<p style={{margin:"10px 0 0",fontSize:13,color:backupMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{backupMsg}</p>}
               </div>
@@ -1309,11 +1543,15 @@ export default function App(){
           <hr style={{border:"none",borderTop:`1px solid ${BORDER}`,margin:"0 0 32px"}}/>
 
           <div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
-              {[["Clear All Quiz Due Dates",async()=>saveDueDates({})],["Clear All Submissions",async()=>saveSubs([])],["Clear Imported Grades Only",async()=>saveSubs(submissions.filter(s=>!s.imported))],["Clear All Gradebook Check Marks",async()=>saveChecked({})],["Reset All Student Passwords",async()=>saveStudentPws({})],["Clear Roster",async()=>saveRoster([])],].map(([label,action])=>(
-                <button key={label} onClick={()=>confirmDanger(label,action)} style={s.btnDanger}>{label}</button>
-              ))}
-            </div>
+            <p style={{color:"#fff",fontWeight:600,fontSize:15,margin:"0 0 6px"}}>Danger Zone {currentClassId&&classMeta?.name?<span style={{...s.muted,fontWeight:400}}>(applies to <span style={{color:TEAL}}>{classMeta.name}</span>)</span>:null}</p>
+            <p style={{...s.muted,fontSize:13,margin:"0 0 14px"}}>{currentClassId?"These actions affect the currently selected class only.":"Select a class to manage its data."}</p>
+            {currentClassId?(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:8}}>
+                {[["Clear All Quiz Due Dates",async()=>saveDueDates({})],["Clear All Submissions",async()=>saveSubs([])],["Clear Imported Grades Only",async()=>saveSubs(submissions.filter(s=>!s.imported))],["Clear All Gradebook Check Marks",async()=>saveChecked({})],["Reset All Student Passwords",async()=>saveStudentPws({})],["Clear Roster",async()=>saveRoster([])],].map(([label,action])=>(
+                  <button key={label} onClick={()=>confirmDanger(label,action)} style={s.btnDanger}>{label}</button>
+                ))}
+              </div>
+            ):null}
           </div>
         </div>)}
 

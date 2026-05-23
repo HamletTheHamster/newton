@@ -16,15 +16,20 @@ Security rules: `database.rules.json`.
 
 **RTDB layout:**
 ```
-roster/          — array of student objects
-studentPws/      — {studentId: {hash, salt}}
-submissions/     — {studentId: [submission, ...]}
-checkedSubs/     — {submissionId: true}
-dueDates/        — {quizId: "YYYY-MM-DD HH:mm"}
-settings/        — {passwordHash, passwordSalt, totpSecret?, trustedDevices?}
-bugReports/      — {id: {id, message, timestamp, read}}
-_test/           — scratch node for connectivity check on startup
+classes/
+  {classId}/                       e.g., "phys1-spring26"
+    metadata/                      {name, courseType, active, createdAt}
+    roster/                        array of student objects
+    studentPws/                    {studentId: {hash, salt}}
+    submissions/                   {studentId: [submission, ...]}
+    checkedSubs/                   {submissionId: true}
+    dueDates/                      {quizId: "YYYY-MM-DD HH:mm"}
+settings/                          {passwordHash, passwordSalt, totpSecret?, trustedDevices?}  — shared across classes
+bugReports/                        {id: {id, message, timestamp, read}}                       — shared across classes
+_test/                             scratch node for connectivity check on startup
 ```
+
+`metadata.courseType` (`"physics1"`, `"physics2"`, …) selects which hardcoded quiz set is used at runtime via `QUIZZES_BY_COURSE` in `newton.jsx`. `metadata.active` controls whether students see the class in name search. The single instructor login (in `settings/`) accesses all classes through a switcher dropdown in the instructor header; each class's roster, submissions, due dates, and gradebook are isolated.
 
 ## Authentication
 

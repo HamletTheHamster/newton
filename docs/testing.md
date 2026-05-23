@@ -10,7 +10,8 @@ Selector tips specific to this app:
 
 - Inputs **don't have `type="text"`**; selectors like `input[type="text"]` will time out. Use `input[placeholder*="..." i]` or `:not([type])`.
 - The chat answer field is a `<textarea>`. Submit with `Enter` (Shift+Enter for newline).
-- The student login flow: name search → click roster row → password screen → portal. Search input filters live; the matching row is what you click, not the input itself.
+- The student login flow: name search → click roster row → password screen → portal. Search input filters live; the matching row is what you click, not the input itself. The roster search spans every **active** class — if a name matches in multiple classes the class label is shown beside it.
+- Before any roster/quiz/grading flow can be exercised, at least one class must exist. On a fresh RTDB, log in as instructor → Settings → Classes → create one (e.g., name "Physics 1 Test", course `physics1`). The instructor header dropdown switches between classes; each class has its own roster, submissions, gradebook check marks, and due dates.
 - Wait for the textarea to become enabled again (`!disabled`) as a busy-state signal — there is no spinner element.
 
 ## Local Claude proxy: two gotchas
