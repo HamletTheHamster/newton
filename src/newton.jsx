@@ -231,10 +231,20 @@ async function checkImageReadability(imgData){
   const text=data.content?.map(b=>b.text||"").join("")||"";
   try{return JSON.parse(text.replace(/```json\n?|```/g,"").trim());}catch{return{readable:true};}
 }
-async function evaluateAnswer(question,answer,history,imageData,attemptNum=1){
-  let system="You are an encouraging Physics 1 tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
-  if(attemptNum===4)system+="\n\nThis is the student's 4th attempt. Give a more direct hint — point clearly toward the key concept without stating the full answer. They have one more try after this.";
-  if(attemptNum>=5)system+="\n\nThis is the student's final (5th) attempt. If still incorrect, kindly tell them the correct answer directly and encourage them to review the concept before moving on.";
+const detectParts=text=>{const labels=[...new Set([...text.matchAll(/\(([a-z])\)/g)].map(m=>m[1]))];return labels.length>=2?labels:null;};
+async function evaluateAnswer(question,answer,history,imageData,attemptNum=1,parts=null,completedParts=[]){
+  const remaining=parts?parts.filter(p=>!completedParts.includes(p)):null;
+  let system;
+  if(remaining&&remaining.length>0){
+    const doneStr=completedParts.length>0?"("+completedParts.join("), (")+")":"none yet";
+    const remStr="("+remaining.join("), (")+")";
+    const partsStr="("+parts.join("), (")+")";
+    system="You are an encouraging Physics 1 tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nThis is a MULTI-PART question with parts "+partsStr+". The student has already correctly answered: "+doneStr+". Still needed: "+remStr+".\n\nEvaluate ONLY the parts the student EXPLICITLY addresses in their latest answer. Do NOT mark a part as complete unless the student clearly addressed it — do not infer or assume completion from related reasoning. Do not re-evaluate parts already complete.\n\nFor each remaining part the student attempted, decide whether their reasoning demonstrates conceptual understanding (informal wording is fine, but the core physics must be accurate and the key idea present).\n\nReply ONLY with valid JSON, exactly one of these forms:\n- All remaining parts now correctly addressed: {\"status\":\"correct\",\"newlyCompleted\":[\"a\",...],\"message\":\"1-2 sentences confirming what they got across all parts\"}\n- Some new parts correct, others still needed: {\"status\":\"partial\",\"newlyCompleted\":[\"a\"],\"message\":\"Acknowledge by letter what they got, then prompt by letter for the remaining part(s)\"}\n- No new parts correctly addressed (wrong, vague, or didn't address remaining parts): {\"status\":\"incorrect\",\"newlyCompleted\":[],\"message\":\"One focused Socratic question targeting the gap on the part(s) they attempted\"}";
+  }else{
+    system="You are an encouraging Physics 1 tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
+  }
+  if(attemptNum===4)system+="\n\nThis is the student's 4th attempt on the current part(s). Give a more direct hint — point clearly toward the key concept without stating the full answer. They have one more try after this.";
+  if(attemptNum>=5)system+="\n\nThis is the student's final (5th) attempt on the current part(s). If still incorrect, kindly tell them the correct answer directly and encourage them to review the concept before moving on.";
   const userContent=imageData?[{type:"text",text:"Physics Question: "+question+"\n\nThe student submitted a drawing."+(answer?"\nNote: "+answer:"")},{type:"image",source:{type:"base64",media_type:imageData.type,data:imageData.data}}]:"Physics Question: "+question+"\n\nStudent Answer: "+answer;
   const res=await fetch("/.netlify/functions/claude",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-opus-4-7",max_tokens:1000,system,messages:[...history,{role:"user",content:userContent}]})});
   const data=await res.json();
@@ -381,7 +391,7 @@ export default function App(){
   const[messages,setMessages]=useState([]);const[qScores,setQScores]=useState([]);
   const[input,setInput]=useState("");const[pendingFile,setPendingFile]=useState(null);
   const[pasteWarning,setPasteWarning]=useState(false);
-  const[busy,setBusy]=useState(false);const[quizDone,setQuizDone]=useState(false);const[attemptCount,setAttemptCount]=useState(0);
+  const[busy,setBusy]=useState(false);const[quizDone,setQuizDone]=useState(false);const[attemptCount,setAttemptCount]=useState(0);const[completedParts,setCompletedParts]=useState([]);
   const[subSaveError,setSubSaveError]=useState(false);const[pendingSub,setPendingSub]=useState(null);
 
   const[instPw,setInstPw]=useState("");const[instErr,setInstErr]=useState("");
@@ -655,15 +665,16 @@ export default function App(){
   const quizzes=QUIZZES.map(q=>({...q,dueDate:dueDates[q.id]||null}));
   const currentQ=activeQuiz?.questions[qIdx];
   const isImageQ=!!currentQ?.requiresImage,isYesNoQ=!!currentQ?.yesNo,isDragDropQ=!!currentQ?.dragDrop;
+  const currentParts=currentQ&&!isYesNoQ&&!isDragDropQ?detectParts(currentQ.text):null;
   const completedQuizIds=new Set(submissions.filter(s=>s.studentId===loggedInStudent?.studentId).map(s=>s.quizId));
   const filteredRoster=nameQuery.trim().length===0?[]:roster.filter(s=>{const q=nameQuery.toLowerCase();return(s.altName&&s.altName.toLowerCase().includes(q))||s.fullName.toLowerCase().includes(q)||s.lastName.toLowerCase().includes(q)||s.firstName.toLowerCase().includes(q);}).slice(0,8);
 
   const advanceOrFinish=async(quiz,nScores,afterMsgs,nextIdx)=>{
     if(nextIdx>=quiz.questions.length){await finishQuiz(quiz,nScores,afterMsgs);}
-    else{const nPts=ptsPer(quiz.questions.length);setMessages([...afterMsgs,{id:Date.now()+2,type:"question",q:quiz.questions[nextIdx],num:nextIdx+1,total:quiz.questions.length,pts:nPts[nextIdx]}]);setQIdx(nextIdx);setApiHist([]);setAttemptCount(0);}
+    else{const nPts=ptsPer(quiz.questions.length);setMessages([...afterMsgs,{id:Date.now()+2,type:"question",q:quiz.questions[nextIdx],num:nextIdx+1,total:quiz.questions.length,pts:nPts[nextIdx]}]);setQIdx(nextIdx);setApiHist([]);setAttemptCount(0);setCompletedParts([]);}
   };
   const startQuiz=(quiz,isPractice=false)=>{
-    setPracticeMode(isPractice);setActiveQuiz(quiz);setQIdx(0);setApiHist([]);setAttemptCount(0);
+    setPracticeMode(isPractice);setActiveQuiz(quiz);setQIdx(0);setApiHist([]);setAttemptCount(0);setCompletedParts([]);
     setQScores(new Array(quiz.questions.length).fill(null));
     setQuizDone(false);setInput("");setPendingFile(null);setBusy(false);setShowLeaveConfirm(false);setSubSaveError(false);setPendingSub(null);
     const late=isLate(quiz.dueDate);
@@ -714,15 +725,36 @@ export default function App(){
     const ans=input.trim(),imgData=pendingFile?.base64||null,previewUrl=pendingFile?.previewUrl||null;
     setInput("");clearFile();setBusy(true);
     const q=activeQuiz.questions[qIdx],pts=ptsPer(activeQuiz.questions.length),qPts=pts[qIdx];
+    const parts=currentParts;
     const currentAttempt=attemptCount+1;
     setAttemptCount(currentAttempt);
     const newMsgs=[...messages,{id:Date.now(),type:"student",text:ans||null,imageUrl:previewUrl}];
     setMessages(newMsgs);
     try{
-      const result=await evaluateAnswer(q.text,ans,apiHist,imgData,currentAttempt);
+      const result=await evaluateAnswer(q.text,ans,apiHist,imgData,currentAttempt,parts,completedParts);
       const histUser=imgData?"Physics Question: "+q.text+"\n\n[Student submitted a drawing"+(ans?". Note: "+ans:"")+"]":"Physics Question: "+q.text+"\n\nStudent Answer: "+ans;
       setApiHist([...apiHist,{role:"user",content:histUser},{role:"assistant",content:JSON.stringify(result)}]);
-      if(result.status==="correct"){
+      if(parts){
+        const newlyCompleted=Array.isArray(result.newlyCompleted)?result.newlyCompleted.filter(p=>parts.includes(p)&&!completedParts.includes(p)):[];
+        const updatedCompleted=[...completedParts,...newlyCompleted];
+        const perPart=qPts/parts.length;
+        const priorScore=qScores[qIdx]||0;
+        if(updatedCompleted.length>=parts.length){
+          const nScores=[...qScores];nScores[qIdx]=qPts;setQScores(nScores);
+          await advanceOrFinish(activeQuiz,nScores,[...newMsgs,{id:Date.now()+1,type:"tutor",text:"✅ "+result.message,correct:true}],qIdx+1);
+        }else if(newlyCompleted.length>0){
+          const earned=parseFloat((priorScore+newlyCompleted.length*perPart).toFixed(2));
+          const nScores=[...qScores];nScores[qIdx]=earned;setQScores(nScores);
+          setCompletedParts(updatedCompleted);
+          setAttemptCount(0);
+          setMessages([...newMsgs,{id:Date.now()+1,type:"tutor",text:"✅ "+result.message,correct:true}]);
+        }else if(currentAttempt>=5){
+          const remaining=parts.length-completedParts.length;
+          const earned=parseFloat((priorScore+remaining*perPart/2).toFixed(2));
+          const nScores=[...qScores];nScores[qIdx]=earned;setQScores(nScores);
+          await advanceOrFinish(activeQuiz,nScores,[...newMsgs,{id:Date.now()+1,type:"tutor",text:result.message}],qIdx+1);
+        }else{setMessages([...newMsgs,{id:Date.now()+1,type:"tutor",text:result.message}]);}
+      }else if(result.status==="correct"){
         const nScores=[...qScores];nScores[qIdx]=qPts;setQScores(nScores);
         await advanceOrFinish(activeQuiz,nScores,[...newMsgs,{id:Date.now()+1,type:"tutor",text:"✅ "+result.message,correct:true}],qIdx+1);
       }else if(currentAttempt>=5){
@@ -948,6 +980,7 @@ export default function App(){
         </div>
         {!quizDone&&<div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2}}>
           <div style={{...s.muted,fontFamily:"monospace"}}>Q{qIdx+1}/{activeQuiz?.questions.length}</div>
+          {currentParts&&completedParts.length>0&&<div style={{color:TEAL,fontFamily:"monospace",fontSize:11}}>Part{completedParts.length>1?"s":""} {completedParts.join(", ")} done · {currentParts.filter(p=>!completedParts.includes(p)).join(", ")} remaining</div>}
           {!isYesNoQ&&!isDragDropQ&&<div style={{...s.muted,fontFamily:"monospace",fontSize:11}}>{Math.max(0,5-attemptCount)} attempt{Math.max(0,5-attemptCount)!==1?"s":""} left</div>}
         </div>}
       </div>

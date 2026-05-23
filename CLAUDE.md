@@ -5,6 +5,7 @@
 - **Dev & deploy:** see [docs/environment.md](docs/environment.md)
 - **System design, Firebase, auth, Claude API:** see [docs/architecture.md](docs/architecture.md)
 - **Inline styles and theme constants:** see [docs/styling.md](docs/styling.md)
+- **End-to-end testing, local-dev gotchas:** see [docs/testing.md](docs/testing.md)
 
 ## Key Files
 
@@ -23,4 +24,4 @@ netlify dev      # Vite + Netlify Functions (use when testing Claude API proxy)
 npm run build    # production build → dist/
 ```
 
-No tests or linters. Deploy on `git push` via Netlify CI.
+No tests or linters. Deploy on `git push` via Netlify CI. For manual verification of changes, see [docs/testing.md](docs/testing.md).
