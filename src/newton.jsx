@@ -217,11 +217,55 @@ function genDeviceToken(){const b=new Uint8Array(32);crypto.getRandomValues(b);r
 async function hashToken(tok){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(tok));return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join('');}
 
 function parseRoster(text){
-  return text.split("\n").map(l=>l.trim()).filter(Boolean).reduce((acc,line)=>{
-    const[lastName,firstName,studentId]=line.split(",").map(p=>p.trim());
-    if(!lastName||!firstName||!studentId||lastName.toLowerCase()==="last name")return acc;
-    return[...acc,{studentId,firstName,lastName,fullName:firstName+" "+lastName}];
-  },[]).sort((a,b)=>a.lastName.localeCompare(b.lastName));
+  const stripped=text.replace(/^﻿/,"");
+  const lines=stripped.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+  if(lines.length===0)return[];
+  const parseLine=line=>{
+    const fields=[];let cur="",inQ=false;
+    for(let i=0;i<line.length;i++){
+      if(line[i]==='"'){inQ=!inQ;}
+      else if(line[i]===","&&!inQ){fields.push(cur.trim());cur="";}
+      else cur+=line[i];
+    }
+    fields.push(cur.trim());
+    return fields.map(f=>f.replace(/^"|"$/g,"").trim());
+  };
+  const headers=parseLine(lines[0]).map(h=>h.toLowerCase());
+  const hasHeaders=headers.some(h=>h==="student name"||h==="last name"||h==="first name"||h==="student id");
+  const splitFullName=full=>{
+    const parts=full.split(/\s+/).filter(Boolean);
+    if(parts.length<2)return null;
+    return{firstName:parts[0],lastName:parts[parts.length-1].replace(/\.$/,"")};
+  };
+  let rows;
+  if(hasHeaders){
+    const nameIdx=headers.findIndex(h=>h==="student name");
+    const idIdx=headers.findIndex(h=>h==="student id"||h==="studentid"||h==="id");
+    const lastIdx=headers.findIndex(h=>h==="last name");
+    const firstIdx=headers.findIndex(h=>h==="first name");
+    rows=lines.slice(1).reduce((acc,line)=>{
+      const cols=parseLine(line);
+      let firstName,lastName,studentId;
+      if(nameIdx>=0){
+        const split=splitFullName(cols[nameIdx]||"");
+        if(!split)return acc;
+        firstName=split.firstName;lastName=split.lastName;
+      }else if(firstIdx>=0&&lastIdx>=0){
+        firstName=cols[firstIdx];lastName=cols[lastIdx];
+      }else return acc;
+      studentId=(idIdx>=0?cols[idIdx]:cols[2])||"";
+      if(!firstName||!lastName||!studentId)return acc;
+      return[...acc,{studentId,firstName,lastName,fullName:firstName+" "+lastName}];
+    },[]);
+  }else{
+    rows=lines.reduce((acc,line)=>{
+      const cols=parseLine(line);
+      const[lastName,firstName,studentId]=cols;
+      if(!lastName||!firstName||!studentId)return acc;
+      return[...acc,{studentId,firstName,lastName,fullName:firstName+" "+lastName}];
+    },[]);
+  }
+  return rows.sort((a,b)=>a.lastName.localeCompare(b.lastName));
 }
 
 function parseGradesCSV(text){
@@ -455,6 +499,7 @@ export default function App(){
   const[backupModal,setBackupModal]=useState(null);
   const[rosterMsg,setRosterMsg]=useState("");const[backupMsg,setBackupMsg]=useState("");
   const[newClassName,setNewClassName]=useState("");const[newClassCourse,setNewClassCourse]=useState(COURSE_OPTIONS[0]?.value||"physics1");const[newClassMsg,setNewClassMsg]=useState("");
+  const[editingClassId,setEditingClassId]=useState(null);const[editingClassNameInput,setEditingClassNameInput]=useState("");
   const[deleteClassTarget,setDeleteClassTarget]=useState(null);
   const[bugReports,setBugReports]=useState({});
   const[bugReportOpen,setBugReportOpen]=useState(false);
@@ -649,6 +694,15 @@ export default function App(){
     await fbSave(classPath(classId,'metadata'),updated);
     setClasses(prev=>({...prev,[classId]:{...(prev[classId]||{}),metadata:updated}}));
   };
+  const renameClass=async(classId,newName)=>{
+    const trimmed=(newName||"").trim();
+    const cur=classes[classId]?.metadata;
+    if(!cur||!trimmed||trimmed===cur.name){setEditingClassId(null);return;}
+    const updated={...cur,name:trimmed};
+    await fbSave(classPath(classId,'metadata'),updated);
+    setClasses(prev=>({...prev,[classId]:{...(prev[classId]||{}),metadata:updated}}));
+    setEditingClassId(null);
+  };
   const deleteClass=async classId=>{
     await fbSave(`classes/${classId}`,null);
     setClasses(prev=>{const n={...prev};delete n[classId];return n;});
@@ -718,13 +772,21 @@ export default function App(){
     setRoster([]);setStudentPws({});setDueDates({});setCheckedSubs({});setSubmissions([]);
     setScreen("student-search");
   };
+  const enterInstructor=async()=>{
+    const cur=currentClassId?classes[currentClassId]:null;
+    if(!cur||cur?.metadata?.active===false){
+      const firstActive=Object.entries(classes).filter(([,c])=>c?.metadata?.active!==false).sort((a,b)=>(a[1]?.metadata?.name||"").localeCompare(b[1]?.metadata?.name||""))[0];
+      if(firstActive)await switchToClass(firstActive[0]);
+    }
+    setScreen("instructor");
+  };
   const doLogin=async()=>{
     if(!settings.passwordHash){setInstErr("Settings still loading.");return;}
     const ok=await verifyPw(instPw,settings.passwordHash,settings.passwordSalt);
     if(!ok){setInstErr("Incorrect password.");return;}
-    if(!settings.totpSecret){setInstErr("");setEditPw("");setScreen("instructor");return;}
+    if(!settings.totpSecret){setInstErr("");setEditPw("");await enterInstructor();return;}
     const deviceToken=localStorage.getItem('newton_device_token');
-    if(deviceToken){const tokenHash=await hashToken(deviceToken);if(settings.trustedDevices?.[tokenHash]){setInstErr("");setEditPw("");setScreen("instructor");return;}}
+    if(deviceToken){const tokenHash=await hashToken(deviceToken);if(settings.trustedDevices?.[tokenHash]){setInstErr("");setEditPw("");await enterInstructor();return;}}
     setInstErr("");setTotpInput("");setTotpErr("");setInstLoginStep("totp");
   };
   const doTotpVerify=async()=>{
@@ -737,7 +799,7 @@ export default function App(){
       localStorage.setItem('newton_device_token',token);
       await saveSettings({...settings,trustedDevices:{...(settings.trustedDevices||{}),[tokenHash]:{created:new Date().toISOString()}}});
     }
-    setTotpErr("");setTotpInput("");setInstLoginStep("password");setRememberDevice(false);setScreen("instructor");
+    setTotpErr("");setTotpInput("");setInstLoginStep("password");setRememberDevice(false);await enterInstructor();
   };
   const startTotpSetup=async()=>{
     const secret=genTotpSecret();
@@ -1259,10 +1321,10 @@ export default function App(){
         <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
           <h1 style={{color:TEAL,fontWeight:700,fontSize:20,margin:0}}>Newton</h1>
           {Object.keys(classes).length>0?(
-            <select value={currentClassId||""} onChange={e=>{const v=e.target.value;if(v)switchToClass(v);}} style={{...s.input,width:"auto",padding:"6px 28px 6px 12px",fontSize:13,cursor:"pointer"}}>
-              {!currentClassId&&<option value="">— Select a class —</option>}
+            <select value={currentClassId||""} onChange={e=>{const v=e.target.value;if(v)switchToClass(v);}} style={{appearance:"none",WebkitAppearance:"none",MozAppearance:"none",background:"transparent",border:"none",color:"#fff",fontSize:14,fontWeight:600,padding:"6px 24px 6px 4px",cursor:"pointer",outline:"none",borderRadius:6,backgroundImage:"url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%23a0a0a0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>\")",backgroundRepeat:"no-repeat",backgroundPosition:"right 4px center"}}>
+              {!currentClassId&&<option value="" style={{background:"#252627",color:"#fff"}}>— Select a class —</option>}
               {Object.entries(classes).sort((a,b)=>(a[1]?.metadata?.name||"").localeCompare(b[1]?.metadata?.name||"")).map(([cid,c])=>(
-                <option key={cid} value={cid}>{(c?.metadata?.name||cid)+(c?.metadata?.active===false?" (inactive)":"")}</option>
+                <option key={cid} value={cid} style={{background:"#252627",color:"#fff"}}>{(c?.metadata?.name||cid)+(c?.metadata?.active===false?" (inactive)":"")}</option>
               ))}
             </select>
           ):(
@@ -1350,11 +1412,8 @@ export default function App(){
 
         {currentClassId&&instTab==="roster"&&(<div>
           <ManualAddStudent roster={roster} onAdd={async student=>{const updated=[...roster,student].sort((a,b)=>a.lastName.localeCompare(b.lastName));await saveRoster(updated);}}/>
-          <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED,display:"flex",alignItems:"center",justifyContent:"space-between",gap:16}}>
-            <div>
-              <p style={{color:"rgba(255,255,255,0.7)",fontWeight:600,margin:"0 0 4px"}}>Roster CSV format:</p>
-              <code style={{background:"rgba(255,255,255,0.06)",padding:"3px 8px",borderRadius:6,fontSize:12}}>Last Name,First Name,Student ID,</code>
-            </div>
+          <div style={{...s.card,padding:14,marginBottom:20,fontSize:13,color:MUTED,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:12}}>
+            <span style={{...s.muted,fontSize:12}}>(MyMercer roster export file)</span>
             <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,flexShrink:0}}>
               <label style={{...s.btnGhost,cursor:"pointer",display:"inline-block",padding:"8px 16px",fontSize:13}}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{display:"none"}}/></label>
               {rosterMsg&&<p style={{margin:0,fontSize:13,color:rosterMsg.startsWith("✅")?"#4ade80":"#f87171"}}>{rosterMsg}</p>}
@@ -1441,7 +1500,7 @@ export default function App(){
                         const rosterCount=Array.isArray(c?.roster)?c.roster.length:0;
                         const isCurrent=currentClassId===cid;
                         return(<tr key={cid} style={{borderBottom:i<arr.length-1?`1px solid ${BORDER}`:"none",background:isCurrent?"rgba(0,130,140,0.08)":"transparent"}}>
-                          <td style={{padding:"12px 16px",color:"#fff",fontWeight:500}}>{m.name||cid}{isCurrent&&<span style={{...s.badge(TEAL),marginLeft:8}}>selected</span>}</td>
+                          <td style={{padding:"12px 16px",color:"#fff",fontWeight:500}}>{editingClassId===cid?(<div style={{display:"flex",alignItems:"center",gap:6}}><input value={editingClassNameInput} onChange={e=>setEditingClassNameInput(e.target.value)} onKeyDown={e=>{if(e.key==="Enter")renameClass(cid,editingClassNameInput);if(e.key==="Escape")setEditingClassId(null);}} autoFocus style={{background:"rgba(255,255,255,0.06)",border:`1px solid ${TEAL}`,color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:13,outline:"none",width:240}}/><button onClick={()=>renameClass(cid,editingClassNameInput)} style={{background:"rgba(0,130,140,0.2)",border:`1px solid ${TEAL}`,color:TEAL,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12,fontWeight:700}}>✓</button><button onClick={()=>setEditingClassId(null)} style={{background:"none",border:`1px solid ${BORDER}`,color:MUTED,borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:12}}>✕</button></div>):(<div style={{display:"flex",alignItems:"center",gap:8}}><span>{m.name||cid}</span><button onClick={()=>{setEditingClassId(cid);setEditingClassNameInput(m.name||"");}} style={{background:"none",border:"none",color:MUTED,cursor:"pointer",fontSize:13,padding:"2px 4px",lineHeight:1}} title="Rename class">✎</button>{isCurrent&&<span style={{...s.badge(TEAL)}}>selected</span>}</div>)}</td>
                           <td style={{padding:"12px 16px",color:MUTED}}>{COURSE_LABELS[m.courseType]||m.courseType||"—"}</td>
                           <td style={{padding:"12px 16px"}}>
                             <label style={{display:"inline-flex",alignItems:"center",gap:6,cursor:"pointer"}}>
