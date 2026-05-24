@@ -525,14 +525,16 @@ export default function App() {
     setAnnouncements(updated);
     updateClassCache(cid, 'announcements', updated);
     await fbSave(classPath(cid, `announcements/${annId}`), record);
+    console.log("[email] sendEmail flag:", ann.sendEmail, "roster length:", roster.length, "secret defined:", !!import.meta.env.VITE_EMAIL_SEND_SECRET);
     if (ann.sendEmail) {
       const recipients = roster.filter(s => s.email).map(s => ({ name: s.fullName, email: s.email }));
+      console.log("[email] recipients:", recipients);
       if (recipients.length > 0) {
         fetch("/.netlify/functions/send-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ recipients, subject: record.title, body: record.body, secret: import.meta.env.VITE_EMAIL_SEND_SECRET }),
-        }).catch(() => {});
+        }).then(r => r.json()).then(d => console.log("[email] response:", d)).catch(e => console.error("[email] fetch error:", e));
       }
     }
   };
