@@ -528,10 +528,13 @@ export default function App() {
     if (ann.sendEmail) {
       const recipients = roster.filter(s => s.email).map(s => ({ name: s.fullName, email: s.email }));
       if (recipients.length > 0) {
+        const c = syllabus?.fields?.course;
+        const prefix = [c?.term, c?.number].filter(Boolean).join(" ");
+        const subject = prefix ? `${prefix}: ${record.title}` : record.title;
         fetch("/.netlify/functions/send-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recipients, subject: record.title, body: record.body, secret: import.meta.env.VITE_EMAIL_SEND_SECRET }),
+          body: JSON.stringify({ recipients, subject, body: record.body, secret: import.meta.env.VITE_EMAIL_SEND_SECRET }),
         }).catch(() => {});
       }
     }
