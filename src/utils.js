@@ -136,6 +136,7 @@ export function parseRoster(text) {
     const idIdx = headers.findIndex(h => h === "student id" || h === "studentid" || h === "id");
     const lastIdx = headers.findIndex(h => h === "last name");
     const firstIdx = headers.findIndex(h => h === "first name");
+    const emailIdx = headers.findIndex(h => h === "preferred email" || h === "email" || h === "e-mail");
     rows = lines.slice(1).reduce((acc, line) => {
       const cols = parseLine(line);
       let firstName, lastName, studentId;
@@ -148,7 +149,8 @@ export function parseRoster(text) {
       } else return acc;
       studentId = (idIdx >= 0 ? cols[idIdx] : cols[2]) || "";
       if (!firstName || !lastName || !studentId) return acc;
-      return [...acc, { studentId, firstName, lastName, fullName: firstName + " " + lastName }];
+      const email = (emailIdx >= 0 ? cols[emailIdx] : "") || "";
+      return [...acc, { studentId, firstName, lastName, fullName: firstName + " " + lastName, ...(email ? { email } : {}) }];
     }, []);
   } else {
     rows = lines.reduce((acc, line) => {

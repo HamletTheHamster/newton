@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { s, MUTED, BORDER } from "../../theme.js";
 
-export function AnnouncementEditor({ initialTitle = "", initialBody = "", onSave, onCancel }) {
+export function AnnouncementEditor({ initialTitle = "", initialBody = "", emailCount = 0, onSave, onCancel }) {
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
+  const [sendEmail, setSendEmail] = useState(true);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -11,7 +12,7 @@ export function AnnouncementEditor({ initialTitle = "", initialBody = "", onSave
     const t = title.trim();
     if (!t) { setErr("Title is required."); return; }
     setErr(""); setSaving(true);
-    try { await onSave({ title: t, body }); }
+    try { await onSave({ title: t, body, sendEmail: emailCount > 0 && sendEmail }); }
     catch (e) { setErr(e?.message || "Save failed."); setSaving(false); }
   };
 
@@ -36,6 +37,14 @@ export function AnnouncementEditor({ initialTitle = "", initialBody = "", onSave
               onChange={e => setBody(e.target.value)}
             />
           </div>
+          {emailCount > 0 && (
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+              <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} />
+              <span style={{ color: MUTED, fontSize: 13 }}>
+                Email students ({emailCount} address{emailCount !== 1 ? "es" : ""})
+              </span>
+            </label>
+          )}
           {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
         </div>
         <div style={{ display: "flex", gap: 10, padding: "14px 22px", borderTop: `1px solid ${BORDER}` }}>

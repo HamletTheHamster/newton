@@ -509,6 +509,16 @@ export default function App() {
     setAnnouncements(updated);
     updateClassCache(cid, 'announcements', updated);
     await fbSave(classPath(cid, `announcements/${annId}`), record);
+    if (ann.sendEmail) {
+      const recipients = roster.filter(s => s.email).map(s => ({ name: s.fullName, email: s.email }));
+      if (recipients.length > 0) {
+        fetch("/.netlify/functions/send-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recipients, subject: record.title, body: record.body, secret: import.meta.env.VITE_EMAIL_SEND_SECRET }),
+        }).catch(() => {});
+      }
+    }
   };
   const deleteAnnouncement = async (annId) => {
     const cid = requireClass();
@@ -1544,9 +1554,10 @@ export default function App() {
           <AnnouncementEditor
             initialTitle={editingAnn.title}
             initialBody={editingAnn.body}
+            emailCount={roster.filter(s => s.email).length}
             onCancel={() => setEditingAnn(null)}
-            onSave={async ({ title, body }) => {
-              await saveAnnouncement({ id: editingAnn.annId || null, title, body, createdAt: editingAnn.createdAt || null });
+            onSave={async ({ title, body, sendEmail }) => {
+              await saveAnnouncement({ id: editingAnn.annId || null, title, body, createdAt: editingAnn.createdAt || null, sendEmail });
               setEditingAnn(null);
             }}
           />
