@@ -31,7 +31,7 @@ classes/
     pages/                         {[pageId]: {title, body, createdAt}}
     uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt}}
     announcements/                 {[annId]: {id, title, body, createdAt}}
-    announcementReads/             {[studentId]: {[annId]: true}}
+    announcementReads/             {[studentId]: {[annId]: true}}  — orphaned; no longer read or written (notification feature removed in 6.9)
     gradeCategories/               {[catId]: {id, name, weight, order}}
     gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}
     manualAssignments/             {[id]: {id, title, catId, maxPts}}

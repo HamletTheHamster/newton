@@ -46,6 +46,8 @@ export function Modules({
   const [titleDraft, setTitleDraft] = useState("");
   const [moduleMenuFor, setModuleMenuFor] = useState(null);
   const moduleMenuRef = useRef(null);
+  const [itemMenuFor, setItemMenuFor] = useState(null);     // "moduleId::itemId"
+  const itemMenuRef = useRef(null);
   const [editingTimeFor, setEditingTimeFor] = useState(null);
 
   // Add-item flow state (one module's add bar active at a time)
@@ -78,6 +80,13 @@ export function Modules({
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [moduleMenuFor]);
+
+  useEffect(() => {
+    if (!itemMenuFor) return;
+    const handler = e => { if (itemMenuRef.current && !itemMenuRef.current.contains(e.target)) setItemMenuFor(null); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [itemMenuFor]);
 
   // ── Module-level CRUD ────────────────────────────────────────────────────
   const updateModule = async (moduleId, mutator) => {
@@ -303,7 +312,7 @@ export function Modules({
                 setDragId(null); setDragOverId(null);
               }}
               onDragEnd={() => { setDragId(null); setDragOverId(null); }}
-              style={{ ...s.card, overflow: "hidden" }}
+              style={{ ...s.card, overflow: "visible" }}
             >
               {/* Module header — draggable for reordering */}
               <div
@@ -426,34 +435,14 @@ export function Modules({
                             const from = arr.findIndex(it => it.id === srcItemId);
                             const to = arr.findIndex(it => it.id === item.id);
                             if (from >= 0 && to >= 0) {
-                              arr.splice(to, 0, arr.splice(from, 1)[0]);
+                              const [moved] = arr.splice(from, 1);
+                              arr.splice(from < to ? to - 1 : to, 0, moved);
                               onSaveModules((modules || []).map(m => m.id === mod.id ? { ...m, items: arr } : m));
                             }
                             setDragItemKey(null); setDragItemOverKey(null);
                           },
                           onDragEnd: () => { setDragItemKey(null); setDragItemOverKey(null); },
                         }}
-                        dueField={item.type === "quiz" ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input
-                              type="date"
-                              style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }}
-                              value={quizDateVal}
-                              onChange={async e => {
-                                const nd = { ...(dueDates || {}) };
-                                if (e.target.value) nd[item.refId] = e.target.value;
-                                else delete nd[item.refId];
-                                setEditingTimeFor(null);
-                                await onSaveDueDates(nd);
-                              }}
-                            />
-                            {quizDueDate && (editingTimeFor === item.refId
-                              ? <input type="time" autoFocus style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }} value={quizTimeVal} onChange={async e => { if (!e.target.value) return; await onSaveDueDates({ ...(dueDates || {}), [item.refId]: quizDateVal + ' ' + e.target.value }); }} onBlur={() => setEditingTimeFor(null)} />
-                              : <button onClick={() => setEditingTimeFor(item.refId)} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 6px", fontFamily: "monospace" }}>{fmtDueTime(quizDueDate)}</button>
-                            )}
-                            {quizDueDate && <span style={s.badge(quizLate ? "#f87171" : "#4ade80")}>{quizLate ? "Past due" : "Active"}</span>}
-                          </div>
-                        ) : null}
                         urlField={canHaveUrl ? (
                           <UrlInput
                             initial={item.url || ""}
@@ -469,10 +458,39 @@ export function Modules({
                             {item.type === "file" && upload?.downloadUrl && (
                               <IconBtn title="Open file" onClick={() => window.open(upload.downloadUrl, "_blank", "noopener,noreferrer")}>↗</IconBtn>
                             )}
-                            <IconBtn title="Delete" onClick={() => deleteItem(mod, item)}>🗑</IconBtn>
                           </>
                         }
-                        onToggleHidden={() => toggleHidden(mod, item.id)}
+                        menuOpen={itemMenuFor === itemKey}
+                        menuRef={itemMenuFor === itemKey ? itemMenuRef : null}
+                        onToggleMenu={() => setItemMenuFor(k => k === itemKey ? null : itemKey)}
+                        menu={
+                          <ItemMenu
+                            dueField={item.type === "quiz" ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                                <input
+                                  type="date"
+                                  style={{ ...s.input, width: "100%", padding: "6px 10px", fontSize: 12 }}
+                                  value={quizDateVal}
+                                  onChange={async e => {
+                                    const nd = { ...(dueDates || {}) };
+                                    if (e.target.value) nd[item.refId] = e.target.value;
+                                    else delete nd[item.refId];
+                                    setEditingTimeFor(null);
+                                    await onSaveDueDates(nd);
+                                  }}
+                                />
+                                {quizDueDate && (editingTimeFor === item.refId
+                                  ? <input type="time" autoFocus style={{ ...s.input, width: "100%", padding: "6px 10px", fontSize: 12 }} value={quizTimeVal} onChange={async e => { if (!e.target.value) return; await onSaveDueDates({ ...(dueDates || {}), [item.refId]: quizDateVal + ' ' + e.target.value }); }} onBlur={() => setEditingTimeFor(null)} />
+                                  : <button onClick={() => setEditingTimeFor(item.refId)} style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, fontSize: 12, cursor: "pointer", padding: "6px 10px", borderRadius: 10, width: "100%", textAlign: "left" }}>{fmtDueTime(quizDueDate)}</button>
+                                )}
+                                {quizDueDate && <span style={s.badge(quizLate ? "#f87171" : "#4ade80")}>{quizLate ? "Past due" : "Active"}</span>}
+                              </div>
+                            ) : null}
+                            isHidden={isHidden}
+                            onToggleHidden={() => { setItemMenuFor(null); toggleHidden(mod, item.id); }}
+                            onDelete={() => { setItemMenuFor(null); deleteItem(mod, item); }}
+                          />
+                        }
                       />
                     </Fragment>
                   );
@@ -538,7 +556,7 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeIcon, title, subtitle, isHidden, onToggleHidden, dueField, urlField, actions, dragProps }) {
+function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, menuOpen, menuRef, onToggleMenu, menu }) {
   return (
     <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${BORDER}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default" }}>
       <span style={{ color: MUTED, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
@@ -546,13 +564,13 @@ function ItemRow({ typeIcon, title, subtitle, isHidden, onToggleHidden, dueField
         <div style={{ color: "#fff", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
       </div>
-      {dueField && <div style={{ flexShrink: 0 }}>{dueField}</div>}
       {urlField && <div style={{ flex: "2 1 280px", minWidth: 0 }}>{urlField}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         {actions}
-        <IconBtn title={isHidden ? "Show to students" : "Hide from students"} onClick={onToggleHidden}>
-          <EyeIcon hidden={isHidden} />
-        </IconBtn>
+        <div style={{ position: "relative" }} ref={menuRef}>
+          <button onClick={onToggleMenu} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}>⋮</button>
+          {menuOpen && menu}
+        </div>
       </div>
     </div>
   );
@@ -762,6 +780,31 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
       {/* Section 3: Delete */}
       <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
         <button onClick={onDelete} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>🗑 Delete module</button>
+      </div>
+    </div>
+  );
+}
+
+function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete }) {
+  return (
+    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+      {dueField && (
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Due Date</div>
+          {dueField}
+        </div>
+      )}
+      <div style={{ borderTop: dueField ? `1px solid ${BORDER}` : "none", paddingTop: dueField ? 10 : 0, marginBottom: 10 }}>
+        <button
+          onClick={onToggleHidden}
+          style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}
+        >
+          <EyeIcon hidden={isHidden} />
+          {isHidden ? "Show to students" : "Hide from students"}
+        </button>
+      </div>
+      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+        <button onClick={onDelete} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>🗑 Delete</button>
       </div>
     </div>
   );

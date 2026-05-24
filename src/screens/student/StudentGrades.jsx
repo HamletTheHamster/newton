@@ -28,7 +28,7 @@ function scoreColor(score, excused, missing) {
   return "#f87171";
 }
 
-export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories }) {
+export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, assignmentNameOverrides }) {
   const myId = loggedInStudent?.studentId;
 
   // Only show non-hidden items in the student view
@@ -37,7 +37,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
     items: (mod.items || []).filter(it => !it._hidden),
   }));
 
-  const allAssignments = buildGradebookAssignments(visibleModules, quizzes, assignmentCategories);
+  const allAssignments = buildGradebookAssignments(visibleModules, quizzes, assignmentCategories, {}, assignmentNameOverrides);
 
   // Only count assignments the student has attempted or whose due date has passed.
   const submittedIds = new Set((submissions || []).filter(s => s.studentId === myId).map(s => s.quizId));

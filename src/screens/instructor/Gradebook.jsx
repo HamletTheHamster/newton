@@ -440,7 +440,7 @@ export function Gradebook({
                       />
                     ) : (
                       <div onClick={() => { setEditingAssignmentTitle(a.id); setAssignmentTitleDraft(a.title); }} style={{ fontSize: 11, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 66, margin: "0 auto 2px", cursor: "text" }} title={`Click to rename · ${a.title}`}>
-                        {a.title.replace(/^Quiz\s+(\d+):.*/, "Q$1").replace(/^Homework\s+(\d+):.*/, "HW$1")}
+                        {a.title}
                       </div>
                     )}
                     <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>/ {a.maxPts}</div>

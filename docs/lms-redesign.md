@@ -77,9 +77,10 @@ src/
     StudentGrades.jsx            — student Grades view: overall grade banner + category breakdown
     Stub.jsx                     — generic "Coming Soon" placeholder for Syllabus/Evals
   screens/instructor/
-    Modules.jsx                  — instructor Home tab: module authoring (⋮ menu with inline
-                                   calendar, add-item, delete; full-div drag/drop; animated
-                                   drop gaps; release dates; visibility toggles; file uploads)
+    Modules.jsx                  — instructor Home tab: module authoring (module ⋮ menu: inline
+                                   calendar, add-item, delete; item ⋮ menu: due date, visibility,
+                                   delete; full-div drag/drop with correct gap targeting; animated
+                                   drop gaps; release dates; file uploads)
     Gradebook.jsx                — instructor Gradebook: weighted categories, per-student score
                                    entry (EX support), manual assignments, CSV export, assignment
                                    title overrides
@@ -146,7 +147,7 @@ classes/{classId}/
   pages/                    — { [pageId]: { title, body, createdAt } }
   uploads/                  — { [uploadId]: { name, size, mime, storagePath, downloadUrl, createdAt } }
   announcements/            — { [annId]: { id, title, body, createdAt } }
-  announcementReads/        — { [studentId]: { [annId]: true } }
+  announcementReads/        — { [studentId]: { [annId]: true } }  ← orphaned (notification feature removed in 6.9)
   gradeCategories/          — { [catId]: { id, name, weight, order } }
   gradeOverrides/           — { [studentId]: { [assignmentId]: { score?, excused? } } }
   manualAssignments/        — { [id]: { id, title, catId, maxPts } }
@@ -163,18 +164,19 @@ classes/{classId}/
 | **2** | ✅ done | **Instructor module authoring**. Per-module release dates with hard lock; instructor-authored text pages; external links; URL overrides on course-defined reading/notes; per-item visibility toggles; file uploads to Firebase Storage with progress bar and download access for students. RTDB subtrees: `moduleConfig/`, `pages/`, `uploads/`. Storage path: `classes/{classId}/uploads/{uploadId}/{filename}`. |
 | **2.5** | ✅ done | **Module CRUD**. Modules move from code-defined `MODULES_PHYSICS1` to per-class `classes/{classId}/modules` (ordered array). Instructors can create, rename, reorder, and delete modules; per-item CRUD now applies to every item (not just custom). Items get stable IDs; `moduleConfig` slims to `{releaseDate, hiddenItems}`. Auto-migrates legacy `moduleConfig.itemOverrides` and `customItems` on first load. `MODULES_PHYSICS1` is now a seed template used only by `createClass` and the migration helper. |
 | **3** | — | **Homework engine**: define HW data shape per course (problems with parts, point values, attempt limits). Student submission UI mirroring the quiz chat. Claude 4.7 light-hint feedback on wrong answers via `evaluateAnswer` pattern. Score persistence under `homeworks/`. |
-| **4** | ✅ done | **Announcements**: instructor compose UI; broadcast list page; unread popup modal on student login; per-student read tracking (`announcementReads/`). Email broadcast deferred to future phase. |
+| **4** | ✅ done | **Announcements**: instructor compose UI; broadcast list page. Note: the unread popup modal and sidebar badge (per-student read tracking via `announcementReads/`) were added here and removed in Phase 6.9 — the feature bugged out on class-switch and didn't serve a real purpose. `announcementReads/` data remains in RTDB but is no longer read or written. |
 | **5** | ✅ done | **Calendar**: month grid showing assignment due dates color-coded by item type (quiz=lime, homework=blue). Month navigation, today highlight, completed-quiz dimming. |
 | **6** | ✅ done | **Grades**: instructor-defined weighted categories (`gradeCategories/`); per-student gradebook auto-populated from quiz submissions; manual score entry with EX (excused) support; weighted overall grade calc; Grade Settings modal; student Grades view with overall banner and category breakdown. CSV export. Add manual assignments (`manualAssignments/`) and rename any assignment (`assignmentNameOverrides/`). `buildGradebookAssignments` in `utils.js` accepts all these. New screens: `Gradebook.jsx`, `StudentGrades.jsx`. |
 | **6.7** | ✅ done | **UI/UX refinements I** (11 changes): type-representative SVG icons for module items; remove Reading/Notes from add-item UI (seed uses `file`); fix module drag/drop (draggable on ⠿ handle); item-level drag/drop reordering (↑↓ buttons removed); release-date calendar dropdown (Eastern TZ, month grid); sidebar active-tab: teal text only, no highlight bar; bug icon hover animation; class picker style restore; module/item title font normalization to 14 px. |
 | **6.8** | ✅ done | **UI/UX refinements II** (10 changes): three-dot (⋮) module action menu with inline calendar, add-item buttons, and delete; full-div draggable module headers and item rows (no ⠿ handles); animated teal-dashed drop gaps between drag targets; student portal TodoRail border removed; instructor tab "Modules" relabeled "Home"; gradebook CSV export button; calendar right-alignment fix (inside ⋮ menu); student login deduplication by `studentId`; gradebook add-assignment form; inline assignment title editing. |
+| **6.9** | ✅ done | **Pre-phase tweaks** (9 changes): global font-family reset so form elements match body text (fixes TodoRail); remove filename/size from student file items; move student Logout from header into Settings modal; `StudentGrades` now receives `assignmentNameOverrides` so student and instructor see the same names; instructor gradebook column headers show full title (no Q1/HW1 abbreviation); fix item drag/drop off-by-one (gap position → correct insert index); fix module ⋮ menu clipping (`overflow: visible` on card); per-item ⋮ menu with due date, visibility toggle, and delete (replaces inline due field and eye icon); remove announcement notification badge and unread modal (`announcementReads/` RTDB subtree now orphaned). |
 | **7** | — | **Syllabus** visual page (markdown-driven) + PDF link. |
 | **8** | — | **Course Evals** (likely an external link initially). |
 | **9** | — | **Email broadcast** for announcements once roster includes emails. |
 
 ## Notes for future sessions
 
-- **Gradebook architecture**: `buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides)` in `utils.js` returns a flat assignment list from module quiz items + manual additions, applying name overrides. `calcGrades({assignments, categories, scores, excused})` computes weighted totals. The gradebook pre-filters to "active" assignments (submitted OR past dueDate) before passing to `calcGrades` to avoid inflating the denominator. Grade data flows: `gradeOverrides/{studentId}/{assignmentId}` → `{score?, excused?}` in RTDB; `gradeCategories/{catId}` → `{id, name, weight, order}`; `manualAssignments/{id}` and `assignmentNameOverrides/{id}` are class-level.
+- **Gradebook architecture**: `buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides)` in `utils.js` returns a flat assignment list from module quiz items + manual additions, applying name overrides. `calcGrades({assignments, categories, scores, excused})` computes weighted totals. The gradebook pre-filters to "active" assignments (submitted OR past dueDate) before passing to `calcGrades` to avoid inflating the denominator. Grade data flows: `gradeOverrides/{studentId}/{assignmentId}` → `{score?, excused?}` in RTDB; `gradeCategories/{catId}` → `{id, name, weight, order}`; `manualAssignments/{id}` and `assignmentNameOverrides/{id}` are class-level. Both the instructor `Gradebook.jsx` and student `StudentGrades.jsx` receive `assignmentNameOverrides` from `App.jsx` so names are consistent across views.
 - **Module item types**: `reading` and `notes` types were removed from the add-item UI and converted to `file` in the seed template (`physics1.js`). Existing items of those types in RTDB still render correctly — `ModuleItem.jsx` and `ItemRow` in `Modules.jsx` fall back to `<FileIcon />` for unknown types. Do not re-add reading/notes unless intentionally restoring them.
 - **Roster gap**: `parseRoster` doesn't capture student email. Phase 9 needs:
   (a) extend `parseRoster` to detect an email column, (b) update the MyMercer

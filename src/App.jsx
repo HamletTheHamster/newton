@@ -86,7 +86,6 @@ export default function App() {
   const [pages, setPages] = useState({});
   const [uploads, setUploads] = useState({});
   const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
-  const [announcementReads, setAnnouncementReads] = useState({});  // { [annId]: true } for logged-in student
   const [gradeCategories, setGradeCategories] = useState({});
   const [gradeOverrides, setGradeOverrides] = useState({});     // { [studentId]: { [assignmentId]: { score?, excused? } } }
   const [assignmentCategories, setAssignmentCategories] = useState({});  // { [assignmentId]: catId }
@@ -150,7 +149,6 @@ export default function App() {
   const [viewingPage, setViewingPage] = useState(null);     // { title, content } for student PageViewer
   const [editingPage, setEditingPage] = useState(null);     // { moduleId, itemId?, pageId?, title, content }
   const [editingAnn, setEditingAnn] = useState(null);       // null | { annId?, title, body, createdAt? }
-  const [showUnreadModal, setShowUnreadModal] = useState(false);
 
   const chatRef = useRef(null); const detailRef = useRef(null); const inputRef = useRef(null);
   const fileInputRef = useRef(null); const rosterInputRef = useRef(null);
@@ -166,7 +164,6 @@ export default function App() {
   const currentParts = currentQ && !isYesNoQ && !isDragDropQ ? detectParts(currentQ.text) : null;
   const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId));
   const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const unreadAnnouncementCount = loggedInStudent ? sortedAnnouncements.filter(a => !announcementReads[a.id]).length : 0;
 
   // Flattened student search across all active classes (used on the student-search screen).
   const allActiveStudents = [];
@@ -464,14 +461,6 @@ export default function App() {
     updateClassCache(cid, 'announcements', updated);
     await fbSave(classPath(cid, `announcements/${annId}`), null);
   };
-  const markAllAnnouncementsRead = async () => {
-    if (!loggedInStudent || !currentClassId) return;
-    const reads = {};
-    Object.keys(announcements).forEach(id => { reads[id] = true; });
-    setAnnouncementReads(reads);
-    await fbSave(classPath(currentClassId, `announcementReads/${loggedInStudent.studentId}`), reads);
-  };
-
   const saveGradeCategories = async cats => {
     const cid = requireClass();
     setGradeCategories(cats);
@@ -522,23 +511,18 @@ export default function App() {
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery("");
     setOpenQuizzes({}); setViewingSub(null);
-    setAnnouncements({}); setAnnouncementReads({});
+    setAnnouncements({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     await loadClassData(classId);
   };
   const switchStudentClass = async (classId, student) => {
     if (!classId || classId === currentClassId) return;
-    const stu = student || loggedInStudent;
     setCurrentClassId(classId);
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
     setOpenQuizzes({}); setViewingSub(null);
-    setAnnouncements({}); setAnnouncementReads({});
+    setAnnouncements({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     await loadClassData(classId);
-    if (stu) {
-      const reads = await fbGet(classPath(classId, `announcementReads/${stu.studentId}`)).catch(() => null);
-      setAnnouncementReads(reads && typeof reads === 'object' ? reads : {});
-    }
   };
   const createClass = async (name, courseType) => {
     const trimmed = (name || "").trim();
@@ -651,13 +635,6 @@ export default function App() {
         .sort((a, b) => a.name.localeCompare(b.name));
       setStudentAvailableClasses(availableClasses);
       setLoggedInStudent(selectedStudent); setPwInput(""); setPwError(""); setShowStudentSettings(false); setStudentSection("home");
-      try {
-        const readsData = await fbGet(classPath(currentClassId, `announcementReads/${selectedStudent.studentId}`)).catch(() => null);
-        const reads = (readsData && typeof readsData === 'object') ? readsData : {};
-        setAnnouncementReads(reads);
-        const hasUnread = Object.values(announcements).some(a => a && !reads[a.id]);
-        if (hasUnread) setShowUnreadModal(true);
-      } catch {}
       setScreen("student-portal");
     }
     else setPwError("Incorrect password.");
@@ -676,7 +653,7 @@ export default function App() {
     setCurrentClassId(null);
     setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
     setModules([]); setModuleConfig({}); setPages({}); setUploads({});
-    setAnnouncements({}); setAnnouncementReads({}); setShowUnreadModal(false);
+    setAnnouncements({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     setScreen("student-search");
   };
@@ -1002,6 +979,9 @@ export default function App() {
             <div><label style={s.label}>Confirm New Password</label><input type="password" style={s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
             {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
             <button onClick={handleChangePassword} style={s.btnPri}>Update Password</button>
+            <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, paddingTop: 16 }}>
+              <button onClick={handleStudentLogout} style={{ ...s.btnDanger, width: "100%" }}>Log Out</button>
+            </div>
           </div>
         </div>
       </div>
@@ -1017,11 +997,8 @@ export default function App() {
 
     const handleStudentSectionSelect = id => {
       setStudentSection(id);
-      if (id === "announcements" && unreadAnnouncementCount > 0) markAllAnnouncementsRead();
     };
-    const studentSidebarItems = STUDENT_SECTIONS.map(it =>
-      it.id === "announcements" ? { ...it, badge: unreadAnnouncementCount } : it
-    );
+    const studentSidebarItems = STUDENT_SECTIONS;
 
     const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
@@ -1044,7 +1021,6 @@ export default function App() {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={handleStudentLogout} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Log Out</button>
           <button onClick={() => { setShowStudentSettings(true); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
         </div>
       </>
@@ -1054,11 +1030,11 @@ export default function App() {
     if (studentSection === "home") {
       mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} />;
     } else if (studentSection === "announcements") {
-      mainContent = <StudentAnnouncements announcements={sortedAnnouncements} reads={announcementReads} />;
+      mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
       mainContent = <StudentCalendar quizzes={quizzes} completedQuizIds={completedQuizIds} />;
     } else if (studentSection === "grades") {
-      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} />;
+      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -1067,28 +1043,6 @@ export default function App() {
       <>
         {bugModalJsx}
         {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
-        {showUnreadModal && sortedAnnouncements.filter(a => !announcementReads[a.id]).length > 0 && (
-          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}>
-            <div style={{ ...s.card, width: "100%", maxWidth: 560, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${BORDER}` }}>
-                <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>New Announcements</h3>
-                <button onClick={async () => { setShowUnreadModal(false); await markAllAnnouncementsRead(); }} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
-              </div>
-              <div style={{ overflowY: "auto", padding: "16px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
-                {sortedAnnouncements.filter(a => !announcementReads[a.id]).map(a => (
-                  <div key={a.id} style={{ ...s.card, padding: "14px 18px" }}>
-                    <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>{a.title}</p>
-                    {a.body && <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{a.body}</p>}
-                    <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{fmtDate(a.createdAt)}</p>
-                  </div>
-                ))}
-              </div>
-              <div style={{ padding: "14px 22px", borderTop: `1px solid ${BORDER}` }}>
-                <button onClick={async () => { setShowUnreadModal(false); await markAllAnnouncementsRead(); setStudentSection("announcements"); }} style={{ ...s.btnPri }}>View all announcements</button>
-              </div>
-            </div>
-          </div>
-        )}
         <Shell
           header={header}
           sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}

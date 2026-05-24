@@ -14,12 +14,6 @@ const ICON = {
 
 const hostnameOf = url => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
-const fmtBytes = bytes => {
-  if (!bytes || bytes < 1024) return (bytes || 0) + " B";
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
-  return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-};
-
 // One row in an expanded module.
 // `item`: merged item from buildModules — may carry url, pageId, pageContent, etc.
 // `meta`: { quiz?, completed?, late?, sub? } resolved data for quiz items
@@ -81,9 +75,6 @@ export function ModuleItem({ item, meta, onClick }) {
           )}
           {(t === "reading" || t === "notes") && item.url && <span>{hostnameOf(item.url)}</span>}
           {t === "link" && item.url && <span>{hostnameOf(item.url)}</span>}
-          {t === "file" && item.downloadUrl && (
-            <span>{item.fileName || "Download"}{item.fileSize ? " · " + fmtBytes(item.fileSize) : ""}</span>
-          )}
           {isPending && <span style={{ ...s.badge(MUTED), fontSize: 10 }}>Not yet linked</span>}
           {isComingSoon && <span style={{ ...s.badge(MUTED), fontSize: 10 }}>Coming soon</span>}
         </div>
