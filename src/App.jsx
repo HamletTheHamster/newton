@@ -139,7 +139,9 @@ export default function App() {
   const [loggedInStudent, setLoggedInStudent] = useState(null);
   const [showStudentSettings, setShowStudentSettings] = useState(false);
   const [editingAltName, setEditingAltName] = useState(null); const [altNameInput, setAltNameInput] = useState("");
+  const [editingEmail, setEditingEmail] = useState(null); const [emailInput, setEmailInput] = useState("");
   const [newPw1, setNewPw1] = useState(""); const [newPw2, setNewPw2] = useState(""); const [pwChangeMsg, setPwChangeMsg] = useState("");
+  const [stuEmailDraft, setStuEmailDraft] = useState(""); const [stuEmailMsg, setStuEmailMsg] = useState("");
 
   // ── Quiz state ──────────────────────────────────────────────────────────────
   const [activeQuiz, setActiveQuiz] = useState(null);
@@ -390,7 +392,7 @@ export default function App() {
     const onPop = () => {
       const { screen, quizDone, showStudentSettings } = navStateRef.current;
       if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go("student-portal") : setShowLeaveConfirm(true); }
-      else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); }
+      else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }
       else if (screen === "inst-sub-detail") { history.pushState({ newton: "inst-sub-detail" }, "", ""); go("instructor"); setViewingSub(null); }
       else if (screen === "student-pw") { history.pushState({ newton: "student-pw" }, "", ""); setSelectedStudent(null); go("student-search"); }
       else if (screen === "inst-login") { history.pushState({ newton: "inst-login" }, "", ""); go("student-search"); }
@@ -432,6 +434,20 @@ export default function App() {
   };
   const saveRoster = async r => { const cid = requireClass(); setRoster(r); updateClassCache(cid, 'roster', r); await fbSave(classPath(cid, 'roster'), r); };
   const saveAltName = async stu => { const val = altNameInput.trim(); const updated = roster.map(r => r.studentId === stu.studentId ? { ...r, altName: val || undefined } : r); await saveRoster(updated); setEditingAltName(null); };
+  const saveEmail = async stu => {
+    const val = emailInput.trim();
+    const updated = roster.map(r => { if (r.studentId !== stu.studentId) return r; const { email: _, ...rest } = r; return val ? { ...rest, email: val } : rest; });
+    await saveRoster(updated);
+    setEditingEmail(null);
+  };
+  const saveStudentEmail = async () => {
+    const val = stuEmailDraft.trim();
+    const updated = roster.map(r => { if (r.studentId !== loggedInStudent.studentId) return r; const { email: _, ...rest } = r; return val ? { ...rest, email: val } : rest; });
+    await saveRoster(updated);
+    setLoggedInStudent(prev => { const { email: _, ...rest } = prev; return val ? { ...rest, email: val } : rest; });
+    setStuEmailMsg("✅ Email updated.");
+    setTimeout(() => setStuEmailMsg(""), 3000);
+  };
   const saveStudentPws = async p => { const cid = requireClass(); setStudentPws(p); updateClassCache(cid, 'studentPws', p); await fbSave(classPath(cid, 'studentPws'), p); };
   const saveDueDates = async d => { const cid = requireClass(); setDueDates(d); updateClassCache(cid, 'dueDates', d); await fbSave(classPath(cid, 'dueDates'), d); };
   const saveSettings = async ns => { setSettings(ns); await fbSave('settings', ns); };
@@ -1047,14 +1063,21 @@ export default function App() {
     if (showStudentSettings) return (
       <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <div style={{ maxWidth: 420, width: "100%", ...s.card, padding: 36 }}>
-          <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); }} style={{ ...s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
+          <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }} style={{ ...s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
           <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>Account Settings</h2>
           <p style={{ ...s.muted, marginBottom: 28 }}>{loggedInStudent.fullName}</p>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div><label style={s.label}>New Password</label><input type="password" style={s.input} placeholder="New password" value={newPw1} onChange={e => setNewPw1(e.target.value)} /></div>
-            <div><label style={s.label}>Confirm New Password</label><input type="password" style={s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
-            {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
-            <button onClick={handleChangePassword} style={s.btnPri}>Update Password</button>
+            <div><label style={s.label}>Email</label><input type="email" style={s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
+            {stuEmailMsg && <p style={{ color: "#4ade80", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
+            <button onClick={saveStudentEmail} style={s.btnPri}>Update Email</button>
+            <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, paddingTop: 16 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                <div><label style={s.label}>New Password</label><input type="password" style={s.input} placeholder="New password" value={newPw1} onChange={e => setNewPw1(e.target.value)} /></div>
+                <div><label style={s.label}>Confirm New Password</label><input type="password" style={s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
+                {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
+                <button onClick={handleChangePassword} style={s.btnPri}>Update Password</button>
+              </div>
+            </div>
             <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, paddingTop: 16 }}>
               <button onClick={handleStudentLogout} style={{ ...s.btnDanger, width: "100%" }}>Log Out</button>
             </div>
@@ -1110,7 +1133,7 @@ export default function App() {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={() => { setShowStudentSettings(true); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
+          <button onClick={() => { setShowStudentSettings(true); setStuEmailDraft(loggedInStudent?.email || ""); setStuEmailMsg(""); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
         </div>
       </>
     );
@@ -1451,7 +1474,7 @@ export default function App() {
                 )}
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["#", "Name", "Student ID", "Password Status", ""].map(h => <th key={h} style={{ textAlign: "left", color: MUTED, fontWeight: 500, padding: "12px 16px", fontSize: 13 }}>{h}</th>)}</tr></thead>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["#", "Name", "Student ID", "Email", "Password Status", ""].map(h => <th key={h} style={{ textAlign: "left", color: MUTED, fontWeight: 500, padding: "12px 16px", fontSize: 13 }}>{h}</th>)}</tr></thead>
                     <tbody>{roster.map((stu, i) => (
                       <tr key={stu.studentId} style={{ borderBottom: i < roster.length - 1 ? `1px solid ${BORDER}` : "none" }}>
                         <td style={{ padding: "12px 16px", color: MUTED, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
@@ -1468,6 +1491,18 @@ export default function App() {
                           </div>
                         )}</td>
                         <td style={{ padding: "12px 16px", color: MUTED, fontFamily: "monospace", fontSize: 13 }}>{stu.studentId}</td>
+                        <td style={{ padding: "12px 16px" }}>{editingEmail === stu.studentId ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveEmail(stu); if (e.key === "Escape") setEditingEmail(null); }} placeholder="student@example.com" autoFocus style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 220 }} />
+                            <button onClick={() => saveEmail(stu)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
+                            <button onClick={() => setEditingEmail(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: stu.email ? MUTED : "rgba(255,255,255,0.2)", fontSize: 13 }}>{stu.email || "—"}</span>
+                            <button onClick={() => { setEditingEmail(stu.studentId); setEmailInput(stu.email || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Edit email">✎</button>
+                          </div>
+                        )}</td>
                         <td style={{ padding: "12px 16px" }}><span style={studentPws[stu.studentId] ? s.badge(TEAL) : s.badge(MUTED)}>{studentPws[stu.studentId] ? "Hashed password" : "Using Student ID"}</span></td>
                         <td style={{ padding: "8px 16px", textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
                           <button onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; const np = { ...studentPws }; delete np[stu.studentId]; await saveStudentPws(np); }} style={{ background: "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.4)", color: "#fde047", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Reset PW</button>
