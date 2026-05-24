@@ -34,8 +34,9 @@ classes/
     announcementReads/             {[studentId]: {[annId]: true}}  — orphaned; no longer read or written (notification feature removed in 6.9)
     gradeCategories/               {[catId]: {id, name, weight, order}}
     gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}
-    manualAssignments/             {[id]: {id, title, catId, maxPts}}
+    manualAssignments/             {[id]: {id, title, catId, maxPts, order}}  — seeded on first load (Midterm, Final, Lab 1a–14b)
     assignmentNameOverrides/       {[assignmentId]: overrideTitle}
+    assignmentOrderOverrides/      {[assignmentId]: number}  — column drag/drop order; overrides natural sort
 settings/                          {passwordHash, passwordSalt, totpSecret?, trustedDevices?}  — shared across classes
 bugReports/                        {id: {id, message, timestamp, read}}                       — shared across classes
 _test/                             scratch node for connectivity check on startup

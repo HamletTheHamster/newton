@@ -80,10 +80,12 @@ src/
     Modules.jsx                  — instructor Home tab: module authoring (module ⋮ menu: inline
                                    calendar, add-item, delete; item ⋮ menu: due date, visibility,
                                    delete; full-div drag/drop with correct gap targeting; animated
-                                   drop gaps; release dates; file uploads)
+                                   drop gaps own their onDragOver so jitter is eliminated; release
+                                   dates; file uploads)
     Gradebook.jsx                — instructor Gradebook: weighted categories, per-student score
                                    entry (EX support), manual assignments, CSV export, assignment
-                                   title overrides
+                                   title overrides, column drag/drop reordering, filter bar
+                                   (student/category/assignment)
 ```
 
 All screens currently live inline in `App.jsx`. Top-level state stays there;
@@ -150,8 +152,9 @@ classes/{classId}/
   announcementReads/        — { [studentId]: { [annId]: true } }  ← orphaned (notification feature removed in 6.9)
   gradeCategories/          — { [catId]: { id, name, weight, order } }
   gradeOverrides/           — { [studentId]: { [assignmentId]: { score?, excused? } } }
-  manualAssignments/        — { [id]: { id, title, catId, maxPts } }
+  manualAssignments/        — { [id]: { id, title, catId, maxPts, order } }  — seeded on first load with Midterm, Final, Lab 1a–14b
   assignmentNameOverrides/  — { [assignmentId]: overrideTitle }
+  assignmentOrderOverrides/ — { [assignmentId]: number }  — set by column drag/drop; overrides natural sort order
   homeworks/                — (future) student homework submissions
   syllabus/                 — (future) visual syllabus content
 ```
@@ -170,13 +173,14 @@ classes/{classId}/
 | **6.7** | ✅ done | **UI/UX refinements I** (11 changes): type-representative SVG icons for module items; remove Reading/Notes from add-item UI (seed uses `file`); fix module drag/drop (draggable on ⠿ handle); item-level drag/drop reordering (↑↓ buttons removed); release-date calendar dropdown (Eastern TZ, month grid); sidebar active-tab: teal text only, no highlight bar; bug icon hover animation; class picker style restore; module/item title font normalization to 14 px. |
 | **6.8** | ✅ done | **UI/UX refinements II** (10 changes): three-dot (⋮) module action menu with inline calendar, add-item buttons, and delete; full-div draggable module headers and item rows (no ⠿ handles); animated teal-dashed drop gaps between drag targets; student portal TodoRail border removed; instructor tab "Modules" relabeled "Home"; gradebook CSV export button; calendar right-alignment fix (inside ⋮ menu); student login deduplication by `studentId`; gradebook add-assignment form; inline assignment title editing. |
 | **6.9** | ✅ done | **Pre-phase tweaks** (9 changes): global font-family reset so form elements match body text (fixes TodoRail); remove filename/size from student file items; move student Logout from header into Settings modal; `StudentGrades` now receives `assignmentNameOverrides` so student and instructor see the same names; instructor gradebook column headers show full title (no Q1/HW1 abbreviation); fix item drag/drop off-by-one (gap position → correct insert index); fix module ⋮ menu clipping (`overflow: visible` on card); per-item ⋮ menu with due date, visibility toggle, and delete (replaces inline due field and eye icon); remove announcement notification badge and unread modal (`announcementReads/` RTDB subtree now orphaned). |
+| **6.10** | ✅ done | **Gradebook & drag/drop polish**: gradebook column headers auto-size to content (removed 72 px cap); module-level drag/drop off-by-one fixed (same `from < to ? to-1 : to` logic already applied to items); drag/drop jitter eliminated — gap divs now own their own `onDragOver` handler so hovering the gap keeps state alive without layout shift; default manual assignments seeded on first class load for any course type: Midterm Exam (order 650, after HW 7), Final Exam (order 1350, after HW 14), Lab 1a–Lab 14b (orders 2000–2027); `buildGradebookAssignments` assigns numeric `order` to module items (`modIdx*100+itemIdx`) and accepts a sixth param `assignmentOrderOverrides` — both natural and override orders are used to sort all assignments together; gradebook column drag/drop (drag `<th>` headers, teal left-edge drop indicator, persists to `assignmentOrderOverrides/` in RTDB); gradebook filter bar — student name search, category toggle chips, assignment name search, live `N/M` count in header. |
 | **7** | — | **Syllabus** visual page (markdown-driven) + PDF link. |
 | **8** | — | **Course Evals** (likely an external link initially). |
 | **9** | — | **Email broadcast** for announcements once roster includes emails. |
 
 ## Notes for future sessions
 
-- **Gradebook architecture**: `buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides)` in `utils.js` returns a flat assignment list from module quiz items + manual additions, applying name overrides. `calcGrades({assignments, categories, scores, excused})` computes weighted totals. The gradebook pre-filters to "active" assignments (submitted OR past dueDate) before passing to `calcGrades` to avoid inflating the denominator. Grade data flows: `gradeOverrides/{studentId}/{assignmentId}` → `{score?, excused?}` in RTDB; `gradeCategories/{catId}` → `{id, name, weight, order}`; `manualAssignments/{id}` and `assignmentNameOverrides/{id}` are class-level. Both the instructor `Gradebook.jsx` and student `StudentGrades.jsx` receive `assignmentNameOverrides` from `App.jsx` so names are consistent across views.
+- **Gradebook architecture**: `buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides)` in `utils.js` returns a flat sorted assignment list. Module items get `order = modIdx*100 + itemIdx`; manual assignments use their stored `order` field (defaults 9999 if absent). `assignmentOrderOverrides` (sixth param, `{[id]: number}`) overrides any natural order — set when the instructor drag/drops columns in `Gradebook.jsx` and persisted to `assignmentOrderOverrides/` in RTDB. The combined list is sorted by `order` so exams and labs interleave correctly with quiz/HW columns. Default assignments (Midterm, Final, 28 labs) are seeded into `manualAssignments/` on first class load when the key is empty — applies to all course types. `calcGrades({assignments, categories, scores, excused})` computes weighted totals. The gradebook pre-filters to "active" assignments (submitted OR past dueDate) before passing to `calcGrades` to avoid inflating the denominator. Grade data flows: `gradeOverrides/{studentId}/{assignmentId}` → `{score?, excused?}`; `gradeCategories/{catId}` → `{id, name, weight, order}`; `manualAssignments/{id}`, `assignmentNameOverrides/{id}`, and `assignmentOrderOverrides/{id}` are all class-level. Both `Gradebook.jsx` and `StudentGrades.jsx` receive `assignmentNameOverrides` from `App.jsx` so names stay consistent.
 - **Module item types**: `reading` and `notes` types were removed from the add-item UI and converted to `file` in the seed template (`physics1.js`). Existing items of those types in RTDB still render correctly — `ModuleItem.jsx` and `ItemRow` in `Modules.jsx` fall back to `<FileIcon />` for unknown types. Do not re-add reading/notes unless intentionally restoring them.
 - **Roster gap**: `parseRoster` doesn't capture student email. Phase 9 needs:
   (a) extend `parseRoster` to detect an email column, (b) update the MyMercer

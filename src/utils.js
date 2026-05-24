@@ -164,13 +164,13 @@ export function parseRoster(text) {
 // ── Gradebook utilities ───────────────────────────────────────────────────────
 const DEFAULT_GRADEBOOK_CAT_BY_TYPE = { quiz: "cat_quiz", homework: "cat_hw" };
 
-export function buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments = {}, assignmentNameOverrides = {}) {
+export function buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments = {}, assignmentNameOverrides = {}, assignmentOrderOverrides = {}) {
   const gradableTypes = new Set(["quiz", "homework"]);
   const quizById = Object.fromEntries((quizzes || []).map(q => [q.id, q]));
   const seen = new Set();
   const result = [];
-  for (const mod of (mergedModules || [])) {
-    for (const item of (mod.items || [])) {
+  for (const [modIdx, mod] of (mergedModules || []).entries()) {
+    for (const [itemIdx, item] of (mod.items || []).entries()) {
       if (!gradableTypes.has(item.type)) continue;
       const id = item.refId || item.id;
       if (seen.has(id)) continue;
@@ -178,18 +178,21 @@ export function buildGradebookAssignments(mergedModules, quizzes, assignmentCate
       const baseTitle = (item.type === "quiz" ? quizById[id]?.title : item.title) || id;
       const title = (assignmentNameOverrides || {})[id] || baseTitle;
       const catId = (assignmentCategories || {})[id] || DEFAULT_GRADEBOOK_CAT_BY_TYPE[item.type] || "cat_quiz";
-      result.push({ id, title, type: item.type, catId, maxPts: 10, dueDate: quizById[id]?.dueDate || null });
+      const naturalOrder = modIdx * 100 + itemIdx;
+      result.push({ id, title, type: item.type, catId, maxPts: 10, dueDate: quizById[id]?.dueDate || null, order: (assignmentOrderOverrides || {})[id] ?? naturalOrder });
     }
   }
+  const manual = [];
   for (const [id, ma] of Object.entries(manualAssignments || {})) {
     if (!seen.has(id)) {
       seen.add(id);
       const title = (assignmentNameOverrides || {})[id] || ma.title || id;
       const catId = (assignmentCategories || {})[id] || ma.catId || "cat_quiz";
-      result.push({ id, title, type: "manual", catId, maxPts: ma.maxPts || 10, dueDate: null });
+      const naturalOrder = ma.order ?? 9999;
+      manual.push({ id, title, type: "manual", catId, maxPts: ma.maxPts || 10, dueDate: null, order: (assignmentOrderOverrides || {})[id] ?? naturalOrder });
     }
   }
-  return result;
+  return [...result, ...manual].sort((a, b) => a.order - b.order);
 }
 
 export function calcGrades({ assignments, categories, scores, excused }) {

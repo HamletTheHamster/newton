@@ -37,6 +37,25 @@ import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
+// Manual assignment ordering: module items occupy order = modIdx*100 + itemIdx.
+// Module 7 HW lands at 603; Midterm at 650 slots it right after.
+// Final at 1350 follows Module 14 HW (1303). Labs start at 2000.
+function makeDefaultManualAssignments() {
+  const labs = {};
+  for (let w = 1; w <= 14; w++) {
+    for (const s of ["a", "b"]) {
+      const id = `asgn_lab${w}${s}`;
+      labs[id] = { id, title: `Lab ${w}${s}`, catId: "cat_lab", maxPts: 10, order: 2000 + (w - 1) * 2 + (s === "a" ? 0 : 1) };
+    }
+  }
+  return {
+    asgn_midterm: { id: "asgn_midterm", title: "Midterm Exam", catId: "cat_midterm", maxPts: 10, order: 650 },
+    asgn_final:   { id: "asgn_final",   title: "Final Exam",   catId: "cat_final",   maxPts: 10, order: 1350 },
+    ...labs,
+  };
+}
+const DEFAULT_MANUAL_ASSIGNMENTS = makeDefaultManualAssignments();
+
 const DEFAULT_GRADE_CATEGORIES = {
   cat_lab:     { id: "cat_lab",     name: "Laboratory",   weight: 20, dropLowest: 1, order: 0 },
   cat_hw:      { id: "cat_hw",      name: "Homework",     weight: 20, dropLowest: 1, order: 1 },
@@ -91,6 +110,7 @@ export default function App() {
   const [assignmentCategories, setAssignmentCategories] = useState({});  // { [assignmentId]: catId }
   const [manualAssignments, setManualAssignments] = useState({});         // { [id]: { id, title, catId, maxPts } }
   const [assignmentNameOverrides, setAssignmentNameOverrides] = useState({}); // { [assignmentId]: string }
+  const [assignmentOrderOverrides, setAssignmentOrderOverrides] = useState({}); // { [assignmentId]: number }
   const [studentAvailableClasses, setStudentAvailableClasses] = useState([]);
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
   const [ready, setReady] = useState(false);
@@ -259,7 +279,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -275,6 +295,7 @@ export default function App() {
         fbGet(classPath(classId, 'assignmentCategories')).catch(() => null),
         fbGet(classPath(classId, 'manualAssignments')).catch(() => null),
         fbGet(classPath(classId, 'assignmentNameOverrides')).catch(() => null),
+        fbGet(classPath(classId, 'assignmentOrderOverrides')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -294,8 +315,13 @@ export default function App() {
       }
       const gradeOverridesObj = (gradeOverridesData && typeof gradeOverridesData === 'object') ? gradeOverridesData : {};
       const assignmentCatsObj = (assignmentCatsData && typeof assignmentCatsData === 'object') ? assignmentCatsData : {};
-      const manualAsgnObj = (manualAsgnData && typeof manualAsgnData === 'object') ? manualAsgnData : {};
+      let manualAsgnObj = (manualAsgnData && typeof manualAsgnData === 'object') ? manualAsgnData : {};
+      if (Object.keys(manualAsgnObj).length === 0) {
+        manualAsgnObj = { ...DEFAULT_MANUAL_ASSIGNMENTS };
+        try { await fbSet(classPath(classId, 'manualAssignments'), manualAsgnObj); } catch (e) { console.warn("Manual assignment seed failed:", e?.message); }
+      }
       const nameOverrideObj = (nameOverrideData && typeof nameOverrideData === 'object') ? nameOverrideData : {};
+      const orderOverrideObj = (orderOverrideData && typeof orderOverrideData === 'object') ? orderOverrideData : {};
 
       // Auto-migrate / seed `modules` on first load. Idempotent: presence of the
       // array in RTDB is the sentinel.
@@ -331,6 +357,7 @@ export default function App() {
       setAssignmentCategories(assignmentCatsObj);
       setManualAssignments(manualAsgnObj);
       setAssignmentNameOverrides(nameOverrideObj);
+      setAssignmentOrderOverrides(orderOverrideObj);
       setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj } }));
     } finally { setClassDataLoading(false); }
   };
@@ -482,6 +509,11 @@ export default function App() {
     const cid = requireClass();
     setAssignmentNameOverrides(next);
     await fbSave(classPath(cid, 'assignmentNameOverrides'), Object.keys(next).length ? next : null);
+  };
+  const saveAssignmentOrderOverrides = async next => {
+    const cid = requireClass();
+    setAssignmentOrderOverrides(next);
+    await fbSave(classPath(cid, 'assignmentOrderOverrides'), Object.keys(next).length ? next : null);
   };
   const saveOverrideForStudent = async (studentId, studentOverrides) => {
     const cid = requireClass();
@@ -1309,11 +1341,13 @@ export default function App() {
             assignmentCategories={assignmentCategories}
             manualAssignments={manualAssignments}
             assignmentNameOverrides={assignmentNameOverrides}
+            assignmentOrderOverrides={assignmentOrderOverrides}
             onSaveGradeCategories={saveGradeCategories}
             onSaveOverrideForStudent={saveOverrideForStudent}
             onSaveAssignmentCategories={saveAssignmentCategories}
             onSaveManualAssignments={saveManualAssignments}
             onSaveAssignmentNameOverrides={saveAssignmentNameOverrides}
+            onSaveAssignmentOrderOverrides={saveAssignmentOrderOverrides}
           />
         )}
 

@@ -295,9 +295,12 @@ export function Modules({
 
         return (
           <div key={mod.id}>
-            {/* Animated gap before this module when it's the drop target */}
+            {/* Drop gap — between cards; owns its own onDragOver so hovering it keeps dragOverId alive */}
             {dragId && dragId !== mod.id && isDropTarget && (
-              <div style={{ height: 36, background: `${TEAL}22`, borderRadius: 8, border: `2px dashed ${TEAL}`, marginBottom: 10, transition: "height 0.15s" }} />
+              <div
+                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverId(mod.id); }}
+                style={{ height: 36, background: `${TEAL}22`, borderRadius: 8, border: `2px dashed ${TEAL}`, marginBottom: 10, transition: "height 0.15s" }}
+              />
             )}
             <div
               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverId(mod.id); }}
@@ -308,7 +311,11 @@ export function Modules({
                 const arr = [...(modules || [])];
                 const from = arr.findIndex(m => m.id === dragId);
                 const to = arr.findIndex(m => m.id === mod.id);
-                if (from >= 0 && to >= 0) { arr.splice(to, 0, arr.splice(from, 1)[0]); onSaveModules(arr); }
+                if (from >= 0 && to >= 0) {
+                  const [moved] = arr.splice(from, 1);
+                  arr.splice(from < to ? to - 1 : to, 0, moved);
+                  onSaveModules(arr);
+                }
                 setDragId(null); setDragOverId(null);
               }}
               onDragEnd={() => { setDragId(null); setDragOverId(null); }}
@@ -409,7 +416,10 @@ export function Modules({
                   return (
                     <Fragment key={item.id}>
                       {dragItemKey && dragItemKey !== itemKey && isItemDropTarget && (
-                        <div style={{ height: 28, background: `${TEAL}22`, borderRadius: 6, border: `2px dashed ${TEAL}`, margin: "2px 18px", transition: "height 0.15s" }} />
+                        <div
+                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragItemOverKey(itemKey); }}
+                          style={{ height: 28, background: `${TEAL}22`, borderRadius: 6, border: `2px dashed ${TEAL}`, margin: "2px 18px", transition: "height 0.15s" }}
+                        />
                       )}
                       <ItemRow
                         typeIcon={TYPE_ICON[item.type] || <FileIcon />}

@@ -239,11 +239,13 @@ export function Gradebook({
   assignmentCategories,
   manualAssignments,
   assignmentNameOverrides,
+  assignmentOrderOverrides,
   onSaveGradeCategories,
   onSaveOverrideForStudent,
   onSaveAssignmentCategories,
   onSaveManualAssignments,
   onSaveAssignmentNameOverrides,
+  onSaveAssignmentOrderOverrides,
 }) {
   const [editingCell, setEditingCell] = useState(null); // { studentId, assignmentId }
   const [editScore, setEditScore] = useState("");
@@ -257,7 +259,25 @@ export function Gradebook({
   const [newAsgTitle, setNewAsgTitle] = useState("");
   const [newAsgCat, setNewAsgCat] = useState("cat_quiz");
 
-  const assignments = buildGradebookAssignments(modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides);
+  // Column drag/drop
+  const [dragColId, setDragColId] = useState(null);
+  const [dragOverColId, setDragOverColId] = useState(null);
+
+  // Filters
+  const [filterStudent, setFilterStudent] = useState("");
+  const [filterCatIds, setFilterCatIds] = useState(new Set());
+  const [filterAssignment, setFilterAssignment] = useState("");
+
+  const assignments = buildGradebookAssignments(modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides);
+
+  const displayedStudents = (roster || []).filter(stu =>
+    !filterStudent || (stu.altName || stu.fullName).toLowerCase().includes(filterStudent.toLowerCase())
+  );
+  const displayedAssignments = assignments.filter(a =>
+    (filterCatIds.size === 0 || filterCatIds.has(a.catId)) &&
+    (!filterAssignment || a.title.toLowerCase().includes(filterAssignment.toLowerCase()))
+  );
+  const hasFilter = filterStudent || filterCatIds.size > 0 || filterAssignment;
 
   // Build per-student score and excused maps (override > submission > null)
   const scoreMap = {};
@@ -337,6 +357,19 @@ export function Gradebook({
     setAddingAssignment(false); setNewAsgTitle(""); setNewAsgCat("cat_quiz");
   };
 
+  const dropColumn = async (fromId, toId) => {
+    if (!fromId || fromId === toId) return;
+    const arr = [...assignments];
+    const from = arr.findIndex(a => a.id === fromId);
+    const to = arr.findIndex(a => a.id === toId);
+    if (from < 0 || to < 0) return;
+    const [moved] = arr.splice(from, 1);
+    arr.splice(from < to ? to - 1 : to, 0, moved);
+    const overrides = {};
+    arr.forEach((a, i) => { overrides[a.id] = i * 10; });
+    await onSaveAssignmentOrderOverrides(overrides);
+  };
+
   const exportCsv = () => {
     const sorted = [...(roster || [])].sort((a, b) => a.lastName.localeCompare(b.lastName));
     const rows = [
@@ -361,11 +394,46 @@ export function Gradebook({
     URL.revokeObjectURL(a.href);
   };
 
+  const toggleCat = catId => setFilterCatIds(prev => {
+    const next = new Set(prev);
+    if (next.has(catId)) next.delete(catId); else next.add(catId);
+    return next;
+  });
+
+  const filterBar = (
+    <div style={{ ...s.card, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+      <input
+        value={filterStudent} onChange={e => setFilterStudent(e.target.value)}
+        placeholder="Filter students…"
+        style={{ ...s.input, flex: "1 1 140px", padding: "5px 10px", fontSize: 12, height: "auto" }}
+      />
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+        {Object.values(gradeCategories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map(cat => (
+          <button
+            key={cat.id}
+            onClick={() => toggleCat(cat.id)}
+            style={{ ...s.badge(catColor(cat.id)), cursor: "pointer", padding: "3px 10px", fontSize: 11, border: filterCatIds.has(cat.id) ? `1px solid ${catColor(cat.id)}` : `1px solid ${catColor(cat.id)}44`, opacity: filterCatIds.has(cat.id) || filterCatIds.size === 0 ? 1 : 0.4, background: "none" }}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
+      <input
+        value={filterAssignment} onChange={e => setFilterAssignment(e.target.value)}
+        placeholder="Filter assignments…"
+        style={{ ...s.input, flex: "1 1 140px", padding: "5px 10px", fontSize: 12, height: "auto" }}
+      />
+      {hasFilter && (
+        <button onClick={() => { setFilterStudent(""); setFilterCatIds(new Set()); setFilterAssignment(""); }} style={{ ...s.btnGhost, width: "auto", padding: "5px 12px", fontSize: 12 }}>Clear</button>
+      )}
+    </div>
+  );
+
   const headerBar = (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
       <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 20, margin: 0 }}>Gradebook</h2>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        {roster?.length > 0 && <span style={{ color: MUTED, fontSize: 12 }}>{roster.length} students · {assignments.length} assignments</span>}
+        {roster?.length > 0 && <span style={{ color: MUTED, fontSize: 12 }}>{displayedStudents.length}/{roster.length} students · {displayedAssignments.length}/{assignments.length} assignments</span>}
         <button onClick={exportCsv} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Export CSV</button>
         <button onClick={() => setAddingAssignment(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>+ Assignment</button>
         <button onClick={() => setShowSettings(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Grade Settings</button>
@@ -377,6 +445,7 @@ export function Gradebook({
     return (
       <div>
         {headerBar}
+        {filterBar}
         <div style={{ ...s.card, padding: 40, textAlign: "center", color: MUTED }}>No students enrolled in this class yet.</div>
         {showSettings && <GradeSettingsModal gradeCategories={gradeCategories} onSave={onSaveGradeCategories} onClose={() => setShowSettings(false)} />}
       </div>
@@ -386,6 +455,7 @@ export function Gradebook({
   return (
     <div>
       {headerBar}
+      {filterBar}
 
       {addingAssignment && (
         <div style={{ ...s.card, padding: "12px 16px", marginBottom: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -421,25 +491,38 @@ export function Gradebook({
               </th>
 
               {/* Assignment column headers */}
-              {assignments.map(a => {
+              {displayedAssignments.map(a => {
                 const isDropping = catDropdownFor === a.id;
+                const isColDragTarget = dragOverColId === a.id && dragColId !== a.id;
                 return (
-                  <th key={a.id} style={{
-                    position: "sticky", top: 0, zIndex: 3, background: BG,
-                    padding: "6px 4px", textAlign: "center",
-                    borderBottom: CELL_BORDER, borderRight: CELL_BORDER,
-                    minWidth: 72, maxWidth: 72, verticalAlign: "bottom",
-                  }}>
+                  <th
+                    key={a.id}
+                    draggable
+                    onDragStart={e => { setDragColId(a.id); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", a.id); }}
+                    onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverColId(a.id); }}
+                    onDragLeave={() => setDragOverColId(null)}
+                    onDrop={async e => { e.preventDefault(); await dropColumn(dragColId, a.id); setDragColId(null); setDragOverColId(null); }}
+                    onDragEnd={() => { setDragColId(null); setDragOverColId(null); }}
+                    style={{
+                      position: "sticky", top: 0, zIndex: 3, background: BG,
+                      padding: "6px 8px", textAlign: "center",
+                      borderBottom: CELL_BORDER, borderRight: CELL_BORDER,
+                      minWidth: 72, verticalAlign: "bottom",
+                      boxShadow: isColDragTarget ? `inset 3px 0 0 ${TEAL}` : "none",
+                      cursor: dragColId ? "grabbing" : "grab",
+                      opacity: dragColId === a.id ? 0.5 : 1,
+                    }}
+                  >
                     {editingAssignmentTitle === a.id ? (
                       <input
                         autoFocus value={assignmentTitleDraft}
                         onChange={e => setAssignmentTitleDraft(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") commitAssignmentTitle(a.id); if (e.key === "Escape") setEditingAssignmentTitle(null); }}
                         onBlur={() => commitAssignmentTitle(a.id)}
-                        style={{ width: 62, fontSize: 10, background: "transparent", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 3, padding: "1px 3px", outline: "none", textAlign: "center" }}
+                        style={{ width: "100%", minWidth: 64, fontSize: 10, background: "transparent", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 3, padding: "1px 3px", outline: "none", textAlign: "center", boxSizing: "border-box" }}
                       />
                     ) : (
-                      <div onClick={() => { setEditingAssignmentTitle(a.id); setAssignmentTitleDraft(a.title); }} style={{ fontSize: 11, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 66, margin: "0 auto 2px", cursor: "text" }} title={`Click to rename · ${a.title}`}>
+                      <div onClick={() => { setEditingAssignmentTitle(a.id); setAssignmentTitleDraft(a.title); }} style={{ fontSize: 11, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", margin: "0 auto 2px", cursor: "text" }} title={`Click to rename · ${a.title}`}>
                         {a.title}
                       </div>
                     )}
@@ -462,7 +545,7 @@ export function Gradebook({
                     ) : (
                       <span
                         onClick={() => setCatDropdownFor(a.id)}
-                        style={{ ...s.badge(catColor(a.catId)), cursor: "pointer", fontSize: 9, padding: "1px 5px", maxWidth: 66, display: "inline-block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                        style={{ ...s.badge(catColor(a.catId)), cursor: "pointer", fontSize: 9, padding: "1px 5px", display: "inline-block", whiteSpace: "nowrap" }}
                         title={`${gradeCategories[a.catId]?.name || a.catId} — click to change`}
                       >
                         {gradeCategories[a.catId]?.name || a.catId}
@@ -484,7 +567,7 @@ export function Gradebook({
             </tr>
           </thead>
           <tbody>
-            {(roster || []).map((stu, rIdx) => {
+            {displayedStudents.map((stu, rIdx) => {
               const overall = overallGrades[stu.studentId]?.overall;
               const oc = overallColor(overall);
               const stickyBg = rIdx % 2 === 0 ? BG : "#1e1f21";
@@ -500,7 +583,7 @@ export function Gradebook({
                   </td>
 
                   {/* Score cells */}
-                  {assignments.map(a => {
+                  {displayedAssignments.map(a => {
                     const score = scoreMap[stu.studentId]?.[a.id];
                     const isExcused = !!excusedMap[stu.studentId]?.[a.id];
                     const isMissing = score == null && !isExcused;
