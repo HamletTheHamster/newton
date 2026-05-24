@@ -1,36 +1,28 @@
-// Merges course-defined modules with per-class instructor authoring
-// (release dates, hidden items, URL overrides, custom items).
+// Merges per-class instructor-authored `modules` with `moduleConfig`
+// (release date + visibility), `pages`, and `uploads`.
 //
-// Output shape (per module):
-//   { id, title, releaseDate, items: [ ...mergedItems ] }
-// Each merged item carries `_key` (stable id for visibility/override maps),
-// `_hidden` (boolean), and `_origin` ("course" | "custom").
+// Input:
+//   modulesArr:   [{ id, title, items: [{ id, type, ... }] }]   per-class, RTDB
+//   moduleConfig: { [mid]: { releaseDate?, hiddenItems?: { [itemId]: true } } }
+//   pages:        { [pageId]: { title, content, ... } }
+//   uploads:      { [uploadId]: { name, size, mime, downloadUrl, ... } }
 //
-// Item key convention:
-//   - Course items: `course:<index>` (positional in the course definition)
-//   - Custom items: `custom:<ci.id>`
-export function buildModules(courseModules, moduleConfig = {}, pages = {}, uploads = {}) {
-  if (!Array.isArray(courseModules)) return [];
-  return courseModules.map(mod => {
+// Output per module: { id, title, releaseDate, items: [...] }
+// Each item carries `_key` (= item.id) and `_hidden`, plus resolved
+// pageContent / downloadUrl / etc. for page and file items.
+export function buildModules(modulesArr, moduleConfig = {}, pages = {}, uploads = {}) {
+  if (!Array.isArray(modulesArr)) return [];
+  return modulesArr.map(mod => {
     const cfg = moduleConfig[mod.id] || {};
     const hidden = cfg.hiddenItems || {};
-    const overrides = cfg.itemOverrides || {};
-
-    const courseItems = (mod.items || []).map((it, i) => {
-      const key = `course:${i}`;
-      const ov = overrides[key] || {};
-      return { ...it, ...ov, _key: key, _hidden: !!hidden[key], _origin: "course" };
-    });
-
-    const customItems = (cfg.customItems || []).map(ci => {
-      const key = `custom:${ci.id}`;
-      const resolved = { ...ci, _key: key, _hidden: !!hidden[key], _origin: "custom" };
-      if (ci.type === "page") {
-        const page = pages[ci.pageId] || null;
+    const items = (mod.items || []).map(it => {
+      const resolved = { ...it, _key: it.id, _hidden: !!hidden[it.id] };
+      if (it.type === "page") {
+        const page = pages[it.pageId] || null;
         resolved.pageContent = page?.content || "";
         if (!resolved.title && page?.title) resolved.title = page.title;
-      } else if (ci.type === "file") {
-        const up = uploads[ci.uploadId] || null;
+      } else if (it.type === "file") {
+        const up = uploads[it.uploadId] || null;
         resolved.downloadUrl = up?.downloadUrl || null;
         resolved.fileName = up?.name || null;
         resolved.fileSize = up?.size || null;
@@ -39,11 +31,6 @@ export function buildModules(courseModules, moduleConfig = {}, pages = {}, uploa
       }
       return resolved;
     });
-
-    return {
-      ...mod,
-      releaseDate: cfg.releaseDate || null,
-      items: [...courseItems, ...customItems],
-    };
+    return { id: mod.id, title: mod.title, releaseDate: cfg.releaseDate || null, items };
   });
 }

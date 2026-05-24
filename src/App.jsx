@@ -10,8 +10,10 @@ import {
   compressImage, checkImageReadability, evaluateAnswer,
   parseRoster,
 } from "./utils.js";
-import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, modulesForCourse } from "./courses/index.js";
+import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, defaultModulesForCourse } from "./courses/index.js";
 import { buildModules } from "./courses/merge.js";
+import { migrateLegacyModuleConfig } from "./courses/migrate.js";
+import { newId } from "./courses/ids.js";
 
 import { SyncBadge } from "./components/SyncBadge.jsx";
 import { ChatMessages } from "./components/ChatMessages.jsx";
@@ -64,6 +66,7 @@ export default function App() {
   const [dueDates, setDueDates] = useState({});
   const [submissions, setSubmissions] = useState([]);
   const [checkedSubs, setCheckedSubs] = useState({});
+  const [modules, setModules] = useState([]);
   const [moduleConfig, setModuleConfig] = useState({});
   const [pages, setPages] = useState({});
   const [uploads, setUploads] = useState({});
@@ -123,7 +126,7 @@ export default function App() {
   const [bugReportOpen, setBugReportOpen] = useState(false);
   const [instBugHover, setInstBugHover] = useState(false);
   const [viewingPage, setViewingPage] = useState(null);     // { title, content } for student PageViewer
-  const [editingPage, setEditingPage] = useState(null);     // { moduleId, customItemId?, pageId?, title, content }
+  const [editingPage, setEditingPage] = useState(null);     // { moduleId, itemId?, pageId?, title, content }
 
   const chatRef = useRef(null); const detailRef = useRef(null); const inputRef = useRef(null);
   const fileInputRef = useRef(null); const rosterInputRef = useRef(null);
@@ -133,8 +136,7 @@ export default function App() {
   // ── Derived ─────────────────────────────────────────────────────────────────
   const courseQuizzes = quizzesForCourse(classMeta?.courseType);
   const quizzes = courseQuizzes.map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
-  const courseModules = modulesForCourse(classMeta?.courseType);
-  const modules = buildModules(courseModules, moduleConfig, pages, uploads);
+  const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
   const currentQ = activeQuiz?.questions[qIdx];
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
   const currentParts = currentQ && !isYesNoQ && !isDragDropQ ? detectParts(currentQ.text) : null;
@@ -215,6 +217,7 @@ export default function App() {
           if (c.moduleConfig && typeof c.moduleConfig === 'object') setModuleConfig(c.moduleConfig);
           if (c.pages && typeof c.pages === 'object') setPages(c.pages);
           if (c.uploads && typeof c.uploads === 'object') setUploads(c.uploads);
+          if (Array.isArray(c.modules)) setModules(c.modules);
         } else if (storedId) {
           setCurrentClassId(null);
         }
@@ -228,12 +231,13 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, moduleConfigData, pagesData, uploadsData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
         fbGet(classPath(classId, 'checkedSubs')).catch(() => null),
         fbGet(classPath(classId, 'submissions')).catch(() => null),
+        fbGet(classPath(classId, 'modules')).catch(() => null),
         fbGet(classPath(classId, 'moduleConfig')).catch(() => null),
         fbGet(classPath(classId, 'pages')).catch(() => null),
         fbGet(classPath(classId, 'uploads')).catch(() => null),
@@ -243,18 +247,39 @@ export default function App() {
       const datesObj = (datesData && typeof datesData === 'object') ? datesData : {};
       const checkedObj = (checkedData && typeof checkedData === 'object') ? checkedData : {};
       const subsArr = (subsData && typeof subsData === 'object') ? Object.values(subsData).flat().filter(Boolean) : [];
-      const moduleConfigObj = (moduleConfigData && typeof moduleConfigData === 'object') ? moduleConfigData : {};
+      let moduleConfigObj = (moduleConfigData && typeof moduleConfigData === 'object') ? moduleConfigData : {};
       const pagesObj = (pagesData && typeof pagesData === 'object') ? pagesData : {};
       const uploadsObj = (uploadsData && typeof uploadsData === 'object') ? uploadsData : {};
+
+      // Auto-migrate / seed `modules` on first load. Idempotent: presence of the
+      // array in RTDB is the sentinel.
+      let modulesArr = Array.isArray(modulesData) ? modulesData : null;
+      if (modulesArr === null) {
+        const meta = classes[classId]?.metadata;
+        const template = defaultModulesForCourse(meta?.courseType);
+        const { modules: seeded, moduleConfig: migratedCfg } = migrateLegacyModuleConfig(template, moduleConfigObj);
+        modulesArr = seeded;
+        try {
+          await fbSet(classPath(classId, 'modules'), seeded);
+          // Only rewrite moduleConfig if the migration produced something different
+          // (i.e. there was legacy hiddenItems/itemOverrides data to rekey).
+          if (Object.keys(migratedCfg).length || Object.keys(moduleConfigObj).length) {
+            await fbSet(classPath(classId, 'moduleConfig'), Object.keys(migratedCfg).length ? migratedCfg : null);
+            moduleConfigObj = migratedCfg;
+          }
+        } catch (e) { console.warn("Module seed/migration failed:", e?.message || e); }
+      }
+
       setRoster(rosterArr);
       setStudentPws(pwsObj);
       setDueDates(datesObj);
       setCheckedSubs(checkedObj);
       setSubmissions(subsArr);
+      setModules(modulesArr);
       setModuleConfig(moduleConfigObj);
       setPages(pagesObj);
       setUploads(uploadsObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj } }));
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -316,13 +341,18 @@ export default function App() {
   const saveDueDates = async d => { const cid = requireClass(); setDueDates(d); updateClassCache(cid, 'dueDates', d); await fbSave(classPath(cid, 'dueDates'), d); };
   const saveSettings = async ns => { setSettings(ns); await fbSave('settings', ns); };
   const saveChecked = async c => { const cid = requireClass(); setCheckedSubs(c); updateClassCache(cid, 'checkedSubs', c); await fbSave(classPath(cid, 'checkedSubs'), c); };
+  const saveModules = async nextArr => {
+    const cid = requireClass();
+    const safe = Array.isArray(nextArr) ? nextArr : [];
+    setModules(safe);
+    updateClassCache(cid, 'modules', safe);
+    await fbSave(classPath(cid, 'modules'), safe.length ? safe : null);
+  };
   const saveModuleConfigFor = async (moduleId, nextCfg) => {
     const cid = requireClass();
     const empty = !nextCfg
       || (!nextCfg.releaseDate
-          && (!nextCfg.hiddenItems || Object.keys(nextCfg.hiddenItems).length === 0)
-          && (!nextCfg.itemOverrides || Object.keys(nextCfg.itemOverrides).length === 0)
-          && (!nextCfg.customItems || nextCfg.customItems.length === 0));
+          && (!nextCfg.hiddenItems || Object.keys(nextCfg.hiddenItems).length === 0));
     const updated = { ...moduleConfig };
     if (empty) delete updated[moduleId]; else updated[moduleId] = nextCfg;
     setModuleConfig(updated);
@@ -390,7 +420,11 @@ export default function App() {
     const id = uniqueClassId(trimmed, new Set(Object.keys(classes)));
     const metadata = { name: trimmed, courseType, active: true, createdAt: new Date().toISOString() };
     await fbSave(classPath(id, 'metadata'), metadata);
-    setClasses(prev => ({ ...prev, [id]: { metadata, roster: [] } }));
+    // Seed the new class's modules from the course template, assigning fresh
+    // item IDs. Migration helper handles the seeding cleanly with empty config.
+    const { modules: seeded } = migrateLegacyModuleConfig(defaultModulesForCourse(courseType), {});
+    if (seeded.length) await fbSave(classPath(id, 'modules'), seeded);
+    setClasses(prev => ({ ...prev, [id]: { metadata, roster: [], modules: seeded } }));
     return id;
   };
   const setClassActive = async (classId, active) => {
@@ -414,13 +448,13 @@ export default function App() {
     if (currentClassId === classId) {
       setCurrentClassId(null);
       setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
-      setModuleConfig({}); setPages({}); setUploads({});
+      setModules([]); setModuleConfig({}); setPages({}); setUploads({});
     }
   };
 
   // ── Backup export ──────────────────────────────────────────────────────────
   const exportAllData = () => {
-    const snapshot = { version: 3, exportedAt: new Date().toISOString(), classId: currentClassId, classMeta, roster, studentPws, dueDates, submissions, checkedSubs, settings };
+    const snapshot = { version: 4, exportedAt: new Date().toISOString(), classId: currentClassId, classMeta, roster, studentPws, dueDates, submissions, checkedSubs, settings, modules, moduleConfig, pages, uploads };
     const json = JSON.stringify(snapshot, null, 2);
     const now = new Date(), pad = n => String(n).padStart(2, "0");
     const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
@@ -448,6 +482,25 @@ export default function App() {
         if (data.dueDates) await saveDueDates(data.dueDates);
         if (data.checkedSubs) await saveChecked(data.checkedSubs);
         if (data.submissions) await saveSubs(data.submissions);
+        if (Array.isArray(data.modules)) await saveModules(data.modules);
+        if (data.moduleConfig) {
+          const cid = requireClass();
+          setModuleConfig(data.moduleConfig);
+          updateClassCache(cid, 'moduleConfig', data.moduleConfig);
+          await fbSave(classPath(cid, 'moduleConfig'), Object.keys(data.moduleConfig).length ? data.moduleConfig : null);
+        }
+        if (data.pages) {
+          const cid = requireClass();
+          setPages(data.pages);
+          updateClassCache(cid, 'pages', data.pages);
+          await fbSave(classPath(cid, 'pages'), Object.keys(data.pages).length ? data.pages : null);
+        }
+        if (data.uploads) {
+          const cid = requireClass();
+          setUploads(data.uploads);
+          updateClassCache(cid, 'uploads', data.uploads);
+          await fbSave(classPath(cid, 'uploads'), Object.keys(data.uploads).length ? data.uploads : null);
+        }
         setBackupMsg("✅ Restore complete!");
       } catch (err) { setBackupMsg("⚠️ Restore failed: " + (err?.message || "unknown error")); }
     };
@@ -476,7 +529,7 @@ export default function App() {
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery(""); setShowStudentSettings(false);
     setCurrentClassId(null);
     setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
-    setModuleConfig({}); setPages({}); setUploads({});
+    setModules([]); setModuleConfig({}); setPages({}); setUploads({});
     setScreen("student-search");
   };
   const enterInstructor = async () => {
@@ -836,7 +889,7 @@ export default function App() {
 
     let mainContent;
     if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={modules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -1227,20 +1280,23 @@ export default function App() {
         {currentClassId && instructorSection === "modules" && (
           <InstructorModules
             classId={currentClassId}
-            courseModules={courseModules}
+            modules={modules}
             moduleConfig={moduleConfig}
             pages={pages}
             uploads={uploads}
             quizzes={quizzes}
+            onSaveModules={saveModules}
             onSaveModuleConfig={saveModuleConfigFor}
+            onSavePage={savePage}
+            onDeletePage={deletePage}
             onSaveUpload={saveUpload}
             onDeleteUpload={deleteUpload}
             onUploadFile={fbUpload}
-            onOpenPageEditor={(moduleId, customItemId, pageId) => {
+            onOpenPageEditor={(moduleId, itemId, pageId) => {
               const existing = pageId ? pages[pageId] : null;
               setEditingPage({
                 moduleId,
-                customItemId: customItemId || null,
+                itemId: itemId || null,
                 pageId: pageId || null,
                 title: existing?.title || "",
                 content: existing?.content || "",
@@ -1257,25 +1313,20 @@ export default function App() {
             onSave={async ({ title, content }) => {
               const now = new Date().toISOString();
               const isNew = !editingPage.pageId;
-              const pageId = editingPage.pageId || ("p_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));
+              const pageId = editingPage.pageId || newId("p");
               const existing = pages[pageId] || {};
               const page = { title, content, createdAt: existing.createdAt || now, updatedAt: now };
               await savePage(pageId, page);
-              if (isNew) {
-                const cfg = moduleConfig[editingPage.moduleId] || {};
-                const customItems = Array.isArray(cfg.customItems) ? [...cfg.customItems] : [];
-                const ciId = "ci_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
-                customItems.push({ id: ciId, type: "page", pageId, title });
-                await saveModuleConfigFor(editingPage.moduleId, { ...cfg, customItems });
-              } else {
-                const cfg = moduleConfig[editingPage.moduleId] || {};
-                if (Array.isArray(cfg.customItems)) {
-                  const customItems = cfg.customItems.map(ci =>
-                    ci.id === editingPage.customItemId ? { ...ci, title } : ci
-                  );
-                  await saveModuleConfigFor(editingPage.moduleId, { ...cfg, customItems });
+              const next = modules.map(mod => {
+                if (mod.id !== editingPage.moduleId) return mod;
+                if (isNew) {
+                  const items = [...(mod.items || []), { id: newId("it"), type: "page", pageId, title }];
+                  return { ...mod, items };
                 }
-              }
+                const items = (mod.items || []).map(it => it.id === editingPage.itemId ? { ...it, title } : it);
+                return { ...mod, items };
+              });
+              await saveModules(next);
               setEditingPage(null);
             }}
           />

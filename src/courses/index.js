@@ -13,7 +13,16 @@ export function quizzesForCourse(courseType) {
   return COURSES[courseType]?.quizzes || [];
 }
 
+// Deprecated as a render-time source — use buildModules(modules, ...) on the
+// per-class `modules` array instead. Still exported for compatibility.
 export function modulesForCourse(courseType) {
+  return COURSES[courseType]?.modules || [];
+}
+
+// Seed template for a new class (or for migrating an existing one). Returns
+// the raw, code-defined modules — the caller assigns fresh item IDs before
+// persisting.
+export function defaultModulesForCourse(courseType) {
   return COURSES[courseType]?.modules || [];
 }
 

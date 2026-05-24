@@ -48,9 +48,11 @@ src/
                                    compressImage/checkImageReadability/evaluateAnswer/
                                    parseRoster/parseGradesCSV
   courses/
-    index.js                     — COURSE_LABELS, COURSE_OPTIONS, quizzes/modulesForCourse()
-    merge.js                     — buildModules(courseModules, moduleConfig, pages) merger
-    physics1.js                  — QUIZZES_PHYSICS1 + MODULES_PHYSICS1 + (Phase 3) HOMEWORKS_PHYSICS1
+    index.js                     — COURSE_LABELS, COURSE_OPTIONS, quizzes/modulesForCourse(), defaultModulesForCourse()
+    ids.js                       — newId(prefix) for modules/items/pages/uploads
+    merge.js                     — buildModules(modulesArr, moduleConfig, pages, uploads)
+    migrate.js                   — migrateLegacyModuleConfig(template, legacyConfig) — seed + legacy fold-in
+    physics1.js                  — QUIZZES_PHYSICS1 + MODULES_PHYSICS1 (seed template) + (Phase 3) HOMEWORKS_PHYSICS1
     physics2.js                  — stubs
   components/
     SyncBadge.jsx                — instructor header sync indicator
@@ -83,32 +85,51 @@ co-located with state.
 
 ## Module data shape
 
-In `src/courses/physics1.js`:
+Modules live **per class** in RTDB at `classes/{classId}/modules` as an ordered
+array. The code-defined `MODULES_PHYSICS1` is a seed template only — used by
+`createClass` and the legacy-migration helper.
 
-```js
-const M = (n, topic) => ({
-  id: `m${n}`,
-  title: `Lecture ${n} | ${topic}`,
-  items: [
-    { type: "quiz",    refId: `q${n}` },              // → QUIZZES_PHYSICS1
-    { type: "reading", title: `Assigned Reading: Ch. ${n} — ${topic}`, url: null },
-    { type: "notes",   title: `Lecture ${n} Notes — ${topic}`, url: null },
-    { type: "homework",refId: `hw${n}` },             // (Phase 3) → HOMEWORKS_PHYSICS1
-  ],
-});
-export const MODULES_PHYSICS1 = [ M(1, "Course Access & Logistics"), ... ];
+```
+classes/{classId}/modules:
+[
+  {
+    id: "m_<rand>",
+    title: "Lecture 1 | Course Access & Logistics",
+    items: [
+      { id: "it_<rand>", type: "quiz",     refId: "q1" },
+      { id: "it_<rand>", type: "reading",  title: "Ch. 1", url: "https://…" | null },
+      { id: "it_<rand>", type: "notes",    title: "Notes 1", url: null },
+      { id: "it_<rand>", type: "homework", refId: "hw1" },
+      { id: "it_<rand>", type: "page",     pageId: "p_<rand>", title: "Lab Handout" },
+      { id: "it_<rand>", type: "link",     url: "https://…", title: "Khan Academy" },
+      { id: "it_<rand>", type: "file",     uploadId: "u_<rand>", title: "Slides" }
+    ]
+  },
+  ...
+]
 ```
 
-Item types: `quiz` and (Phase 3) `homework` reference data in the course file
-by `refId`. `reading`, `notes`, `page`, `file`, `link` carry their own
-`title` and `url`/`content`. The renderer (`ModuleItem.jsx`) handles each
-type. Currently only `quiz` is wired; the others render as "Coming soon".
+Every item has a stable `id`. The renderer (`src/components/lms/ModuleItem.jsx`)
+dispatches on `type`. `quiz` and `homework` reference data in the course code
+by `refId`. `reading`, `notes`, `link`, `page`, `file` carry their own
+title/URL/refs. Custom item edits (rename/reorder/delete) go through
+`src/screens/instructor/Modules.jsx` and write the whole `modules` array via
+`saveModules` in `App.jsx`.
+
+The seed template lives in `src/courses/physics1.js` (and `physics2.js`).
+On class creation, `createClass` clones the template and assigns fresh item
+IDs via `newId("it")` from `src/courses/ids.js`. On first load of an existing
+class with no `modules` array, `loadClassData` runs the migration helper
+`migrateLegacyModuleConfig` in `src/courses/migrate.js`, which folds legacy
+`itemOverrides` onto items, appends legacy `customItems`, and re-keys
+`hiddenItems` from positional `course:<i>` keys to the new item IDs.
 
 ## Future per-class subtrees (added in later phases)
 
 ```
 classes/{classId}/
-  moduleConfig/             — { [moduleId]: { releaseDate, customItems[], hiddenItems[] } }
+  modules/                  — ordered array of { id, title, items: [...] }
+  moduleConfig/             — { [moduleId]: { releaseDate, hiddenItems: { [itemId]: true } } }
   pages/                    — instructor-authored text pages
   uploads/                  — file refs (Firebase Storage path or external URL)
   announcements/            — broadcast posts
@@ -127,6 +148,7 @@ classes/{classId}/
 |---|---|---|
 | **1** | ✅ done | File split + LMS shell + sidebar nav + collapsible modules + To Do + working quizzes inside modules. Other sidebar pages are stubs; non-quiz item types show "Coming soon". |
 | **2** | ✅ done | **Instructor module authoring**. Per-module release dates with hard lock; instructor-authored text pages; external links; URL overrides on course-defined reading/notes; per-item visibility toggles; file uploads to Firebase Storage with progress bar and download access for students. RTDB subtrees: `moduleConfig/`, `pages/`, `uploads/`. Storage path: `classes/{classId}/uploads/{uploadId}/{filename}`. |
+| **2.5** | ✅ done | **Module CRUD**. Modules move from code-defined `MODULES_PHYSICS1` to per-class `classes/{classId}/modules` (ordered array). Instructors can create, rename, reorder, and delete modules; per-item CRUD now applies to every item (not just custom). Items get stable IDs; `moduleConfig` slims to `{releaseDate, hiddenItems}`. Auto-migrates legacy `moduleConfig.itemOverrides` and `customItems` on first load. `MODULES_PHYSICS1` is now a seed template used only by `createClass` and the migration helper. |
 | **3** | — | **Homework engine**: define HW data shape per course (problems with parts, point values, attempt limits). Student submission UI mirroring the quiz chat. Claude 4.7 light-hint feedback on wrong answers via `evaluateAnswer` pattern. Score persistence under `homeworks/`. |
 | **4** | — | **Announcements**: instructor compose UI; broadcast list page; unread popup modal on student login; per-student read tracking. Email broadcast deferred to Phase 9. |
 | **5** | — | **Calendar**: month grid showing assignment due dates color-coded by category. |
