@@ -11,6 +11,7 @@ export default async (req) => {
       "Content-Type": "application/json",
       "x-api-key": process.env.ANTHROPIC_API_KEY,
       "anthropic-version": "2023-06-01",
+      "anthropic-beta": "pdfs-2024-09-25",
     },
     body,
   });
@@ -21,5 +22,3 @@ export default async (req) => {
     headers: { "Content-Type": "application/json" },
   });
 };
-
-export const config = { path: "/.netlify/functions/claude" };

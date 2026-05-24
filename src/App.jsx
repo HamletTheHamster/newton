@@ -26,6 +26,8 @@ import { Sidebar } from "./components/lms/Sidebar.jsx";
 import { TodoRail } from "./components/lms/TodoRail.jsx";
 import { Home } from "./screens/student/Home.jsx";
 import { Stub } from "./screens/student/Stub.jsx";
+import { StudentSyllabus } from "./screens/student/StudentSyllabus.jsx";
+import { InstructorSyllabus } from "./screens/instructor/InstructorSyllabus.jsx";
 import { StudentAnnouncements } from "./screens/student/StudentAnnouncements.jsx";
 import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
@@ -80,6 +82,7 @@ const INSTRUCTOR_SECTIONS = [
   { id: "calendar",     label: "Calendar" },
   { id: "roster",       label: "Roster" },
   { id: "announcements", label: "Announcements" },
+  { id: "syllabus",     label: "Syllabus" },
   { id: "settings",     label: "Settings" },
 ];
 
@@ -104,6 +107,7 @@ export default function App() {
   const [moduleConfig, setModuleConfig] = useState({});
   const [pages, setPages] = useState({});
   const [uploads, setUploads] = useState({});
+  const [syllabus, setSyllabus] = useState(null);          // { pdf, fields } or null
   const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
   const [gradeCategories, setGradeCategories] = useState({});
   const [gradeOverrides, setGradeOverrides] = useState({});     // { [studentId]: { [assignmentId]: { score?, excused? } } }
@@ -260,6 +264,7 @@ export default function App() {
           if (c.moduleConfig && typeof c.moduleConfig === 'object') setModuleConfig(c.moduleConfig);
           if (c.pages && typeof c.pages === 'object') setPages(c.pages);
           if (c.uploads && typeof c.uploads === 'object') setUploads(c.uploads);
+          if (c.syllabus) setSyllabus(c.syllabus);
           if (Array.isArray(c.modules)) setModules(c.modules);
           if (c.announcements && typeof c.announcements === 'object') setAnnouncements(c.announcements);
           if (c.gradeCategories && typeof c.gradeCategories === 'object') setGradeCategories(c.gradeCategories);
@@ -279,7 +284,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -296,6 +301,7 @@ export default function App() {
         fbGet(classPath(classId, 'manualAssignments')).catch(() => null),
         fbGet(classPath(classId, 'assignmentNameOverrides')).catch(() => null),
         fbGet(classPath(classId, 'assignmentOrderOverrides')).catch(() => null),
+        fbGet(classPath(classId, 'syllabus')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -342,6 +348,8 @@ export default function App() {
         } catch (e) { console.warn("Module seed/migration failed:", e?.message || e); }
       }
 
+      const syllabusObj = (syllabusData && typeof syllabusData === 'object') ? syllabusData : null;
+
       setRoster(rosterArr);
       setStudentPws(pwsObj);
       setDueDates(datesObj);
@@ -351,6 +359,7 @@ export default function App() {
       setModuleConfig(moduleConfigObj);
       setPages(pagesObj);
       setUploads(uploadsObj);
+      setSyllabus(syllabusObj);
       setAnnouncements(annsObj);
       setGradeCategories(gradeCatsObj);
       setGradeOverrides(gradeOverridesObj);
@@ -358,7 +367,7 @@ export default function App() {
       setManualAssignments(manualAsgnObj);
       setAssignmentNameOverrides(nameOverrideObj);
       setAssignmentOrderOverrides(orderOverrideObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj } }));
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -469,6 +478,19 @@ export default function App() {
     if (existing?.storagePath) {
       try { await fbDeleteStorage(existing.storagePath); } catch (e) { console.warn("Storage delete failed:", e?.message || e); }
     }
+  };
+
+  const saveSyllabus = async (data) => {
+    const cid = requireClass();
+    setSyllabus(data);
+    updateClassCache(cid, 'syllabus', data);
+    await fbSave(classPath(cid, 'syllabus'), data);
+  };
+  const deleteSyllabus = async () => {
+    const cid = requireClass();
+    setSyllabus(null);
+    updateClassCache(cid, 'syllabus', null);
+    await fbSave(classPath(cid, 'syllabus'), null);
   };
 
   const saveAnnouncement = async (ann) => {
@@ -1067,6 +1089,8 @@ export default function App() {
       mainContent = <StudentCalendar quizzes={quizzes} completedQuizIds={completedQuizIds} />;
     } else if (studentSection === "grades") {
       mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
+    } else if (studentSection === "syllabus") {
+      mainContent = <StudentSyllabus syllabus={syllabus} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -1496,6 +1520,16 @@ export default function App() {
               await saveAnnouncement({ id: editingAnn.annId || null, title, body, createdAt: editingAnn.createdAt || null });
               setEditingAnn(null);
             }}
+          />
+        )}
+
+        {currentClassId && instructorSection === "syllabus" && (
+          <InstructorSyllabus
+            syllabus={syllabus}
+            classId={currentClassId}
+            onUploadFile={fbUpload}
+            onSaveSyllabus={saveSyllabus}
+            onDeleteSyllabus={deleteSyllabus}
           />
         )}
 
