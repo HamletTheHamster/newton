@@ -72,7 +72,8 @@ src/
       PageViewer.jsx             — student modal: read-only page rendering (pre-wrap text)
   screens/student/
     Home.jsx                     — student Home landing (module list, dispatches by type)
-    Stub.jsx                     — generic "Coming Soon" placeholder for Calendar/etc.
+    StudentCalendar.jsx          — month grid calendar; events from quizzes+dueDates
+    Stub.jsx                     — generic "Coming Soon" placeholder for Syllabus/Grades/etc.
   screens/instructor/
     Modules.jsx                  — instructor module authoring screen (release dates,
                                    visibility, URL overrides, custom pages/links)
@@ -151,7 +152,7 @@ classes/{classId}/
 | **2.5** | ✅ done | **Module CRUD**. Modules move from code-defined `MODULES_PHYSICS1` to per-class `classes/{classId}/modules` (ordered array). Instructors can create, rename, reorder, and delete modules; per-item CRUD now applies to every item (not just custom). Items get stable IDs; `moduleConfig` slims to `{releaseDate, hiddenItems}`. Auto-migrates legacy `moduleConfig.itemOverrides` and `customItems` on first load. `MODULES_PHYSICS1` is now a seed template used only by `createClass` and the migration helper. |
 | **3** | — | **Homework engine**: define HW data shape per course (problems with parts, point values, attempt limits). Student submission UI mirroring the quiz chat. Claude 4.7 light-hint feedback on wrong answers via `evaluateAnswer` pattern. Score persistence under `homeworks/`. |
 | **4** | ✅ done | **Announcements**: instructor compose UI; broadcast list page; unread popup modal on student login; per-student read tracking (`announcementReads/`). Email broadcast deferred to Phase 9. |
-| **5** | — | **Calendar**: month grid showing assignment due dates color-coded by category. |
+| **5** | ✅ done | **Calendar**: month grid showing assignment due dates color-coded by item type (quiz=lime, homework=blue). Month navigation, today highlight, completed-quiz dimming. Color-by-grade-category deferred to Phase 6. |
 | **6** | — | **Grades**: instructor-defined weighted categories; per-student gradebook with auto-pull from submissions; manual edit/override; weighted total. |
 | **7** | — | **Syllabus** visual page (markdown-driven) + PDF link. |
 | **8** | — | **Course Evals** (likely an external link initially). |

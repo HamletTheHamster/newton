@@ -27,6 +27,7 @@ import { TodoRail } from "./components/lms/TodoRail.jsx";
 import { Home } from "./screens/student/Home.jsx";
 import { Stub } from "./screens/student/Stub.jsx";
 import { StudentAnnouncements } from "./screens/student/StudentAnnouncements.jsx";
+import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
@@ -45,6 +46,7 @@ const STUDENT_SECTIONS = [
 
 const INSTRUCTOR_SECTIONS = [
   { id: "submissions", label: "Submissions" },
+  { id: "calendar", label: "Calendar" },
   { id: "quizzes", label: "Quizzes & Dates" },
   { id: "roster", label: "Roster" },
   { id: "modules", label: "Modules" },
@@ -915,13 +917,12 @@ export default function App() {
     );
 
     const STUB_COPY = {
-      calendar: "Assignment due dates, color-coded by category, in a month grid view.",
       syllabus: "A clean visual rendering of the course syllabus plus a PDF download.",
       grades: "Your gradebook with category weights and weighted overall grade.",
       evals: "Course evaluation forms when they open.",
     };
     const SECTION_TITLE = {
-      calendar: "Calendar", syllabus: "Syllabus", grades: "Grades", evals: "Course Evals",
+      syllabus: "Syllabus", grades: "Grades", evals: "Course Evals",
     };
 
     const handleStudentSectionSelect = id => {
@@ -950,6 +951,8 @@ export default function App() {
       mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} reads={announcementReads} />;
+    } else if (studentSection === "calendar") {
+      mainContent = <StudentCalendar quizzes={quizzes} completedQuizIds={completedQuizIds} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -1435,6 +1438,10 @@ export default function App() {
               setEditingAnn(null);
             }}
           />
+        )}
+
+        {currentClassId && instructorSection === "calendar" && (
+          <StudentCalendar quizzes={quizzes} completedQuizIds={new Set()} />
         )}
 
         {instructorSection === "settings" && (
