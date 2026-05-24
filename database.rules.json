@@ -15,7 +15,9 @@
         "modules": {},
         "moduleConfig": {},
         "pages": {},
-        "uploads": {}
+        "uploads": {},
+        "announcements": {},
+        "announcementReads": {}
       }
     },
     "settings": {},

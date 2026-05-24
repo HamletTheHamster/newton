@@ -26,7 +26,10 @@ import { Sidebar } from "./components/lms/Sidebar.jsx";
 import { TodoRail } from "./components/lms/TodoRail.jsx";
 import { Home } from "./screens/student/Home.jsx";
 import { Stub } from "./screens/student/Stub.jsx";
+import { StudentAnnouncements } from "./screens/student/StudentAnnouncements.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
+import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
+import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
 import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
 
@@ -45,6 +48,7 @@ const INSTRUCTOR_SECTIONS = [
   { id: "quizzes", label: "Quizzes & Dates" },
   { id: "roster", label: "Roster" },
   { id: "modules", label: "Modules" },
+  { id: "announcements", label: "Announcements" },
   { id: "settings", label: "Settings" },
   { id: "bugs", label: "Bug Reports" },
 ];
@@ -70,6 +74,8 @@ export default function App() {
   const [moduleConfig, setModuleConfig] = useState({});
   const [pages, setPages] = useState({});
   const [uploads, setUploads] = useState({});
+  const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
+  const [announcementReads, setAnnouncementReads] = useState({});  // { [annId]: true } for logged-in student
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
   const [ready, setReady] = useState(false);
   const [classDataLoading, setClassDataLoading] = useState(false);
@@ -127,6 +133,8 @@ export default function App() {
   const [instBugHover, setInstBugHover] = useState(false);
   const [viewingPage, setViewingPage] = useState(null);     // { title, content } for student PageViewer
   const [editingPage, setEditingPage] = useState(null);     // { moduleId, itemId?, pageId?, title, content }
+  const [editingAnn, setEditingAnn] = useState(null);       // null | { annId?, title, body, createdAt? }
+  const [showUnreadModal, setShowUnreadModal] = useState(false);
 
   const chatRef = useRef(null); const detailRef = useRef(null); const inputRef = useRef(null);
   const fileInputRef = useRef(null); const rosterInputRef = useRef(null);
@@ -141,6 +149,8 @@ export default function App() {
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
   const currentParts = currentQ && !isYesNoQ && !isDragDropQ ? detectParts(currentQ.text) : null;
   const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId));
+  const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const unreadAnnouncementCount = loggedInStudent ? sortedAnnouncements.filter(a => !announcementReads[a.id]).length : 0;
 
   // Flattened student search across all active classes (used on the student-search screen).
   const allActiveStudents = [];
@@ -218,6 +228,7 @@ export default function App() {
           if (c.pages && typeof c.pages === 'object') setPages(c.pages);
           if (c.uploads && typeof c.uploads === 'object') setUploads(c.uploads);
           if (Array.isArray(c.modules)) setModules(c.modules);
+          if (c.announcements && typeof c.announcements === 'object') setAnnouncements(c.announcements);
         } else if (storedId) {
           setCurrentClassId(null);
         }
@@ -231,7 +242,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -241,6 +252,7 @@ export default function App() {
         fbGet(classPath(classId, 'moduleConfig')).catch(() => null),
         fbGet(classPath(classId, 'pages')).catch(() => null),
         fbGet(classPath(classId, 'uploads')).catch(() => null),
+        fbGet(classPath(classId, 'announcements')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -250,6 +262,7 @@ export default function App() {
       let moduleConfigObj = (moduleConfigData && typeof moduleConfigData === 'object') ? moduleConfigData : {};
       const pagesObj = (pagesData && typeof pagesData === 'object') ? pagesData : {};
       const uploadsObj = (uploadsData && typeof uploadsData === 'object') ? uploadsData : {};
+      const annsObj = (annsData && typeof annsData === 'object') ? annsData : {};
 
       // Auto-migrate / seed `modules` on first load. Idempotent: presence of the
       // array in RTDB is the sentinel.
@@ -279,7 +292,8 @@ export default function App() {
       setModuleConfig(moduleConfigObj);
       setPages(pagesObj);
       setUploads(uploadsObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj } }));
+      setAnnouncements(annsObj);
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, announcements: annsObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -392,6 +406,31 @@ export default function App() {
     }
   };
 
+  const saveAnnouncement = async (ann) => {
+    const cid = requireClass();
+    const now = new Date().toISOString();
+    const annId = ann.id || newId("ann");
+    const record = { id: annId, title: ann.title.trim(), body: ann.body, createdAt: ann.createdAt || now, ...(ann.id ? { updatedAt: now } : {}) };
+    const updated = { ...announcements, [annId]: record };
+    setAnnouncements(updated);
+    updateClassCache(cid, 'announcements', updated);
+    await fbSave(classPath(cid, `announcements/${annId}`), record);
+  };
+  const deleteAnnouncement = async (annId) => {
+    const cid = requireClass();
+    const updated = { ...announcements }; delete updated[annId];
+    setAnnouncements(updated);
+    updateClassCache(cid, 'announcements', updated);
+    await fbSave(classPath(cid, `announcements/${annId}`), null);
+  };
+  const markAllAnnouncementsRead = async () => {
+    if (!loggedInStudent || !currentClassId) return;
+    const reads = {};
+    Object.keys(announcements).forEach(id => { reads[id] = true; });
+    setAnnouncementReads(reads);
+    await fbSave(classPath(currentClassId, `announcementReads/${loggedInStudent.studentId}`), reads);
+  };
+
   const saveSubs = async (newSubs, studentId = null) => {
     const cid = requireClass();
     setSubmissions(newSubs);
@@ -412,6 +451,7 @@ export default function App() {
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery("");
     setOpenQuizzes({}); setViewingSub(null);
+    setAnnouncements({}); setAnnouncementReads({});
     await loadClassData(classId);
   };
   const createClass = async (name, courseType) => {
@@ -514,7 +554,17 @@ export default function App() {
     if (!stored) { ok = pwInput === selectedStudent.studentId; if (ok) { const h = await makeHash(pwInput); await saveStudentPws({ ...studentPws, [selectedStudent.studentId]: h }); } }
     else if (typeof stored === "string") { ok = pwInput === stored; if (ok) { const h = await makeHash(pwInput); await saveStudentPws({ ...studentPws, [selectedStudent.studentId]: h }); } }
     else { ok = await verifyPw(pwInput, stored.hash, stored.salt); }
-    if (ok) { setLoggedInStudent(selectedStudent); setPwInput(""); setPwError(""); setShowStudentSettings(false); setStudentSection("home"); setScreen("student-portal"); }
+    if (ok) {
+      setLoggedInStudent(selectedStudent); setPwInput(""); setPwError(""); setShowStudentSettings(false); setStudentSection("home");
+      try {
+        const readsData = await fbGet(classPath(currentClassId, `announcementReads/${selectedStudent.studentId}`)).catch(() => null);
+        const reads = (readsData && typeof readsData === 'object') ? readsData : {};
+        setAnnouncementReads(reads);
+        const hasUnread = Object.values(announcements).some(a => a && !reads[a.id]);
+        if (hasUnread) setShowUnreadModal(true);
+      } catch {}
+      setScreen("student-portal");
+    }
     else setPwError("Incorrect password.");
   };
   const handleChangePassword = async () => {
@@ -530,6 +580,7 @@ export default function App() {
     setCurrentClassId(null);
     setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
     setModules([]); setModuleConfig({}); setPages({}); setUploads({});
+    setAnnouncements({}); setAnnouncementReads({}); setShowUnreadModal(false);
     setScreen("student-search");
   };
   const enterInstructor = async () => {
@@ -866,13 +917,20 @@ export default function App() {
     const STUB_COPY = {
       calendar: "Assignment due dates, color-coded by category, in a month grid view.",
       syllabus: "A clean visual rendering of the course syllabus plus a PDF download.",
-      announcements: "Instructor announcements with unread alerts and email broadcast.",
       grades: "Your gradebook with category weights and weighted overall grade.",
       evals: "Course evaluation forms when they open.",
     };
     const SECTION_TITLE = {
-      calendar: "Calendar", syllabus: "Syllabus", announcements: "Announcements", grades: "Grades", evals: "Course Evals",
+      calendar: "Calendar", syllabus: "Syllabus", grades: "Grades", evals: "Course Evals",
     };
+
+    const handleStudentSectionSelect = id => {
+      setStudentSection(id);
+      if (id === "announcements" && unreadAnnouncementCount > 0) markAllAnnouncementsRead();
+    };
+    const studentSidebarItems = STUDENT_SECTIONS.map(it =>
+      it.id === "announcements" ? { ...it, badge: unreadAnnouncementCount } : it
+    );
 
     const header = (
       <>
@@ -890,6 +948,8 @@ export default function App() {
     let mainContent;
     if (studentSection === "home") {
       mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} />;
+    } else if (studentSection === "announcements") {
+      mainContent = <StudentAnnouncements announcements={sortedAnnouncements} reads={announcementReads} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -898,9 +958,31 @@ export default function App() {
       <>
         {bugModalJsx}
         {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
+        {showUnreadModal && sortedAnnouncements.filter(a => !announcementReads[a.id]).length > 0 && (
+          <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}>
+            <div style={{ ...s.card, width: "100%", maxWidth: 560, maxHeight: "80vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${BORDER}` }}>
+                <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>New Announcements</h3>
+                <button onClick={async () => { setShowUnreadModal(false); await markAllAnnouncementsRead(); }} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+              </div>
+              <div style={{ overflowY: "auto", padding: "16px 22px", display: "flex", flexDirection: "column", gap: 12 }}>
+                {sortedAnnouncements.filter(a => !announcementReads[a.id]).map(a => (
+                  <div key={a.id} style={{ ...s.card, padding: "14px 18px" }}>
+                    <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>{a.title}</p>
+                    {a.body && <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 14, margin: "0 0 8px", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{a.body}</p>}
+                    <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{fmtDate(a.createdAt)}</p>
+                  </div>
+                ))}
+              </div>
+              <div style={{ padding: "14px 22px", borderTop: `1px solid ${BORDER}` }}>
+                <button onClick={async () => { setShowUnreadModal(false); await markAllAnnouncementsRead(); setStudentSection("announcements"); }} style={{ ...s.btnPri }}>View all announcements</button>
+              </div>
+            </div>
+          </div>
+        )}
         <Shell
           header={header}
-          sidebar={<Sidebar items={STUDENT_SECTIONS} activeId={studentSection} onSelect={setStudentSection} />}
+          sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}
           rightRail={<TodoRail items={todoItems} />}
         >
           {mainContent}
@@ -1328,6 +1410,29 @@ export default function App() {
               });
               await saveModules(next);
               setEditingPage(null);
+            }}
+          />
+        )}
+
+        {currentClassId && instructorSection === "announcements" && (
+          <InstructorAnnouncements
+            announcements={sortedAnnouncements}
+            onCompose={() => setEditingAnn({ title: "", body: "" })}
+            onEdit={ann => setEditingAnn({ annId: ann.id, title: ann.title, body: ann.body, createdAt: ann.createdAt })}
+            onDelete={async annId => {
+              if (!window.confirm("Delete this announcement? This cannot be undone.")) return;
+              await deleteAnnouncement(annId);
+            }}
+          />
+        )}
+        {editingAnn && (
+          <AnnouncementEditor
+            initialTitle={editingAnn.title}
+            initialBody={editingAnn.body}
+            onCancel={() => setEditingAnn(null)}
+            onSave={async ({ title, body }) => {
+              await saveAnnouncement({ id: editingAnn.annId || null, title, body, createdAt: editingAnn.createdAt || null });
+              setEditingAnn(null);
             }}
           />
         )}
