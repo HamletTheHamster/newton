@@ -1,5 +1,24 @@
 import { s, TEAL, TEAL_DIM, MUTED, BORDER } from "../../theme.js";
 
+// Matches CAT_COLORS in Gradebook.jsx
+const CAT_COLORS = {
+  lab:     "#818cf8",
+  hw:      "#60a5fa",
+  quiz:    "#34d399",
+  midterm: "#fbbf24",
+  final:   "#f87171",
+};
+
+function gradingColor(name) {
+  const n = name.toLowerCase();
+  if (n.includes("lab"))                        return CAT_COLORS.lab;
+  if (n.includes("homework") || n === "hw")     return CAT_COLORS.hw;
+  if (n.includes("quiz"))                       return CAT_COLORS.quiz;
+  if (n.includes("midterm") || n.includes("mid")) return CAT_COLORS.midterm;
+  if (n.includes("final"))                      return CAT_COLORS.final;
+  return TEAL;
+}
+
 export function StudentSyllabus({ syllabus }) {
   const fields = syllabus?.fields;
   const pdf = syllabus?.pdf;
@@ -110,16 +129,23 @@ export function StudentSyllabus({ syllabus }) {
               <CardLabel>Grading</CardLabel>
               <div style={{ display: "flex", gap: 32, flexWrap: "wrap" }}>
                 <div style={{ flex: "1 1 260px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {/* Stacked bar */}
+                  <div style={{ display: "flex", height: 22, borderRadius: 8, overflow: "hidden", marginBottom: 14, gap: 2 }}>
                     {fields.gradingBreakdown.map((g, i) => (
-                      <div key={i}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 5 }}>
-                          <span style={{ color: "#fff", fontSize: 14 }}>{g.name}</span>
-                          <span style={{ color: TEAL, fontWeight: 700, fontSize: 14 }}>{g.weight}%</span>
-                        </div>
-                        <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 4, height: 7, overflow: "hidden" }}>
-                          <div style={{ background: TEAL, width: `${g.weight}%`, height: "100%", borderRadius: 4 }} />
-                        </div>
+                      <div
+                        key={i}
+                        title={`${g.name}: ${g.weight}%`}
+                        style={{ flex: `0 0 ${g.weight}%`, background: gradingColor(g.name), height: "100%" }}
+                      />
+                    ))}
+                  </div>
+                  {/* Legend */}
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 20px" }}>
+                    {fields.gradingBreakdown.map((g, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: gradingColor(g.name), flexShrink: 0 }} />
+                        <span style={{ color: "#fff", fontSize: 13 }}>{g.name}</span>
+                        <span style={{ color: MUTED, fontSize: 13 }}>{g.weight}%</span>
                       </div>
                     ))}
                   </div>
