@@ -1,7 +1,7 @@
 {
   "rules": {
-    ".read": "request.app.token.valid",
-    ".write": "request.app.token.valid",
+    ".read": "auth != null",
+    ".write": "auth != null",
     "classes": {
       "$classId": {
         "metadata": {
@@ -11,7 +11,10 @@
         "studentPws": {},
         "submissions": {},
         "checkedSubs": {},
-        "dueDates": {}
+        "dueDates": {},
+        "moduleConfig": {},
+        "pages": {},
+        "uploads": {}
       }
     },
     "settings": {},

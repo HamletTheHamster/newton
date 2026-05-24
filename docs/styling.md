@@ -2,7 +2,7 @@
 
 All styles are inline — no CSS files, no CSS modules, no Tailwind.
 
-A shared `s` object at the top of `src/newton.jsx` holds reusable style objects (e.g. `s.card`, `s.input`, `s.btnPri`). Theme constants are also defined at the top of that file:
+A shared `s` object in `src/theme.js` holds reusable style objects (e.g. `s.card`, `s.input`, `s.btnPri`). Theme constants are also exported from that file:
 
 | Constant | Purpose        |
 |----------|----------------|

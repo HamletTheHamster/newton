@@ -1,16 +1,18 @@
 # Architecture
 
-The entire application is a single React component in `src/newton.jsx` (~1250 lines). There are no routes, no component files, no state management library. Navigation is driven by a `screen` state variable; each screen is a top-level `if(screen==="...")return(...)` block near the bottom of the file.
+The application is organized around a single top-level component in `src/App.jsx` that holds all state and renders each screen as an `if(screen==="...")return(...)` block. Reusable infrastructure (Firebase REST, auth, theme/styles, utility functions, course content) lives in sibling modules. Layout primitives for the LMS-style portal (Shell, Sidebar, ModuleList, TodoRail) are extracted under `src/components/lms/`. There are no routes and no state management library — navigation is driven by `screen` state plus per-portal section state (`studentSection`, `instructorSection`).
 
 **Screens:** `student-search` → `student-pw` → `student-portal` → `quiz` | `inst-login` → `instructor` → `inst-sub-detail`
 
+Within `student-portal`, the active sidebar section is `studentSection` (one of `home`/`calendar`/`syllabus`/`announcements`/`grades`/`evals`). Within `instructor`, `instructorSection` selects the active panel (`submissions`/`quizzes`/`roster`/`settings`/`bugs`). Module content for each course (titles, the per-week 4-item template) is defined in `src/courses/{courseType}.js`. See [docs/lms-redesign.md](lms-redesign.md) for the multi-session redesign plan.
+
 ## Firebase (no SDK — REST only)
 
-All Firebase access goes through hand-rolled REST helpers at the top of `newton.jsx`:
+All Firebase access goes through hand-rolled REST helpers in `src/firebase.js`:
 
 - **App Check** (`getAppCheckToken`): exchanges a reCAPTCHA v3 token (prod) or a hardcoded debug UUID (dev) for a short-lived App Check token. Pre-warms at module load. The RTDB rules reject any request without a valid App Check token.
 - **Anonymous Auth** (`getAuthToken`): signs in anonymously via the Identity Toolkit REST API and refreshes automatically. The `?auth=<idToken>` query param is required on every RTDB request.
-- **`fbGet` / `fbSet`**: thin wrappers that attach both tokens. Every data write goes through `fbSave` (inside the component), which additionally manages the `syncStatus` state shown in the instructor header.
+- **`fbGet` / `fbSet`**: thin wrappers that attach both tokens. Every data write goes through `fbSave` (inside `App.jsx`), which additionally manages the `syncStatus` state shown in the instructor header.
 
 Security rules: `database.rules.json`.
 
@@ -29,9 +31,11 @@ bugReports/                        {id: {id, message, timestamp, read}}         
 _test/                             scratch node for connectivity check on startup
 ```
 
-`metadata.courseType` (`"physics1"`, `"physics2"`, …) selects which hardcoded quiz set is used at runtime via `QUIZZES_BY_COURSE` in `newton.jsx`. `metadata.active` controls whether students see the class in name search. The single instructor login (in `settings/`) accesses all classes through a switcher dropdown in the instructor header; each class's roster, submissions, due dates, and gradebook are isolated.
+`metadata.courseType` (`"physics1"`, `"physics2"`, …) selects which course content is used at runtime via `quizzesForCourse(courseType)` and `modulesForCourse(courseType)` in `src/courses/index.js` (course files in the same directory). `metadata.active` controls whether students see the class in name search. The single instructor login (in `settings/`) accesses all classes through a switcher dropdown in the instructor header; each class's roster, submissions, due dates, and gradebook are isolated.
 
 ## Authentication
+
+Auth helpers live in `src/auth.js` (`hashPw`, `makeHash`, `verifyPw`, TOTP helpers, device token helpers).
 
 **Students:** password verified client-side against a SHA-256 hash+salt stored in `studentPws`. Legacy plain-text passwords are migrated to hashed on first correct login. Default password is the student's ID.
 
@@ -43,7 +47,7 @@ Enable in Settings tab → generates TOTP secret in browser → shows QR code (v
 
 ## Claude API
 
-Two calls, both proxied through `netlify/functions/claude.js` (which forwards to `api.anthropic.com/v1/messages` with the server-side API key):
+Two calls (defined in `src/utils.js`), both proxied through `netlify/functions/claude.js` (which forwards to `api.anthropic.com/v1/messages` with the server-side API key):
 
 1. **`checkImageReadability`** — validates that an uploaded drawing is legible before the student submits.
 2. **`evaluateAnswer`** — grades a free-text quiz answer, returns a score and feedback. Maintains a per-question dialogue history (`apiHist`) so the model has context for follow-up exchanges within the same question.

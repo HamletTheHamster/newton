@@ -53,7 +53,7 @@ To debug what the function actually sees, add a temporary `x-debug` branch that 
 
 ## Firebase startup flake
 
-`fbConnectTest` (`newton.jsx` ~line 133) writes to `_test` and reads it back. Occasionally fails with *"Write succeeded but read-back mismatch"* — passes on a page reload. Two browser tabs or back-to-back test runs can race on the same `_test` node. If you see the "Cannot Reach Database" screen on first load during a test, retry before treating it as a real failure.
+`fbConnectTest` (in `src/firebase.js`) writes to `_test` and reads it back. Occasionally fails with *"Write succeeded but read-back mismatch"* — passes on a page reload. Two browser tabs or back-to-back test runs can race on the same `_test` node. If you see the "Cannot Reach Database" screen on first load during a test, retry before treating it as a real failure.
 
 ## Submission side effects
 
