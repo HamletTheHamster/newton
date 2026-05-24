@@ -34,6 +34,7 @@ import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
 import { Gradebook } from "./screens/instructor/Gradebook.jsx";
 import { StudentGrades } from "./screens/student/StudentGrades.jsx";
+import { CourseEvals } from "./screens/student/CourseEvals.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
 import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
@@ -83,6 +84,7 @@ const INSTRUCTOR_SECTIONS = [
   { id: "roster",       label: "Roster" },
   { id: "announcements", label: "Announcements" },
   { id: "syllabus",     label: "Syllabus" },
+  { id: "evals",        label: "Evals" },
   { id: "settings",     label: "Settings" },
 ];
 
@@ -170,6 +172,8 @@ export default function App() {
   const [bugReports, setBugReports] = useState({});
   const [bugReportOpen, setBugReportOpen] = useState(false);
   const [instBugHover, setInstBugHover] = useState(false);
+  const [courseEvals, setCourseEvals] = useState({});
+  const [evalFilter, setEvalFilter] = useState("all");
   const [viewingPage, setViewingPage] = useState(null);     // { title, content } for student PageViewer
   const [editingPage, setEditingPage] = useState(null);     // { moduleId, itemId?, pageId?, title, content }
   const [editingAnn, setEditingAnn] = useState(null);       // null | { annId?, title, body, createdAt? }
@@ -207,6 +211,7 @@ export default function App() {
   }).slice(0, 8);
 
   const unreadBugCount = Object.values(bugReports).filter(b => !b.read).length;
+  const unreadEvalCount = Object.values(courseEvals).filter(e => !e.read).length;
 
   // ── To Do (quizzes due in next 7 days, not yet completed) ──────────────────
   const todoItems = (() => {
@@ -234,10 +239,11 @@ export default function App() {
         return;
       }
       try {
-        const [classesData, settingsData, bugsData] = await Promise.all([
+        const [classesData, settingsData, bugsData, evalsData] = await Promise.all([
           fbGet('classes').catch(() => null),
           fbGet('settings').catch(() => null),
           fbGet('bugReports').catch(() => null),
+          fbGet('courseEvals').catch(() => null),
         ]);
         const loadedClasses = (classesData && typeof classesData === 'object') ? classesData : {};
         setClasses(loadedClasses);
@@ -250,6 +256,7 @@ export default function App() {
           await fbSet('settings', ns);
         }
         if (bugsData && typeof bugsData === 'object') setBugReports(bugsData);
+        if (evalsData && typeof evalsData === 'object') setCourseEvals(evalsData);
         const storedId = (() => { try { return localStorage.getItem("newton_current_class_id"); } catch { return null; } })();
         if (storedId && loadedClasses[storedId]) {
           const c = loadedClasses[storedId];
@@ -771,6 +778,11 @@ export default function App() {
     setBugReports(updated);
     await fbSet('bugReports', updated);
   };
+  const markEvalRead = async id => {
+    const updated = { ...courseEvals, [id]: { ...courseEvals[id], read: true } };
+    setCourseEvals(updated);
+    await fbSet('courseEvals', updated);
+  };
   const confirmDanger = (label, onConfirm) => { setDangerAction({ label, onConfirm }); setDangerPw(""); setDangerErr(""); };
   const executeDanger = async () => {
     if (!settings.passwordHash) { setDangerErr("Settings not loaded."); return; }
@@ -1043,16 +1055,29 @@ export default function App() {
 
     const STUB_COPY = {
       syllabus: "A clean visual rendering of the course syllabus plus a PDF download.",
-      evals: "Course evaluation forms when they open.",
     };
     const SECTION_TITLE = {
-      syllabus: "Syllabus", evals: "Course Evals",
+      syllabus: "Syllabus",
     };
 
     const handleStudentSectionSelect = id => {
       setStudentSection(id);
     };
-    const studentSidebarItems = STUDENT_SECTIONS;
+
+    const evalNudge = (() => {
+      try {
+        if (localStorage.getItem(`newton_eval_quick_${currentClassId}`)) return false;
+        const withDates = mergedModules.filter(m => m.releaseDate);
+        if (withDates.length === 0) return true;
+        const last = withDates.reduce((a, b) =>
+          (dueToDate(a.releaseDate) || 0) > (dueToDate(b.releaseDate) || 0) ? a : b
+        );
+        return new Date() >= (dueToDate(last.releaseDate) || 0);
+      } catch { return false; }
+    })();
+    const studentSidebarItems = STUDENT_SECTIONS.map(item =>
+      item.id === "evals" ? { ...item, badge: evalNudge ? 1 : 0 } : item
+    );
 
     const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
@@ -1091,6 +1116,8 @@ export default function App() {
       mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
       mainContent = <StudentSyllabus syllabus={syllabus} />;
+    } else if (studentSection === "evals") {
+      mainContent = <CourseEvals classId={currentClassId} mergedModules={mergedModules} courseEvals={courseEvals} setCourseEvals={setCourseEvals} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -1324,7 +1351,9 @@ export default function App() {
       </>
     );
 
-    const sidebarItems = INSTRUCTOR_SECTIONS;
+    const sidebarItems = INSTRUCTOR_SECTIONS.map(item =>
+      item.id === "evals" ? { ...item, badge: unreadEvalCount || 0 } : item
+    );
 
     return (
       <Shell
@@ -1346,7 +1375,7 @@ export default function App() {
           </div>
         )}
 
-        {!currentClassId && instructorSection !== "settings" && instructorSection !== "bugs" && (
+        {!currentClassId && instructorSection !== "settings" && instructorSection !== "bugs" && instructorSection !== "evals" && (
           <div style={{ ...s.card, padding: 32, textAlign: "center", color: MUTED }}>
             <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 8px" }}>No class selected</p>
             <p style={{ margin: "0 0 16px" }}>{Object.keys(classes).length === 0 ? "Create your first class in Settings → Classes to get started." : "Choose a class from the dropdown above, or create one in Settings → Classes."}</p>
@@ -1727,6 +1756,81 @@ export default function App() {
             )}
           </div>
         )}
+
+        {instructorSection === "evals" && (() => {
+          const allEvals = Object.values(courseEvals).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          const filtered = evalFilter === "all" ? allEvals : allEvals.filter(e => e.type === evalFilter);
+          const LIKERT_LABELS = { SA: "Strongly Agree", A: "Agree", D: "Disagree", SD: "Strongly Disagree" };
+          const SURVEY_QUESTIONS = [
+            { id: "q1", text: "Course requirements are stated clearly in the syllabus." },
+            { id: "q2", text: "The course is organized in a way that helps me learn." },
+            { id: "q3", text: "The grading criteria for each assignment are clear." },
+            { id: "q4", text: "The assignments help me understand the subject more clearly." },
+            { id: "q5", text: "The instructor answers questions and concerns in a timely manner." },
+            { id: "q6", text: "The instructor provides constructive feedback on assignments." },
+            { id: "q7", text: "The instructor shows respect for students." },
+          ];
+          return (
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
+                <p style={{ ...s.muted, margin: 0 }}>
+                  {allEvals.length} total
+                  {unreadEvalCount > 0 && <span style={{ ...s.badge("#f87171"), marginLeft: 8 }}>{unreadEvalCount} unread</span>}
+                </p>
+                <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+                  {["all", "quick", "survey"].map(f => (
+                    <button key={f} onClick={() => setEvalFilter(f)} style={{ ...s.btnGhost, padding: "4px 12px", fontSize: 12, background: evalFilter === f ? "rgba(0,130,140,0.15)" : "transparent", color: evalFilter === f ? TEAL : MUTED, border: `1px solid ${evalFilter === f ? TEAL : BORDER}` }}>
+                      {f === "all" ? "All" : f === "quick" ? "Quick Feedback" : "Surveys"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              {filtered.length === 0 ? (
+                <div style={{ ...s.card, padding: 40, textAlign: "center", color: MUTED }}>No evaluations yet.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {filtered.map(ev => (
+                    <div key={ev.id} style={{ ...s.card, padding: "16px 20px", opacity: ev.read ? 0.55 : 1, display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={s.badge(ev.type === "survey" ? "#818cf8" : TEAL)}>{ev.type === "survey" ? "End-of-Course Survey" : "Quick Feedback"}</span>
+                          <span style={{ ...s.muted, fontSize: 12 }}>{new Date(ev.timestamp).toLocaleString()}</span>
+                          {ev.classId && classes[ev.classId]?.metadata?.name && (
+                            <span style={{ ...s.muted, fontSize: 12 }}>· {classes[ev.classId].metadata.name}</span>
+                          )}
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          {!ev.read && <span style={s.badge("#f87171")}>Unread</span>}
+                          {!ev.read && <button onClick={() => markEvalRead(ev.id)} style={{ ...s.btnGhost, padding: "4px 10px", fontSize: 12 }}>Mark read</button>}
+                        </div>
+                      </div>
+                      {ev.type === "quick" && (
+                        <p style={{ color: "#fff", fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ev.message}</p>
+                      )}
+                      {ev.type === "survey" && ev.responses && (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                          {SURVEY_QUESTIONS.map(q => (
+                            <div key={q.id} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+                              <span style={{ ...s.badge(TEAL), minWidth: 32, textAlign: "center", flexShrink: 0 }}>{ev.responses[q.id] || "—"}</span>
+                              <span style={{ color: "#fff", fontSize: 13, lineHeight: 1.5 }}>{q.text}</span>
+                            </div>
+                          ))}
+                          {ev.openEnded && (ev.openEnded.suggestions || ev.openEnded.assignment || ev.openEnded.best) && (
+                            <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+                              {ev.openEnded.suggestions && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Suggestions to improve:</p><p style={{ color: "#fff", fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.suggestions}</p></div>}
+                              {ev.openEnded.assignment && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Most helpful assignment:</p><p style={{ color: "#fff", fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.assignment}</p></div>}
+                              {ev.openEnded.best && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Liked best:</p><p style={{ color: "#fff", fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.best}</p></div>}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })()}
       </Shell>
     );
   }

@@ -75,7 +75,8 @@ src/
     Home.jsx                     — student Home landing (module list, dispatches by type)
     StudentCalendar.jsx          — month grid calendar; events from quizzes+dueDates
     StudentGrades.jsx            — student Grades view: overall grade banner + category breakdown
-    Stub.jsx                     — generic "Coming Soon" placeholder for Syllabus/Evals
+    CourseEvals.jsx              — student Course Evals: quick feedback (always open) + end-of-course survey (gated on last module release)
+    Stub.jsx                     — generic "Coming Soon" placeholder (Syllabus only; Evals now has a real screen)
   screens/instructor/
     Modules.jsx                  — instructor Home tab: module authoring (module ⋮ menu: inline
                                    calendar, add-item, delete; item ⋮ menu: due date, visibility,
@@ -157,6 +158,11 @@ classes/{classId}/
   assignmentOrderOverrides/ — { [assignmentId]: number }  — set by column drag/drop; overrides natural sort order
   homeworks/                — (future) student homework submissions
   syllabus/                 — (future) visual syllabus content
+
+courseEvals/              — root-level (not per-class); anonymous submissions
+  {id}/                   — { id, type: "quick"|"survey", classId, timestamp, read: bool,
+                             message? (quick), responses?: {q1–q7: "SA"|"A"|"D"|"SD"},
+                             openEnded?: {suggestions, assignment, best} }
 ```
 
 ## Phases
@@ -175,13 +181,14 @@ classes/{classId}/
 | **6.9** | ✅ done | **Pre-phase tweaks** (9 changes): global font-family reset so form elements match body text (fixes TodoRail); remove filename/size from student file items; move student Logout from header into Settings modal; `StudentGrades` now receives `assignmentNameOverrides` so student and instructor see the same names; instructor gradebook column headers show full title (no Q1/HW1 abbreviation); fix item drag/drop off-by-one (gap position → correct insert index); fix module ⋮ menu clipping (`overflow: visible` on card); per-item ⋮ menu with due date, visibility toggle, and delete (replaces inline due field and eye icon); remove announcement notification badge and unread modal (`announcementReads/` RTDB subtree now orphaned). |
 | **6.10** | ✅ done | **Gradebook & drag/drop polish**: gradebook column headers auto-size to content (removed 72 px cap); module-level drag/drop off-by-one fixed (same `from < to ? to-1 : to` logic already applied to items); drag/drop jitter eliminated — gap divs now own their own `onDragOver` handler so hovering the gap keeps state alive without layout shift; default manual assignments seeded on first class load for any course type: Midterm Exam (order 650, after HW 7), Final Exam (order 1350, after HW 14), Lab 1a–Lab 14b (orders 2000–2027); `buildGradebookAssignments` assigns numeric `order` to module items (`modIdx*100+itemIdx`) and accepts a sixth param `assignmentOrderOverrides` — both natural and override orders are used to sort all assignments together; gradebook column drag/drop (drag `<th>` headers, teal left-edge drop indicator, persists to `assignmentOrderOverrides/` in RTDB); gradebook filter bar — student name search, category toggle chips, assignment name search, live `N/M` count in header. |
 | **7** | ✅ done | **Syllabus**: instructor uploads a PDF → Claude (via existing Netlify proxy) auto-extracts fields as JSON (course info, instructor, materials, grading breakdown, grading scale, policies) → saved to RTDB at `classes/{classId}/syllabus/` → student Syllabus page renders cards from extracted JSON + "Open PDF ↗" button. Instructor sidebar gains a "Syllabus" tab with upload/replace/remove UI and extracted-fields summary. New screens: `StudentSyllabus.jsx`, `InstructorSyllabus.jsx`. Proxy updated with `anthropic-beta: "pdfs-2024-09-25"` header. |
-| **8** | — | **Course Evals** (likely an external link initially). |
+| **8** | ✅ done | **Course Evals**: two-tier anonymous feedback channel. *Quick Feedback* — open textarea available any time (multiple submissions OK). *End-of-Course Survey* — 7 Likert-scale questions (SA/A/D/SD; 4 course + 3 instructor) plus 3 open-ended prompts, gated behind last module release date. Both tiers share the same gate: neither the sidebar nudge badge nor the survey appear until the final lecture module unlocks. Submissions stored at root `courseEvals/{id}` with no student ID. `localStorage` tracks per-class submission state for the nudge and one-time survey guard without linking identity. Instructor gains an **Evals** sidebar section with All/Quick/Survey filter tabs and mark-as-read (mirrors bug reports UX). New screen: `CourseEvals.jsx`. |
 | **9** | — | **Email broadcast** for announcements once roster includes emails. |
 
 ## Notes for future sessions
 
 - **Gradebook architecture**: `buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides)` in `utils.js` returns a flat sorted assignment list. Module items get `order = modIdx*100 + itemIdx`; manual assignments use their stored `order` field (defaults 9999 if absent). `assignmentOrderOverrides` (sixth param, `{[id]: number}`) overrides any natural order — set when the instructor drag/drops columns in `Gradebook.jsx` and persisted to `assignmentOrderOverrides/` in RTDB. The combined list is sorted by `order` so exams and labs interleave correctly with quiz/HW columns. Default assignments (Midterm, Final, 28 labs) are seeded into `manualAssignments/` on first class load when the key is empty — applies to all course types. `calcGrades({assignments, categories, scores, excused})` computes weighted totals. The gradebook pre-filters to "active" assignments (submitted OR past dueDate) before passing to `calcGrades` to avoid inflating the denominator. Grade data flows: `gradeOverrides/{studentId}/{assignmentId}` → `{score?, excused?}`; `gradeCategories/{catId}` → `{id, name, weight, order}`; `manualAssignments/{id}`, `assignmentNameOverrides/{id}`, and `assignmentOrderOverrides/{id}` are all class-level. Both `Gradebook.jsx` and `StudentGrades.jsx` receive `assignmentNameOverrides` from `App.jsx` so names stay consistent.
 - **Module item types**: `reading` and `notes` types were removed from the add-item UI and converted to `file` in the seed template (`physics1.js`). Existing items of those types in RTDB still render correctly — `ModuleItem.jsx` and `ItemRow` in `Modules.jsx` fall back to `<FileIcon />` for unknown types. Do not re-add reading/notes unless intentionally restoring them.
+- **Course Evals anonymity model**: `courseEvals/{id}` records carry `classId` and `timestamp` but no `studentId`. The nudge badge (sidebar "1") and one-time survey guard use `localStorage` keys `newton_eval_quick_{classId}` / `newton_eval_survey_{classId}` — purely device-local, no identity in RTDB. Quick feedback can be submitted multiple times; the badge clears after the first. Survey can only be submitted once per device. Both features are gated: neither appears until `surveyIsAvailable(mergedModules)` returns true (last module's `releaseDate` has passed; if no modules have release dates, the gate is open immediately).
 - **Roster gap**: `parseRoster` doesn't capture student email. Phase 9 needs:
   (a) extend `parseRoster` to detect an email column, (b) update the MyMercer
   CSV upload UX, (c) decide on broadcast mechanism (server-side function vs
