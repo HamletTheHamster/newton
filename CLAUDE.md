@@ -19,6 +19,9 @@
 | `src/screens/student/` | Student section pages (Home, StudentCalendar, StudentGrades, CourseEvals, Stub) |
 | `src/screens/instructor/Gradebook.jsx` | Instructor gradebook — weighted categories, per-student scores, CSV export, manual assignments |
 | `netlify/functions/claude.js` | Claude API proxy |
+| `netlify/functions/send-email.js` | Email broadcast proxy — validates shared secret, calls Resend API |
+| `src/components/ManualAddStudent.jsx` | Instructor roster manual-add form (name, ID, email) |
+| `src/components/lms/AnnouncementEditor.jsx` | Announcement compose modal — title, body, email checkbox |
 | `database.rules.json` | Firebase RTDB security rules |
 | `storage.rules` · `firebase.json` | Firebase Storage rules and CLI config (deploy with `firebase deploy --only storage` / `--only database`) |
 | `netlify.toml` | Netlify build config |

@@ -21,7 +21,7 @@ Security rules: `database.rules.json`.
 classes/
   {classId}/                       e.g., "phys1-spring26"
     metadata/                      {name, courseType, active, createdAt}
-    roster/                        array of student objects
+    roster/                        array of {studentId, firstName, lastName, fullName, email?, altName?}
     studentPws/                    {studentId: {hash, salt}}
     submissions/                   {studentId: [submission, ...]}
     checkedSubs/                   {submissionId: true}
@@ -62,3 +62,7 @@ Two calls (defined in `src/utils.js`), both proxied through `netlify/functions/c
 
 1. **`checkImageReadability`** — validates that an uploaded drawing is legible before the student submits.
 2. **`evaluateAnswer`** — grades a free-text quiz answer, returns a score and feedback. Maintains a per-question dialogue history (`apiHist`) so the model has context for follow-up exchanges within the same question.
+
+## Email (Resend)
+
+Announcement email broadcast is handled by `netlify/functions/send-email.js`. When an instructor saves an announcement with the email checkbox on, the frontend calls this function with the recipient list, subject, and body. The function validates a shared secret (`EMAIL_SEND_SECRET`) then POSTs to the Resend API using `RESEND_API_KEY`. Emails are sent from `EMAIL_FROM_ADDRESS` (currently `Newton Physics <noreply@notifications.newtonphy.com>`). The subject is auto-prefixed with `{term} {courseNumber}:` from `syllabus.fields.course` if a syllabus has been uploaded. The send is fire-and-forget — a failed email does not block the announcement save. Student emails are stored as an optional `email` field on roster entries; `parseRoster` captures the "Preferred Email" column from MyMercer CSV exports. The sending domain `notifications.newtonphy.com` is verified with Resend; DNS is managed through Netlify DNS.
