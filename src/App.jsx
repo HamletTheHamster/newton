@@ -30,9 +30,20 @@ import { StudentAnnouncements } from "./screens/student/StudentAnnouncements.jsx
 import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
+import { Gradebook } from "./screens/instructor/Gradebook.jsx";
+import { StudentGrades } from "./screens/student/StudentGrades.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
 import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
+
+// ── Grade category defaults ───────────────────────────────────────────────────
+const DEFAULT_GRADE_CATEGORIES = {
+  cat_lab:     { id: "cat_lab",     name: "Laboratory",   weight: 20, dropLowest: 1, order: 0 },
+  cat_hw:      { id: "cat_hw",      name: "Homework",     weight: 20, dropLowest: 1, order: 1 },
+  cat_quiz:    { id: "cat_quiz",    name: "Quiz",         weight: 10, dropLowest: 1, order: 2 },
+  cat_midterm: { id: "cat_midterm", name: "Midterm Exam", weight: 20, dropLowest: 0, order: 3 },
+  cat_final:   { id: "cat_final",   name: "Final Exam",   weight: 30, dropLowest: 0, order: 4 },
+};
 
 // ── Sidebar definitions ──────────────────────────────────────────────────────
 const STUDENT_SECTIONS = [
@@ -45,14 +56,12 @@ const STUDENT_SECTIONS = [
 ];
 
 const INSTRUCTOR_SECTIONS = [
-  { id: "submissions", label: "Submissions" },
-  { id: "calendar", label: "Calendar" },
-  { id: "quizzes", label: "Quizzes & Dates" },
-  { id: "roster", label: "Roster" },
-  { id: "modules", label: "Modules" },
+  { id: "modules",       label: "Home" },
+  { id: "gradebook",    label: "Gradebook" },
+  { id: "calendar",     label: "Calendar" },
+  { id: "roster",       label: "Roster" },
   { id: "announcements", label: "Announcements" },
-  { id: "settings", label: "Settings" },
-  { id: "bugs", label: "Bug Reports" },
+  { id: "settings",     label: "Settings" },
 ];
 
 export default function App() {
@@ -78,6 +87,12 @@ export default function App() {
   const [uploads, setUploads] = useState({});
   const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
   const [announcementReads, setAnnouncementReads] = useState({});  // { [annId]: true } for logged-in student
+  const [gradeCategories, setGradeCategories] = useState({});
+  const [gradeOverrides, setGradeOverrides] = useState({});     // { [studentId]: { [assignmentId]: { score?, excused? } } }
+  const [assignmentCategories, setAssignmentCategories] = useState({});  // { [assignmentId]: catId }
+  const [manualAssignments, setManualAssignments] = useState({});         // { [id]: { id, title, catId, maxPts } }
+  const [assignmentNameOverrides, setAssignmentNameOverrides] = useState({}); // { [assignmentId]: string }
+  const [studentAvailableClasses, setStudentAvailableClasses] = useState([]);
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
   const [ready, setReady] = useState(false);
   const [classDataLoading, setClassDataLoading] = useState(false);
@@ -120,7 +135,6 @@ export default function App() {
   const [clearDevicesMsg, setClearDevicesMsg] = useState("");
   const [editPw, setEditPw] = useState(""); const [editPw2, setEditPw2] = useState(""); const [editPwMsg, setEditPwMsg] = useState("");
   const [openQuizzes, setOpenQuizzes] = useState({});
-  const [editingTimeFor, setEditingTimeFor] = useState(null);
   const [dangerAction, setDangerAction] = useState(null);
   const [dangerPw, setDangerPw] = useState(""); const [dangerErr, setDangerErr] = useState("");
   const [removeStudent, setRemoveStudent] = useState(null);
@@ -162,14 +176,14 @@ export default function App() {
     const r = Array.isArray(c.roster) ? c.roster : [];
     for (const stu of r) allActiveStudents.push({ ...stu, classId: cid, className });
   }
+  const seenStudentIds = new Set();
   const filteredRoster = nameQuery.trim().length === 0 ? [] : allActiveStudents.filter(st => {
     const q = nameQuery.toLowerCase();
-    return (st.altName && st.altName.toLowerCase().includes(q)) || st.fullName.toLowerCase().includes(q) || st.lastName.toLowerCase().includes(q) || st.firstName.toLowerCase().includes(q);
+    const matches = (st.altName && st.altName.toLowerCase().includes(q)) || st.fullName.toLowerCase().includes(q) || st.lastName.toLowerCase().includes(q) || st.firstName.toLowerCase().includes(q);
+    if (!matches || seenStudentIds.has(st.studentId)) return false;
+    seenStudentIds.add(st.studentId);
+    return true;
   }).slice(0, 8);
-  const nameAppearsMultipleTimes = name => {
-    const q = name.toLowerCase();
-    return filteredRoster.filter(st => st.fullName.toLowerCase() === q || (st.altName || "").toLowerCase() === q).length > 1;
-  };
 
   const unreadBugCount = Object.values(bugReports).filter(b => !b.read).length;
 
@@ -231,6 +245,10 @@ export default function App() {
           if (c.uploads && typeof c.uploads === 'object') setUploads(c.uploads);
           if (Array.isArray(c.modules)) setModules(c.modules);
           if (c.announcements && typeof c.announcements === 'object') setAnnouncements(c.announcements);
+          if (c.gradeCategories && typeof c.gradeCategories === 'object') setGradeCategories(c.gradeCategories);
+          else setGradeCategories(DEFAULT_GRADE_CATEGORIES);
+          if (c.gradeOverrides && typeof c.gradeOverrides === 'object') setGradeOverrides(c.gradeOverrides);
+          if (c.assignmentCategories && typeof c.assignmentCategories === 'object') setAssignmentCategories(c.assignmentCategories);
         } else if (storedId) {
           setCurrentClassId(null);
         }
@@ -244,7 +262,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -255,6 +273,11 @@ export default function App() {
         fbGet(classPath(classId, 'pages')).catch(() => null),
         fbGet(classPath(classId, 'uploads')).catch(() => null),
         fbGet(classPath(classId, 'announcements')).catch(() => null),
+        fbGet(classPath(classId, 'gradeCategories')).catch(() => null),
+        fbGet(classPath(classId, 'gradeOverrides')).catch(() => null),
+        fbGet(classPath(classId, 'assignmentCategories')).catch(() => null),
+        fbGet(classPath(classId, 'manualAssignments')).catch(() => null),
+        fbGet(classPath(classId, 'assignmentNameOverrides')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -265,6 +288,17 @@ export default function App() {
       const pagesObj = (pagesData && typeof pagesData === 'object') ? pagesData : {};
       const uploadsObj = (uploadsData && typeof uploadsData === 'object') ? uploadsData : {};
       const annsObj = (annsData && typeof annsData === 'object') ? annsData : {};
+
+      // Grade data — seed default categories on first class load
+      let gradeCatsObj = (gradeCatsData && typeof gradeCatsData === 'object') ? gradeCatsData : {};
+      if (Object.keys(gradeCatsObj).length === 0) {
+        gradeCatsObj = { ...DEFAULT_GRADE_CATEGORIES };
+        try { await fbSet(classPath(classId, 'gradeCategories'), gradeCatsObj); } catch (e) { console.warn("Grade category seed failed:", e?.message); }
+      }
+      const gradeOverridesObj = (gradeOverridesData && typeof gradeOverridesData === 'object') ? gradeOverridesData : {};
+      const assignmentCatsObj = (assignmentCatsData && typeof assignmentCatsData === 'object') ? assignmentCatsData : {};
+      const manualAsgnObj = (manualAsgnData && typeof manualAsgnData === 'object') ? manualAsgnData : {};
+      const nameOverrideObj = (nameOverrideData && typeof nameOverrideData === 'object') ? nameOverrideData : {};
 
       // Auto-migrate / seed `modules` on first load. Idempotent: presence of the
       // array in RTDB is the sentinel.
@@ -295,7 +329,12 @@ export default function App() {
       setPages(pagesObj);
       setUploads(uploadsObj);
       setAnnouncements(annsObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, announcements: annsObj } }));
+      setGradeCategories(gradeCatsObj);
+      setGradeOverrides(gradeOverridesObj);
+      setAssignmentCategories(assignmentCatsObj);
+      setManualAssignments(manualAsgnObj);
+      setAssignmentNameOverrides(nameOverrideObj);
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -433,6 +472,36 @@ export default function App() {
     await fbSave(classPath(currentClassId, `announcementReads/${loggedInStudent.studentId}`), reads);
   };
 
+  const saveGradeCategories = async cats => {
+    const cid = requireClass();
+    setGradeCategories(cats);
+    updateClassCache(cid, 'gradeCategories', cats);
+    await fbSave(classPath(cid, 'gradeCategories'), cats);
+  };
+  const saveAssignmentCategories = async cats => {
+    const cid = requireClass();
+    setAssignmentCategories(cats);
+    updateClassCache(cid, 'assignmentCategories', cats);
+    await fbSave(classPath(cid, 'assignmentCategories'), cats);
+  };
+  const saveManualAssignments = async next => {
+    const cid = requireClass();
+    setManualAssignments(next);
+    await fbSave(classPath(cid, 'manualAssignments'), Object.keys(next).length ? next : null);
+  };
+  const saveAssignmentNameOverrides = async next => {
+    const cid = requireClass();
+    setAssignmentNameOverrides(next);
+    await fbSave(classPath(cid, 'assignmentNameOverrides'), Object.keys(next).length ? next : null);
+  };
+  const saveOverrideForStudent = async (studentId, studentOverrides) => {
+    const cid = requireClass();
+    const updated = { ...gradeOverrides, [studentId]: studentOverrides };
+    setGradeOverrides(updated);
+    updateClassCache(cid, 'gradeOverrides', updated);
+    await fbSave(classPath(cid, `gradeOverrides/${studentId}`), studentOverrides);
+  };
+
   const saveSubs = async (newSubs, studentId = null) => {
     const cid = requireClass();
     setSubmissions(newSubs);
@@ -454,7 +523,22 @@ export default function App() {
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery("");
     setOpenQuizzes({}); setViewingSub(null);
     setAnnouncements({}); setAnnouncementReads({});
+    setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     await loadClassData(classId);
+  };
+  const switchStudentClass = async (classId, student) => {
+    if (!classId || classId === currentClassId) return;
+    const stu = student || loggedInStudent;
+    setCurrentClassId(classId);
+    setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
+    setOpenQuizzes({}); setViewingSub(null);
+    setAnnouncements({}); setAnnouncementReads({});
+    setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
+    await loadClassData(classId);
+    if (stu) {
+      const reads = await fbGet(classPath(classId, `announcementReads/${stu.studentId}`)).catch(() => null);
+      setAnnouncementReads(reads && typeof reads === 'object' ? reads : {});
+    }
   };
   const createClass = async (name, courseType) => {
     const trimmed = (name || "").trim();
@@ -491,6 +575,7 @@ export default function App() {
       setCurrentClassId(null);
       setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
       setModules([]); setModuleConfig({}); setPages({}); setUploads({});
+      setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     }
   };
 
@@ -557,6 +642,14 @@ export default function App() {
     else if (typeof stored === "string") { ok = pwInput === stored; if (ok) { const h = await makeHash(pwInput); await saveStudentPws({ ...studentPws, [selectedStudent.studentId]: h }); } }
     else { ok = await verifyPw(pwInput, stored.hash, stored.salt); }
     if (ok) {
+      const availableClasses = Object.entries(classes)
+        .filter(([, c]) => c?.metadata?.active)
+        .flatMap(([cid, c]) => {
+          const r = Array.isArray(c.roster) ? c.roster : [];
+          return r.some(row => row.studentId === selectedStudent.studentId) ? [{ classId: cid, name: c.metadata.name }] : [];
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setStudentAvailableClasses(availableClasses);
       setLoggedInStudent(selectedStudent); setPwInput(""); setPwError(""); setShowStudentSettings(false); setStudentSection("home");
       try {
         const readsData = await fbGet(classPath(currentClassId, `announcementReads/${selectedStudent.studentId}`)).catch(() => null);
@@ -579,10 +672,12 @@ export default function App() {
   };
   const handleStudentLogout = () => {
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery(""); setShowStudentSettings(false);
+    setStudentAvailableClasses([]);
     setCurrentClassId(null);
     setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
     setModules([]); setModuleConfig({}); setPages({}); setUploads({});
     setAnnouncements({}); setAnnouncementReads({}); setShowUnreadModal(false);
+    setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     setScreen("student-search");
   };
   const enterInstructor = async () => {
@@ -591,7 +686,7 @@ export default function App() {
       const firstActive = Object.entries(classes).filter(([, c]) => c?.metadata?.active !== false).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || ""))[0];
       if (firstActive) await switchToClass(firstActive[0]);
     }
-    setInstructorSection("submissions");
+    setInstructorSection("gradebook");
     setScreen("instructor");
   };
   const doLogin = async () => {
@@ -849,15 +944,11 @@ export default function App() {
           />
           {filteredRoster.length > 0 && (
             <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#252627", border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden", zIndex: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
-              {filteredRoster.map((st, i) => {
-                const showClass = nameAppearsMultipleTimes(st.altName || st.fullName);
-                return (
-                  <button key={st.classId + ":" + st.studentId} onClick={() => handleSelectStudent(st)} style={{ width: "100%", textAlign: "left", padding: "12px 16px", background: highlightIdx === i ? TEAL_DIM : "transparent", border: "none", borderBottom: `1px solid ${BORDER}`, color: highlightIdx === i ? TEAL : "#fff", fontSize: 14, cursor: "pointer", fontWeight: highlightIdx === i ? 600 : 400, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }} onMouseEnter={() => setHighlightIdx(i)}>
-                    <span>{st.altName || st.fullName}</span>
-                    {showClass && <span style={{ ...s.muted, fontSize: 12 }}>{st.className}</span>}
-                  </button>
-                );
-              })}
+              {filteredRoster.map((st, i) => (
+                <button key={st.studentId} onClick={() => handleSelectStudent(st)} style={{ width: "100%", textAlign: "left", padding: "12px 16px", background: highlightIdx === i ? TEAL_DIM : "transparent", border: "none", borderBottom: `1px solid ${BORDER}`, color: highlightIdx === i ? TEAL : "#fff", fontSize: 14, cursor: "pointer", fontWeight: highlightIdx === i ? 600 : 400 }} onMouseEnter={() => setHighlightIdx(i)}>
+                  {st.altName || st.fullName}
+                </button>
+              ))}
             </div>
           )}
           {nameQuery.trim().length > 0 && filteredRoster.length === 0 && allActiveStudents.length > 0 && (
@@ -918,11 +1009,10 @@ export default function App() {
 
     const STUB_COPY = {
       syllabus: "A clean visual rendering of the course syllabus plus a PDF download.",
-      grades: "Your gradebook with category weights and weighted overall grade.",
       evals: "Course evaluation forms when they open.",
     };
     const SECTION_TITLE = {
-      syllabus: "Syllabus", grades: "Grades", evals: "Course Evals",
+      syllabus: "Syllabus", evals: "Course Evals",
     };
 
     const handleStudentSectionSelect = id => {
@@ -933,15 +1023,29 @@ export default function App() {
       it.id === "announcements" ? { ...it, badge: unreadAnnouncementCount } : it
     );
 
+    const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
+
     const header = (
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <h1 style={{ color: TEAL, fontWeight: 700, fontSize: 22, margin: 0 }}>Newton</h1>
-          {classMeta && <span style={{ ...s.muted, fontSize: 14 }}>· {classMeta.name}</span>}
+          {studentAvailableClasses.length > 1 ? (
+            <select
+              value={currentClassId || ""}
+              onChange={e => { if (e.target.value) switchStudentClass(e.target.value); }}
+              style={classPickerStyle}
+            >
+              {studentAvailableClasses.map(({ classId, name }) => (
+                <option key={classId} value={classId} style={{ background: "#252627", color: "#fff" }}>{name}</option>
+              ))}
+            </select>
+          ) : (
+            classMeta && <span style={{ ...s.muted, fontSize: 14 }}>· {classMeta.name}</span>
+          )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button onClick={handleStudentLogout} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Log Out</button>
-          <button onClick={() => { setShowStudentSettings(true); history.pushState({ newton: "settings" }, "", ""); }} style={{ background: "none", border: "none", color: MUTED, fontSize: 20, cursor: "pointer" }} title="Account settings">⚙️</button>
+          <button onClick={() => { setShowStudentSettings(true); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
         </div>
       </>
     );
@@ -953,6 +1057,8 @@ export default function App() {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} reads={announcementReads} />;
     } else if (studentSection === "calendar") {
       mainContent = <StudentCalendar quizzes={quizzes} completedQuizIds={completedQuizIds} />;
+    } else if (studentSection === "grades") {
+      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} />;
     } else {
       mainContent = <Stub title={SECTION_TITLE[studentSection]} description={STUB_COPY[studentSection]} />;
     }
@@ -1156,8 +1262,7 @@ export default function App() {
 
   // ── Instructor Portal (LMS-style) ─────────────────────────────────────────
   if (screen === "instructor") {
-    const subsByQuiz = {}; submissions.forEach(sub => { (subsByQuiz[sub.quizId] = subsByQuiz[sub.quizId] || []).push(sub); });
-    const totalUnchecked = submissions.filter(sub => !checkedSubs[sub.id] && !sub.imported).length;
+    const instClassPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
     const header = (
       <>
@@ -1167,7 +1272,7 @@ export default function App() {
             <select
               value={currentClassId || ""}
               onChange={e => { const v = e.target.value; if (v) switchToClass(v); }}
-              style={{ appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "6px 24px 6px 4px", cursor: "pointer", outline: "none", borderRadius: 6, backgroundImage: "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10'><path d='M2 4l3 3 3-3' stroke='%23a0a0a0' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 4px center" }}
+              style={instClassPickerStyle}
             >
               {!currentClassId && <option value="" style={{ background: "#252627", color: "#fff" }}>— Select a class —</option>}
               {Object.entries(classes).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || "")).map(([cid, c]) => (
@@ -1181,14 +1286,35 @@ export default function App() {
           <SyncBadge status={syncStatus} error={syncError} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => setInstructorSection("bugs")}
+            onMouseEnter={() => setInstBugHover(true)}
+            onMouseLeave={() => setInstBugHover(false)}
+            title={`Bug Reports${unreadBugCount > 0 ? ` (${unreadBugCount})` : ""}`}
+            style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", position: "relative", display: "flex", alignItems: "center" }}
+          >
+            <svg
+              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+              style={{ color: (instructorSection === "bugs" || instBugHover) ? TEAL : MUTED, transform: (instructorSection === "bugs" || instBugHover) ? "rotate(30deg)" : "none", transition: "color 0.2s, transform 0.2s", display: "block" }}
+            >
+              <path d="M8 2l1.5 1.5"/><path d="M14.5 3.5L16 2"/>
+              <circle cx="12" cy="8" r="4"/>
+              <path d="M4 13h16"/><path d="M4 17h16"/>
+              <path d="M8 21v-8"/><path d="M16 21v-8"/>
+              <path d="M3 10l2 2"/><path d="M19 10l2 2"/>
+            </svg>
+            {unreadBugCount > 0 && (
+              <span style={{ position: "absolute", top: 0, right: 0, background: "#f87171", color: "#fff", borderRadius: "50%", fontSize: 9, width: 14, height: 14, display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 700 }}>
+                {unreadBugCount}
+              </span>
+            )}
+          </button>
           <button onClick={() => { setInstPw(""); setScreen("student-search"); }} style={{ ...s.btnGhost, width: "auto" }}>Logout</button>
         </div>
       </>
     );
 
-    const sidebarItems = INSTRUCTOR_SECTIONS.map(it =>
-      it.id === "bugs" ? { ...it, badge: unreadBugCount } : it
-    );
+    const sidebarItems = INSTRUCTOR_SECTIONS;
 
     return (
       <Shell
@@ -1218,82 +1344,25 @@ export default function App() {
           </div>
         )}
 
-        {currentClassId && instructorSection === "submissions" && (
-          <div>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {totalUnchecked > 0 && <span style={s.badge("#facc15")}>{totalUnchecked} pending</span>}
-                {totalUnchecked === 0 && submissions.filter(sub => !sub.imported).length > 0 && <span style={s.badge("#4ade80")}>All entered ✓</span>}
-              </div>
-              <button onClick={() => setOpenQuizzes({})} style={s.btnGhost}>Collapse all</button>
-            </div>
-            {submissions.length === 0 ? <div style={{ ...s.card, padding: 40, textAlign: "center", color: MUTED }}>No submissions yet.</div> : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {courseQuizzes.map(quiz => {
-                  const subs = (subsByQuiz[quiz.id] || []).slice().sort((a, b) => { const aUnchecked = !checkedSubs[a.id] && !a.imported, bUnchecked = !checkedSubs[b.id] && !b.imported; if (aUnchecked !== bUnchecked) return aUnchecked ? -1 : 1; return new Date(b.timestamp) - new Date(a.timestamp); });
-                  if (!subs.length) return null;
-                  const isOpen = !!openQuizzes[quiz.id], unchecked = subs.filter(sub => !checkedSubs[sub.id] && !sub.imported).length;
-                  return (
-                    <div key={quiz.id} style={{ ...s.card, overflow: "hidden" }}>
-                      <button onClick={() => toggleQuizOpen(quiz.id)} style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 18px", background: "none", border: "none", cursor: "pointer", textAlign: "left" }} onMouseEnter={e => e.currentTarget.style.background = "rgba(255,255,255,0.03)"} onMouseLeave={e => e.currentTarget.style.background = "none"}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                          <span style={{ color: MUTED, fontSize: 13, transform: isOpen ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.2s" }}>▶</span>
-                          <div><span style={{ color: "#fff", fontWeight: 600, fontSize: 14 }}>{quiz.title}</span><span style={{ ...s.muted, fontSize: 12, marginLeft: 8 }}>{subs.length} submission{subs.length !== 1 ? "s" : ""}</span></div>
-                        </div>
-                        <span style={unchecked > 0 ? s.badge("#facc15") : s.badge("#4ade80")}>{unchecked > 0 ? unchecked + " pending" : "All entered ✓"}</span>
-                      </button>
-                      {isOpen && (
-                        <div style={{ borderTop: `1px solid ${BORDER}` }}>
-                          {subs.map((sub, i) => {
-                            const checked = !!checkedSubs[sub.id], scoreColor = sub.score >= 8 ? "#4ade80" : sub.score >= 6 ? "#facc15" : sub.score >= 4 ? "#fb923c" : "#f87171";
-                            return (
-                              <div key={sub.id} onClick={() => { if (!sub.imported) { setViewingSub(sub); setScreen("inst-sub-detail"); history.pushState({ newton: "inst-sub-detail" }, "", ""); } }} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 18px", borderTop: i > 0 ? `1px solid ${BORDER}` : "none", background: checked ? "rgba(255,255,255,0.01)" : "transparent", opacity: checked ? 0.65 : 1, transition: "opacity 0.2s, background 0.15s", cursor: sub.imported ? "default" : "pointer" }} onMouseEnter={e => { if (!sub.imported) e.currentTarget.style.background = checked ? "rgba(255,255,255,0.03)" : "rgba(255,255,255,0.04)"; }} onMouseLeave={e => { e.currentTarget.style.background = checked ? "rgba(255,255,255,0.01)" : "transparent"; }}>
-                                {!sub.imported ? <button onClick={e => { e.stopPropagation(); toggleChecked(sub.id); }} style={{ flexShrink: 0, width: 22, height: 22, borderRadius: 6, border: `2px solid ${checked ? TEAL : BORDER}`, background: checked ? TEAL : "transparent", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "#fff", fontSize: 12, fontWeight: 700 }}>{checked && "✓"}</button> : <div style={{ flexShrink: 0, width: 22, height: 22 }} />}
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}><span style={{ color: "#fff", fontSize: 14, fontWeight: 500 }}>{sub.studentName}</span>{sub.late && <span style={s.badge("#facc15")}>LATE</span>}{sub.imported && <span style={s.badge(MUTED)}>Imported</span>}</div>
-                                  <div style={{ ...s.muted, fontSize: 12, marginTop: 2 }}>{fmtDate(sub.timestamp)}</div>
-                                </div>
-                                <div style={{ textAlign: "right", flexShrink: 0, marginRight: 8 }}><span style={{ fontWeight: 700, fontSize: 16, color: scoreColor }}>{sub.score}</span><span style={{ color: MUTED, fontSize: 14 }}>/10</span>{sub.late && sub.rawScore !== sub.score && <div style={{ color: MUTED, fontSize: 12 }}>raw: {sub.rawScore}</div>}</div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+        {currentClassId && instructorSection === "gradebook" && (
+          <Gradebook
+            roster={roster}
+            modules={mergedModules}
+            quizzes={quizzes}
+            submissions={submissions}
+            gradeCategories={gradeCategories}
+            gradeOverrides={gradeOverrides}
+            assignmentCategories={assignmentCategories}
+            manualAssignments={manualAssignments}
+            assignmentNameOverrides={assignmentNameOverrides}
+            onSaveGradeCategories={saveGradeCategories}
+            onSaveOverrideForStudent={saveOverrideForStudent}
+            onSaveAssignmentCategories={saveAssignmentCategories}
+            onSaveManualAssignments={saveManualAssignments}
+            onSaveAssignmentNameOverrides={saveAssignmentNameOverrides}
+          />
         )}
 
-        {currentClassId && instructorSection === "quizzes" && (
-          <div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {quizzes.map(quiz => {
-                const late = isLate(quiz.dueDate);
-                const dateVal = quiz.dueDate ? quiz.dueDate.slice(0, 10) : "";
-                const timeVal = quiz.dueDate && quiz.dueDate.length === 16 && quiz.dueDate[10] === ' ' ? quiz.dueDate.slice(11) : "23:59";
-                return (
-                  <div key={quiz.id} style={{ ...s.card, padding: "14px 18px", display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 14 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ color: "#fff", fontWeight: 600, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>{quiz.title}{quiz.questions.some(q => q.requiresImage) && <span style={s.badge("#a78bfa")}>drawing</span>}</div>
-                      <div style={{ ...s.muted, fontSize: 12, marginTop: 3 }}>{quiz.questions.length} question{quiz.questions.length > 1 ? "s" : ""}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                      <input type="date" style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }} value={dateVal} onChange={async e => { const nd = { ...dueDates }; if (e.target.value) { nd[quiz.id] = e.target.value; } else { delete nd[quiz.id]; } setEditingTimeFor(null); await saveDueDates(nd); }} />
-                      {quiz.dueDate && (editingTimeFor === quiz.id
-                        ? <input type="time" autoFocus style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }} value={timeVal} onChange={async e => { if (!e.target.value) return; const t = e.target.value; const nd = { ...dueDates, [quiz.id]: dateVal + ' ' + t }; await saveDueDates(nd); }} onBlur={() => setEditingTimeFor(null)} />
-                        : <button onClick={() => setEditingTimeFor(quiz.id)} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 6px", fontFamily: "monospace" }}>{fmtDueTime(quiz.dueDate)}</button>
-                      )}
-                      {quiz.dueDate && <span style={s.badge(late ? "#f87171" : "#4ade80")}>{late ? "Past due" : "Active"}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
 
         {currentClassId && instructorSection === "roster" && (
           <div>
@@ -1370,6 +1439,8 @@ export default function App() {
             pages={pages}
             uploads={uploads}
             quizzes={quizzes}
+            dueDates={dueDates}
+            onSaveDueDates={saveDueDates}
             onSaveModules={saveModules}
             onSaveModuleConfig={saveModuleConfigFor}
             onSavePage={savePage}

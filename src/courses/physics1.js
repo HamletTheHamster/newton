@@ -33,9 +33,9 @@ const M = (n, topic) => ({
   id: `m${n}`,
   title: `Lecture ${n} | ${topic}`,
   items: [
-    { type: "quiz", refId: `q${n}` },
-    { type: "reading", title: `Assigned Reading: Ch. ${n} — ${topic}`, url: null },
-    { type: "notes", title: `Lecture ${n} Notes — ${topic}`, url: null },
+    { type: "quiz",     refId: `q${n}` },
+    { type: "file",     title: `Assigned Reading: Ch. ${n} — ${topic}`, uploadId: null },
+    { type: "file",     title: `Lecture ${n} Notes — ${topic}`, uploadId: null },
     { type: "homework", refId: `hw${n}` },
   ],
 });

@@ -42,12 +42,6 @@ export function Home({ loggedInStudent, modules, quizzes, submissions, onStartQu
 
   return (
     <div>
-      <div style={{ marginBottom: 22 }}>
-        <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 22, margin: "0 0 4px" }}>
-          Hi, {loggedInStudent.altName ? loggedInStudent.altName.split(' ')[0] : loggedInStudent.firstName}!
-        </h2>
-        <p style={{ ...s.muted, margin: 0 }}>Course modules — work through each one in order.</p>
-      </div>
       <ModuleList modules={modules} resolveItem={resolveItem} onItemClick={onItemClick} />
     </div>
   );

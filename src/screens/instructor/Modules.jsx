@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { s, TEAL, MUTED, BORDER } from "../../theme.js";
+import { useState, useEffect, useRef, Fragment } from "react";
+import { s, TEAL, MUTED, BORDER, BG } from "../../theme.js";
 import { fmtDueTime, dueToDate } from "../../utils.js";
 import { newId } from "../../courses/ids.js";
 
@@ -9,7 +9,23 @@ const fmtBytes = bytes => {
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
 };
 
-const TYPE_LABEL = { quiz: "Quiz", reading: "Reading", notes: "Notes", homework: "Homework", page: "Page", link: "Link", file: "File" };
+// ── Type icons ────────────────────────────────────────────────────────────────
+const QuizIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
+const FileIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
+const LinkIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>;
+const PageIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
+const HWIcon      = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>;
+const CalIcon     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
+
+const TYPE_ICON = {
+  quiz:     <QuizIcon />,
+  file:     <FileIcon />,
+  link:     <LinkIcon />,
+  page:     <PageIcon />,
+  homework: <HWIcon />,
+  reading:  <FileIcon />,
+  notes:    <FileIcon />,
+};
 
 const EyeIcon = ({ hidden }) => hidden
   ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
@@ -17,13 +33,20 @@ const EyeIcon = ({ hidden }) => hidden
 
 export function Modules({
   classId, modules, moduleConfig, pages, uploads, quizzes,
+  dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
 }) {
   const [openMap, setOpenMap] = useState({});
-  const [editingTimeFor, setEditingTimeFor] = useState(null);
   const [editingTitleFor, setEditingTitleFor] = useState(null);
+  const [dragId, setDragId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+  const [dragItemKey, setDragItemKey] = useState(null);   // "moduleId::itemId"
+  const [dragItemOverKey, setDragItemOverKey] = useState(null);
   const [titleDraft, setTitleDraft] = useState("");
+  const [moduleMenuFor, setModuleMenuFor] = useState(null);
+  const moduleMenuRef = useRef(null);
+  const [editingTimeFor, setEditingTimeFor] = useState(null);
 
   // Add-item flow state (one module's add bar active at a time)
   const [addingTo, setAddingTo] = useState(null);    // moduleId
@@ -48,6 +71,13 @@ export function Modules({
     setAddTitle(""); setAddUrl(""); setAddFile(null);
     setAddQuizPick(""); setAddProgress(0); setAddBusy(false); setAddErr("");
   };
+
+  useEffect(() => {
+    if (!moduleMenuFor) return;
+    const handler = e => { if (moduleMenuRef.current && !moduleMenuRef.current.contains(e.target)) setModuleMenuFor(null); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [moduleMenuFor]);
 
   // ── Module-level CRUD ────────────────────────────────────────────────────
   const updateModule = async (moduleId, mutator) => {
@@ -109,6 +139,11 @@ export function Modules({
     const cfg = { ...cfgOf(mod.id), releaseDate: dateVal + " " + timeVal };
     await onSaveModuleConfig(mod.id, cfg);
   };
+  const setReleaseFull = async (mod, fullVal) => {
+    const cfg = { ...cfgOf(mod.id) };
+    if (fullVal) cfg.releaseDate = fullVal; else delete cfg.releaseDate;
+    await onSaveModuleConfig(mod.id, cfg);
+  };
 
   // ── Visibility ───────────────────────────────────────────────────────────
   const toggleHidden = async (mod, itemId) => {
@@ -140,7 +175,7 @@ export function Modules({
   };
 
   const deleteItem = async (mod, item) => {
-    if (!window.confirm(`Delete "${item.title || TYPE_LABEL[item.type]}"? This cannot be undone.`)) return;
+    if (!window.confirm(`Delete "${item.title || item.type}"? This cannot be undone.`)) return;
     await updateModule(mod.id, m => ({ ...m, items: (m.items || []).filter(it => it.id !== item.id) }));
     // Clean up hidden flag if any.
     const cfg = cfgOf(mod.id);
@@ -245,53 +280,99 @@ export function Modules({
         const hidden = cfg.hiddenItems || {};
         const items = mod.items || [];
         const isOpen = !!openMap[mod.id];
-
-        const dateVal = releaseDate ? releaseDate.slice(0, 10) : "";
-        const timeVal = releaseDate && releaseDate.length === 16 && releaseDate[10] === ' ' ? releaseDate.slice(11) : "23:59";
+        const isDropTarget = dragOverId === mod.id && dragId !== mod.id;
         const releaseAt = releaseDate ? dueToDate(releaseDate) : null;
         const locked = !!(releaseAt && new Date() < releaseAt);
 
         return (
-          <div key={mod.id} style={{ ...s.card, overflow: "hidden" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", flexWrap: "wrap" }}>
-              <button onClick={() => toggleOne(mod.id)} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", padding: 0, flexShrink: 0 }}>
-                <span style={{ fontSize: 13, transform: isOpen ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.2s" }}>▶</span>
-              </button>
-              <div style={{ flex: "1 1 240px", minWidth: 0 }}>
-                {editingTitleFor === mod.id ? (
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      autoFocus
-                      value={titleDraft}
-                      onChange={e => setTitleDraft(e.target.value)}
-                      onKeyDown={e => {
-                        if (e.key === "Enter") renameModule(mod.id, titleDraft);
-                        if (e.key === "Escape") setEditingTitleFor(null);
+          <div key={mod.id}>
+            {/* Animated gap before this module when it's the drop target */}
+            {dragId && dragId !== mod.id && isDropTarget && (
+              <div style={{ height: 36, background: `${TEAL}22`, borderRadius: 8, border: `2px dashed ${TEAL}`, marginBottom: 10, transition: "height 0.15s" }} />
+            )}
+            <div
+              onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverId(mod.id); }}
+              onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); }}
+              onDrop={e => {
+                e.preventDefault();
+                if (!dragId || dragId === mod.id) { setDragId(null); setDragOverId(null); return; }
+                const arr = [...(modules || [])];
+                const from = arr.findIndex(m => m.id === dragId);
+                const to = arr.findIndex(m => m.id === mod.id);
+                if (from >= 0 && to >= 0) { arr.splice(to, 0, arr.splice(from, 1)[0]); onSaveModules(arr); }
+                setDragId(null); setDragOverId(null);
+              }}
+              onDragEnd={() => { setDragId(null); setDragOverId(null); }}
+              style={{ ...s.card, overflow: "hidden" }}
+            >
+              {/* Module header — draggable for reordering */}
+              <div
+                draggable
+                onDragStart={e => {
+                  setDragId(mod.id);
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", mod.id);
+                }}
+                onClick={() => toggleOne(mod.id)}
+                style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", flexWrap: "wrap", cursor: dragId === mod.id ? "grabbing" : "grab" }}
+              >
+                {/* Expand indicator */}
+                <span style={{ fontSize: 13, color: MUTED, transform: isOpen ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.2s", flexShrink: 0, pointerEvents: "none" }}>▶</span>
+                <div style={{ flex: "1 1 240px", minWidth: 0 }}>
+                  {editingTitleFor === mod.id ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
+                      <input
+                        autoFocus
+                        value={titleDraft}
+                        onChange={e => setTitleDraft(e.target.value)}
+                        onKeyDown={e => {
+                          if (e.key === "Enter") renameModule(mod.id, titleDraft);
+                          if (e.key === "Escape") setEditingTitleFor(null);
+                        }}
+                        style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 14, outline: "none", width: "100%", maxWidth: 360 }}
+                      />
+                      <button onClick={() => renameModule(mod.id, titleDraft)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
+                      <button onClick={() => setEditingTitleFor(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontWeight: 500, fontSize: 14, color: "#fff" }}>{mod.title || "Untitled module"}</span>
+                      <button onClick={e => { e.stopPropagation(); setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Rename module">✎</button>
+                    </div>
+                  )}
+                </div>
+                {/* Three-dot menu */}
+                <div
+                  ref={moduleMenuFor === mod.id ? moduleMenuRef : null}
+                  style={{ position: "relative", flexShrink: 0 }}
+                  onClick={e => e.stopPropagation()}
+                >
+                  <button
+                    onClick={() => setModuleMenuFor(id => id === mod.id ? null : mod.id)}
+                    style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}
+                  >⋮</button>
+                  {moduleMenuFor === mod.id && (
+                    <ModuleMenu
+                      releaseDate={releaseDate}
+                      locked={locked}
+                      onSaveRelease={val => setReleaseFull(mod, val)}
+                      onAddItem={type => {
+                        setModuleMenuFor(null);
+                        setOpenMap(prev => ({ ...prev, [mod.id]: true }));
+                        resetAddState();
+                        setAddingTo(mod.id);
+                        setAddType(type);
                       }}
-                      style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 14, outline: "none", width: "100%", maxWidth: 360 }}
+                      onOpenPageEditor={() => {
+                        setModuleMenuFor(null);
+                        setOpenMap(prev => ({ ...prev, [mod.id]: true }));
+                        onOpenPageEditor(mod.id, null, null);
+                      }}
+                      onDelete={() => { setModuleMenuFor(null); deleteModule(mod); }}
                     />
-                    <button onClick={() => renameModule(mod.id, titleDraft)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
-                    <button onClick={() => setEditingTitleFor(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
-                  </div>
-                ) : (
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontWeight: 600, fontSize: 15, color: "#fff" }}>{mod.title || "Untitled module"}</span>
-                    <button onClick={() => { setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Rename module">✎</button>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                <input type="date" style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }} value={dateVal} onChange={async e => { setEditingTimeFor(null); await setReleaseDate(mod, e.target.value); }} />
-                {releaseDate && (editingTimeFor === mod.id
-                  ? <input type="time" autoFocus style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }} value={timeVal} onChange={async e => { if (e.target.value) await setReleaseTime(mod, dateVal, e.target.value); }} onBlur={() => setEditingTimeFor(null)} />
-                  : <button onClick={() => setEditingTimeFor(mod.id)} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 6px", fontFamily: "monospace" }}>{fmtDueTime(releaseDate)}</button>
-                )}
-                {releaseDate && <span style={s.badge(locked ? "#facc15" : "#4ade80")}>{locked ? "Locked" : "Released"}</span>}
-                <IconBtn title="Move up"   disabled={modIdx === 0} onClick={() => moveModule(mod.id, -1)}>↑</IconBtn>
-                <IconBtn title="Move down" disabled={modIdx === list.length - 1} onClick={() => moveModule(mod.id, 1)}>↓</IconBtn>
-                <IconBtn title="Delete module" onClick={() => deleteModule(mod)}>🗑</IconBtn>
-              </div>
-            </div>
 
             {isOpen && (
               <div style={{ borderTop: `1px solid ${BORDER}` }}>
@@ -308,35 +389,92 @@ export function Modules({
                     ? (quizzes.find(q => q.id === item.refId)?.title || `Quiz (${item.refId})`)
                     : (item.title || (item.type === "link" ? item.url : (upload?.name || "Untitled")));
 
+                  const quizDueDate = item.type === "quiz" ? (dueDates?.[item.refId] || null) : null;
+                  const quizDateVal = quizDueDate ? quizDueDate.slice(0, 10) : "";
+                  const quizTimeVal = quizDueDate && quizDueDate.length === 16 && quizDueDate[10] === ' ' ? quizDueDate.slice(11) : "23:59";
+                  const quizLate = quizDueDate ? dueToDate(quizDueDate) < new Date() : false;
+
+                  const itemKey = `${mod.id}::${item.id}`;
+                  const isItemDropTarget = dragItemOverKey === itemKey && dragItemKey !== itemKey;
+
                   return (
-                    <ItemRow
-                      key={item.id}
-                      typeLabel={TYPE_LABEL[item.type] || "Item"}
-                      title={displayTitle}
-                      subtitle={subtitle}
-                      isHidden={isHidden}
-                      urlField={canHaveUrl ? (
-                        <UrlInput
-                          initial={item.url || ""}
-                          onCommit={val => setItemUrl(mod.id, item.id, val)}
-                          placeholder="Paste link URL (https://…)"
-                        />
-                      ) : null}
-                      actions={
-                        <>
-                          <IconBtn title="Move up"   disabled={itemIdx === 0} onClick={() => moveItem(mod.id, item.id, -1)}>↑</IconBtn>
-                          <IconBtn title="Move down" disabled={itemIdx === items.length - 1} onClick={() => moveItem(mod.id, item.id, 1)}>↓</IconBtn>
-                          {item.type === "page" && (
-                            <IconBtn title="Edit page" onClick={() => onOpenPageEditor(mod.id, item.id, item.pageId)}>✎</IconBtn>
-                          )}
-                          {item.type === "file" && upload?.downloadUrl && (
-                            <IconBtn title="Open file" onClick={() => window.open(upload.downloadUrl, "_blank", "noopener,noreferrer")}>↗</IconBtn>
-                          )}
-                          <IconBtn title="Delete" onClick={() => deleteItem(mod, item)}>🗑</IconBtn>
-                        </>
-                      }
-                      onToggleHidden={() => toggleHidden(mod, item.id)}
-                    />
+                    <Fragment key={item.id}>
+                      {dragItemKey && dragItemKey !== itemKey && isItemDropTarget && (
+                        <div style={{ height: 28, background: `${TEAL}22`, borderRadius: 6, border: `2px dashed ${TEAL}`, margin: "2px 18px", transition: "height 0.15s" }} />
+                      )}
+                      <ItemRow
+                        typeIcon={TYPE_ICON[item.type] || <FileIcon />}
+                        title={displayTitle}
+                        subtitle={subtitle}
+                        isHidden={isHidden}
+                        dragProps={{
+                          draggable: true,
+                          onDragStart: e => {
+                            e.stopPropagation();
+                            setDragItemKey(itemKey);
+                            e.dataTransfer.effectAllowed = "move";
+                            e.dataTransfer.setData("text/plain", itemKey);
+                          },
+                          onDragOver: e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragItemOverKey(itemKey); },
+                          onDragLeave: e => { e.stopPropagation(); setDragItemOverKey(null); },
+                          onDrop: e => {
+                            e.preventDefault(); e.stopPropagation();
+                            if (!dragItemKey || dragItemKey === itemKey) { setDragItemKey(null); setDragItemOverKey(null); return; }
+                            const [srcModId, srcItemId] = dragItemKey.split("::");
+                            if (srcModId !== mod.id) { setDragItemKey(null); setDragItemOverKey(null); return; }
+                            const arr = [...(mod.items || [])];
+                            const from = arr.findIndex(it => it.id === srcItemId);
+                            const to = arr.findIndex(it => it.id === item.id);
+                            if (from >= 0 && to >= 0) {
+                              arr.splice(to, 0, arr.splice(from, 1)[0]);
+                              onSaveModules((modules || []).map(m => m.id === mod.id ? { ...m, items: arr } : m));
+                            }
+                            setDragItemKey(null); setDragItemOverKey(null);
+                          },
+                          onDragEnd: () => { setDragItemKey(null); setDragItemOverKey(null); },
+                        }}
+                        dueField={item.type === "quiz" ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <input
+                              type="date"
+                              style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }}
+                              value={quizDateVal}
+                              onChange={async e => {
+                                const nd = { ...(dueDates || {}) };
+                                if (e.target.value) nd[item.refId] = e.target.value;
+                                else delete nd[item.refId];
+                                setEditingTimeFor(null);
+                                await onSaveDueDates(nd);
+                              }}
+                            />
+                            {quizDueDate && (editingTimeFor === item.refId
+                              ? <input type="time" autoFocus style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 12 }} value={quizTimeVal} onChange={async e => { if (!e.target.value) return; await onSaveDueDates({ ...(dueDates || {}), [item.refId]: quizDateVal + ' ' + e.target.value }); }} onBlur={() => setEditingTimeFor(null)} />
+                              : <button onClick={() => setEditingTimeFor(item.refId)} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 6px", fontFamily: "monospace" }}>{fmtDueTime(quizDueDate)}</button>
+                            )}
+                            {quizDueDate && <span style={s.badge(quizLate ? "#f87171" : "#4ade80")}>{quizLate ? "Past due" : "Active"}</span>}
+                          </div>
+                        ) : null}
+                        urlField={canHaveUrl ? (
+                          <UrlInput
+                            initial={item.url || ""}
+                            onCommit={val => setItemUrl(mod.id, item.id, val)}
+                            placeholder="Paste link URL (https://…)"
+                          />
+                        ) : null}
+                        actions={
+                          <>
+                            {item.type === "page" && (
+                              <IconBtn title="Edit page" onClick={() => onOpenPageEditor(mod.id, item.id, item.pageId)}>✎</IconBtn>
+                            )}
+                            {item.type === "file" && upload?.downloadUrl && (
+                              <IconBtn title="Open file" onClick={() => window.open(upload.downloadUrl, "_blank", "noopener,noreferrer")}>↗</IconBtn>
+                            )}
+                            <IconBtn title="Delete" onClick={() => deleteItem(mod, item)}>🗑</IconBtn>
+                          </>
+                        }
+                        onToggleHidden={() => toggleHidden(mod, item.id)}
+                      />
+                    </Fragment>
                   );
                 })}
 
@@ -351,7 +489,6 @@ export function Modules({
                   file={addFile} setFile={setAddFile}
                   quizPick={addQuizPick} setQuizPick={setAddQuizPick}
                   quizzes={quizzes}
-                  onStart={type => { resetAddState(); setAddingTo(mod.id); setAddType(type); if (type === "file") {/* lazy file pick */} }}
                   onCancel={resetAddState}
                   onOpenPageEditor={() => onOpenPageEditor(mod.id, null, null)}
                   onSubmitQuiz={() => submitAddQuiz(mod)}
@@ -362,6 +499,7 @@ export function Modules({
               </div>
             )}
           </div>
+        </div>
         );
       })}
 
@@ -400,14 +538,15 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeLabel, title, subtitle, isHidden, onToggleHidden, urlField, actions }) {
+function ItemRow({ typeIcon, title, subtitle, isHidden, onToggleHidden, dueField, urlField, actions, dragProps }) {
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${BORDER}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap" }}>
-      <span style={{ ...s.muted, fontSize: 11, fontFamily: "monospace", flexShrink: 0, minWidth: 60 }}>{typeLabel}</span>
+    <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${BORDER}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default" }}>
+      <span style={{ color: MUTED, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div style={{ color: "#fff", fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ color: "#fff", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
       </div>
+      {dueField && <div style={{ flexShrink: 0 }}>{dueField}</div>}
       {urlField && <div style={{ flex: "2 1 280px", minWidth: 0 }}>{urlField}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         {actions}
@@ -451,7 +590,7 @@ function UrlInput({ initial, onCommit, placeholder }) {
 function AddItemBar({
   mod, active, busy, progress, err,
   title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes,
-  onStart, onCancel, onOpenPageEditor,
+  onCancel, onOpenPageEditor,
   onSubmitQuiz, onSubmitText, onSubmitLink, onSubmitFile,
 }) {
   const wrap = (child) => (
@@ -472,22 +611,6 @@ function AddItemBar({
         {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onSubmitQuiz} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13 }}>Add Quiz</button>
-          <button onClick={onCancel} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
-        </div>
-      </div>
-    );
-  }
-
-  if (active === "reading" || active === "notes") {
-    return wrap(
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <input autoFocus style={{ ...s.input, flex: "1 1 200px", padding: "8px 12px", fontSize: 13 }} placeholder={active === "reading" ? "Reading title (e.g., 'Ch. 7 — Work')" : "Notes title (e.g., 'Lecture 7 Notes')"} value={title} onChange={e => setTitle(e.target.value)} />
-          <input style={{ ...s.input, flex: "2 1 280px", padding: "8px 12px", fontSize: 13 }} placeholder="URL (optional)" value={url} onChange={e => setUrl(e.target.value)} onKeyDown={e => { if (e.key === "Enter") onSubmitText(); }} />
-        </div>
-        {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onSubmitText} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13 }}>Add {active === "reading" ? "Reading" : "Notes"}</button>
           <button onClick={onCancel} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
         </div>
       </div>
@@ -537,16 +660,110 @@ function AddItemBar({
     );
   }
 
-  // Default: button bar
-  return wrap(
-    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-      <button onClick={() => onStart("quiz")}    style={{ ...s.btnGhost, width: "auto" }}>+ Quiz</button>
-      <button onClick={() => onStart("reading")} style={{ ...s.btnGhost, width: "auto" }}>+ Reading</button>
-      <button onClick={() => onStart("notes")}   style={{ ...s.btnGhost, width: "auto" }}>+ Notes</button>
-      <button onClick={onOpenPageEditor}         style={{ ...s.btnGhost, width: "auto" }}>+ Page</button>
-      <button onClick={() => onStart("link")}    style={{ ...s.btnGhost, width: "auto" }}>+ Link</button>
-      <button onClick={() => onStart("file")}    style={{ ...s.btnGhost, width: "auto" }}>+ File</button>
-      <button disabled title="Available in Phase 3" style={{ ...s.btnGhost, width: "auto", opacity: 0.4, cursor: "not-allowed" }}>+ Homework</button>
+  return null;
+}
+
+// ── ModuleMenu ────────────────────────────────────────────────────────────────
+function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageEditor, onDelete }) {
+  const ET = "America/New_York";
+  const etParts = d => {
+    const f = new Intl.DateTimeFormat("en-US", { timeZone: ET, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
+    return f.formatToParts(d).reduce((acc, p) => { acc[p.type] = p.value; return acc; }, {});
+  };
+
+  const now = new Date();
+  const nowParts = etParts(now);
+  const parsedValue = releaseDate ? dueToDate(releaseDate) : null;
+  const parsedParts = parsedValue ? etParts(parsedValue) : null;
+  const currentDateStr = parsedParts ? `${parsedParts.year}-${parsedParts.month}-${parsedParts.day}` : null;
+  const currentTimeStr = parsedParts ? `${parsedParts.hour === "24" ? "00" : parsedParts.hour}:${parsedParts.minute}` : "23:59";
+
+  const [calYear, setCalYear] = useState(() => parsedParts ? parseInt(parsedParts.year) : parseInt(nowParts.year));
+  const [calMonth, setCalMonth] = useState(() => parsedParts ? parseInt(parsedParts.month) : parseInt(nowParts.month));
+  const [timeInput, setTimeInput] = useState(currentTimeStr);
+
+  const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+  const todayStr = `${nowParts.year}-${nowParts.month}-${nowParts.day}`;
+
+  const daysInMonth = (y, m) => new Date(y, m, 0).getDate();
+  const firstDayOfWeek = () => {
+    const d = new Date(calYear, calMonth - 1, 1, 12, 0, 0);
+    const dayName = new Intl.DateTimeFormat("en-US", { timeZone: ET, weekday: "short" }).format(d);
+    return ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"].indexOf(dayName);
+  };
+
+  const totalDays = daysInMonth(calYear, calMonth);
+  const startDow = firstDayOfWeek();
+  const cells = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= totalDays; d++) cells.push(d);
+
+  const selectDay = day => {
+    const mm = String(calMonth).padStart(2, "0");
+    const dd = String(day).padStart(2, "0");
+    onSaveRelease(`${calYear}-${mm}-${dd} ${timeInput || "23:59"}`);
+  };
+
+  const prevMonth = () => { if (calMonth === 1) { setCalMonth(12); setCalYear(y => y - 1); } else setCalMonth(m => m - 1); };
+  const nextMonth = () => { if (calMonth === 12) { setCalMonth(1); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); };
+
+  return (
+    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 14px 10px", minWidth: 260, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+      {/* Section 1: Release date */}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <span style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Release Date</span>
+          {releaseDate && <span style={s.badge(locked ? "#facc15" : "#4ade80")}>{locked ? "Locked" : "Released"}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+          <button onClick={prevMonth} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>‹</button>
+          <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>{MONTHS[calMonth - 1]} {calYear}</span>
+          <button onClick={nextMonth} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>›</button>
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 3 }}>
+          {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
+            <div key={d} style={{ textAlign: "center", fontSize: 10, color: MUTED, padding: "2px 0" }}>{d}</div>
+          ))}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
+          {cells.map((day, i) => {
+            if (!day) return <div key={`e${i}`} />;
+            const mm = String(calMonth).padStart(2, "0");
+            const dd = String(day).padStart(2, "0");
+            const dayStr = `${calYear}-${mm}-${dd}`;
+            const isSelected = dayStr === currentDateStr;
+            const isToday = dayStr === todayStr;
+            const isPast = dayStr < todayStr;
+            return (
+              <button key={day} onClick={() => selectDay(day)} style={{ background: isSelected ? TEAL : "transparent", border: isToday && !isSelected ? `1px solid ${MUTED}` : "none", borderRadius: 4, color: isSelected ? "#fff" : isPast ? "rgba(160,160,160,0.5)" : "#fff", cursor: "pointer", fontSize: 11, padding: "3px 2px", textAlign: "center" }}>{day}</button>
+            );
+          })}
+        </div>
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
+          <span style={{ color: MUTED, fontSize: 11 }}>Time (ET)</span>
+          <input type="time" value={timeInput} onChange={e => { setTimeInput(e.target.value); if (currentDateStr && e.target.value) onSaveRelease(`${currentDateStr} ${e.target.value}`); }} style={{ ...s.input, width: "auto", padding: "4px 8px", fontSize: 12, flex: 1 }} />
+        </div>
+        {releaseDate && (
+          <button onClick={() => onSaveRelease(null)} style={{ ...s.btnGhost, width: "100%", marginTop: 6, padding: "5px", fontSize: 12 }}>Clear date</button>
+        )}
+      </div>
+
+      {/* Section 2: Add item */}
+      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginBottom: 10 }}>
+        <div style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Add Item</div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          <button onClick={() => onAddItem("quiz")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Quiz</button>
+          <button onClick={onOpenPageEditor} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Page</button>
+          <button onClick={() => onAddItem("link")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Link</button>
+          <button onClick={() => onAddItem("file")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ File</button>
+        </div>
+      </div>
+
+      {/* Section 3: Delete */}
+      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+        <button onClick={onDelete} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>🗑 Delete module</button>
+      </div>
     </div>
   );
 }
+

@@ -161,6 +161,91 @@ export function parseRoster(text) {
   return rows.sort((a, b) => a.lastName.localeCompare(b.lastName));
 }
 
+// ── Gradebook utilities ───────────────────────────────────────────────────────
+const DEFAULT_GRADEBOOK_CAT_BY_TYPE = { quiz: "cat_quiz", homework: "cat_hw" };
+
+export function buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments = {}, assignmentNameOverrides = {}) {
+  const gradableTypes = new Set(["quiz", "homework"]);
+  const quizById = Object.fromEntries((quizzes || []).map(q => [q.id, q]));
+  const seen = new Set();
+  const result = [];
+  for (const mod of (mergedModules || [])) {
+    for (const item of (mod.items || [])) {
+      if (!gradableTypes.has(item.type)) continue;
+      const id = item.refId || item.id;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      const baseTitle = (item.type === "quiz" ? quizById[id]?.title : item.title) || id;
+      const title = (assignmentNameOverrides || {})[id] || baseTitle;
+      const catId = (assignmentCategories || {})[id] || DEFAULT_GRADEBOOK_CAT_BY_TYPE[item.type] || "cat_quiz";
+      result.push({ id, title, type: item.type, catId, maxPts: 10, dueDate: quizById[id]?.dueDate || null });
+    }
+  }
+  for (const [id, ma] of Object.entries(manualAssignments || {})) {
+    if (!seen.has(id)) {
+      seen.add(id);
+      const title = (assignmentNameOverrides || {})[id] || ma.title || id;
+      const catId = (assignmentCategories || {})[id] || ma.catId || "cat_quiz";
+      result.push({ id, title, type: "manual", catId, maxPts: ma.maxPts || 10, dueDate: null });
+    }
+  }
+  return result;
+}
+
+export function calcGrades({ assignments, categories, scores, excused }) {
+  const cats = Object.values(categories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const byCategory = {};
+
+  for (const cat of cats) {
+    const catItems = (assignments || []).filter(a => a.catId === cat.id);
+    const items = catItems.map(a => {
+      const isExcused = !!(excused || {})[a.id];
+      const rawScore = isExcused ? null : ((scores || {})[a.id] ?? null);
+      return { id: a.id, score: rawScore, maxPts: a.maxPts, excused: isExcused, dropped: false };
+    });
+
+    const droppable = items.filter(it => !it.excused).sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+    const numToDrop = Math.min(cat.dropLowest || 0, Math.max(0, droppable.length - 1));
+    const droppedIds = new Set(droppable.slice(0, numToDrop).map(it => it.id));
+    items.forEach(it => { if (droppedIds.has(it.id)) it.dropped = true; });
+
+    let earned = 0, possible = 0;
+    for (const it of items) {
+      if (it.excused || it.dropped) continue;
+      possible += it.maxPts;
+      earned += it.score ?? 0;
+    }
+
+    byCategory[cat.id] = {
+      earned,
+      possible,
+      pct: possible > 0 ? (earned / possible) * 100 : null,
+      weightedContrib: 0,
+      dropped: [...droppedIds],
+      assignments: items,
+    };
+  }
+
+  let totalUsedWeight = 0;
+  for (const cat of cats) {
+    if ((byCategory[cat.id]?.possible ?? 0) > 0) totalUsedWeight += cat.weight;
+  }
+
+  let overall = null;
+  if (totalUsedWeight > 0) {
+    overall = 0;
+    for (const cat of cats) {
+      const data = byCategory[cat.id];
+      if (!data || data.pct == null || data.possible === 0) continue;
+      const contrib = data.pct * (cat.weight / totalUsedWeight);
+      data.weightedContrib = contrib;
+      overall += contrib;
+    }
+  }
+
+  return { overall, byCategory };
+}
+
 export function parseGradesCSV(text) {
   const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
   if (lines.length < 2) return { students: [], quizColCount: 0, detectedHeaders: "" };

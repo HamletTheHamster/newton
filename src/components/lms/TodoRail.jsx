@@ -16,7 +16,7 @@ const KIND_COLOR = {
 
 export function TodoRail({ items }) {
   return (
-    <aside style={{ padding: "20px 16px 24px", borderLeft: `1px solid ${BORDER}`, minWidth: 220, flexShrink: 0, overflowY: "auto" }}>
+    <aside style={{ padding: "20px 16px 24px", minWidth: 220, flexShrink: 0, overflowY: "auto" }}>
       <p style={{ color: "#fff", fontWeight: 700, fontSize: 14, margin: "0 0 12px", letterSpacing: "0.02em" }}>To Do</p>
       {items.length === 0 ? (
         <p style={{ ...s.muted, fontSize: 13, margin: 0 }}>Nothing for now</p>

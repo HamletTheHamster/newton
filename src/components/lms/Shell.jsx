@@ -1,4 +1,4 @@
-import { s, CARD, BORDER } from "../../theme.js";
+import { s, BG, BORDER } from "../../theme.js";
 
 // Three-pane LMS layout:
 //   - top bar (header)
@@ -15,7 +15,7 @@ export function Shell({ header, sidebar, rightRail, children }) {
   return (
     <div style={{ ...s.page, height: "100vh", display: "flex", flexDirection: "column" }}>
       {header && (
-        <div style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
+        <div style={{ background: BG, padding: "12px 20px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
           {header}
         </div>
       )}
