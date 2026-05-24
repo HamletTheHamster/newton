@@ -16,7 +16,8 @@
 | `src/firebase.js` · `auth.js` · `theme.js` · `utils.js` | Extracted helpers (REST, hashing/TOTP, theme + `s` object, dates/parsers/Claude API) |
 | `src/courses/` | Per-course content (`physics1.js`, `physics2.js`) — quizzes + modules |
 | `src/components/lms/` | LMS layout building blocks (Shell, Sidebar, TodoRail, ModuleList) |
-| `src/screens/student/` | Student section pages (Home, Stub for placeholders) |
+| `src/screens/student/` | Student section pages (Home, StudentCalendar, StudentGrades, Stub) |
+| `src/screens/instructor/Gradebook.jsx` | Instructor gradebook — weighted categories, per-student scores, CSV export, manual assignments |
 | `netlify/functions/claude.js` | Claude API proxy |
 | `database.rules.json` | Firebase RTDB security rules |
 | `storage.rules` · `firebase.json` | Firebase Storage rules and CLI config (deploy with `firebase deploy --only storage` / `--only database`) |

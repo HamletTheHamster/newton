@@ -4,7 +4,7 @@ The application is organized around a single top-level component in `src/App.jsx
 
 **Screens:** `student-search` → `student-pw` → `student-portal` → `quiz` | `inst-login` → `instructor` → `inst-sub-detail`
 
-Within `student-portal`, the active sidebar section is `studentSection` (one of `home`/`calendar`/`syllabus`/`announcements`/`grades`/`evals`). Within `instructor`, `instructorSection` selects the active panel (`submissions`/`quizzes`/`roster`/`settings`/`bugs`). Module content for each course (titles, the per-week 4-item template) is defined in `src/courses/{courseType}.js`. See [docs/lms-redesign.md](lms-redesign.md) for the multi-session redesign plan.
+Within `student-portal`, the active sidebar section is `studentSection` (one of `home`/`calendar`/`syllabus`/`announcements`/`grades`/`evals`). Within `instructor`, `instructorSection` selects the active panel (`modules`/`submissions`/`quizzes`/`roster`/`announcements`/`gradebook`/`settings`/`bugs`). The `modules` section is labeled "Home" in the UI. Module content for each course (titles, per-week items) is defined in `src/courses/{courseType}.js`. See [docs/lms-redesign.md](lms-redesign.md) for the multi-session redesign plan.
 
 ## Firebase (no SDK — REST only)
 
@@ -26,6 +26,16 @@ classes/
     submissions/                   {studentId: [submission, ...]}
     checkedSubs/                   {submissionId: true}
     dueDates/                      {quizId: "YYYY-MM-DD HH:mm"}
+    modules/                       ordered array of {id, title, items: [...]}
+    moduleConfig/                  {[moduleId]: {releaseDate?, hiddenItems: {[itemId]: true}}}
+    pages/                         {[pageId]: {title, body, createdAt}}
+    uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt}}
+    announcements/                 {[annId]: {id, title, body, createdAt}}
+    announcementReads/             {[studentId]: {[annId]: true}}
+    gradeCategories/               {[catId]: {id, name, weight, order}}
+    gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}
+    manualAssignments/             {[id]: {id, title, catId, maxPts}}
+    assignmentNameOverrides/       {[assignmentId]: overrideTitle}
 settings/                          {passwordHash, passwordSalt, totpSecret?, trustedDevices?}  — shared across classes
 bugReports/                        {id: {id, message, timestamp, read}}                       — shared across classes
 _test/                             scratch node for connectivity check on startup
