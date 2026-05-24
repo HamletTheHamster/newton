@@ -1066,7 +1066,7 @@ export default function App() {
 
     const evalNudge = (() => {
       try {
-        if (localStorage.getItem(`newton_eval_quick_${currentClassId}`)) return false;
+        if (localStorage.getItem(`newton_eval_survey_${currentClassId}`)) return false;
         const withDates = mergedModules.filter(m => m.releaseDate);
         if (withDates.length === 0) return true;
         const last = withDates.reduce((a, b) =>
