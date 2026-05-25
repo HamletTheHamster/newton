@@ -19,23 +19,41 @@ function gradingColor(name) {
   return TEAL;
 }
 
-export function StudentSyllabus({ syllabus }) {
+function renderWithLinks(text) {
+  if (!text) return text;
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+  const parts = [];
+  let last = 0;
+  let match;
+  while ((match = urlRegex.exec(text)) !== null) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const url = match[0];
+    parts.push(<a key={match.index} href={url} target="_blank" rel="noopener noreferrer" style={{ color: TEAL, textDecoration: "underline" }}>{url}</a>);
+    last = match.index + url.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts.length > 0 ? parts : text;
+}
+
+export function StudentSyllabus({ syllabus, showHeader = true }) {
   const fields = syllabus?.fields;
   const pdf = syllabus?.pdf;
 
   return (
     <div>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
-        <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 22, margin: 0 }}>Syllabus</h2>
-        {pdf?.downloadUrl && (
-          <button
-            style={{ ...s.btnGhost, color: TEAL, borderColor: TEAL, fontSize: 13 }}
-            onClick={() => window.open(pdf.downloadUrl, "_blank", "noopener,noreferrer")}
-          >
-            Open PDF ↗
-          </button>
-        )}
-      </div>
+      {showHeader && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 22 }}>
+          <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 22, margin: 0 }}>Syllabus</h2>
+          {pdf?.downloadUrl && (
+            <button
+              style={{ ...s.btnGhost, color: TEAL, borderColor: TEAL, fontSize: 13 }}
+              onClick={() => window.open(pdf.downloadUrl, "_blank", "noopener,noreferrer")}
+            >
+              Open PDF ↗
+            </button>
+          )}
+        </div>
+      )}
 
       {!fields ? (
         <div style={{ ...s.card, padding: 40, textAlign: "center", color: MUTED }}>
@@ -99,7 +117,7 @@ export function StudentSyllabus({ syllabus }) {
           {fields.description && (
             <div style={{ ...s.card, padding: 24, marginBottom: 16 }}>
               <CardLabel>Course Description</CardLabel>
-              <p style={{ color: "#fff", fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: "pre-wrap" }}>{fields.description}</p>
+              <p style={{ color: "#fff", fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: "pre-wrap" }}>{renderWithLinks(fields.description)}</p>
             </div>
           )}
 
@@ -174,7 +192,7 @@ export function StudentSyllabus({ syllabus }) {
           {fields.policies?.length > 0 && fields.policies.map((p, i) => (
             <div key={i} style={{ ...s.card, padding: 24, marginBottom: 16 }}>
               <CardLabel>{p.title}</CardLabel>
-              <p style={{ color: "#fff", fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: "pre-wrap" }}>{p.body}</p>
+              <p style={{ color: "#fff", fontSize: 14, lineHeight: 1.75, margin: 0, whiteSpace: "pre-wrap" }}>{renderWithLinks(p.body)}</p>
             </div>
           ))}
         </>

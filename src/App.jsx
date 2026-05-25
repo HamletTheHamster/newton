@@ -194,6 +194,15 @@ export default function App() {
   const currentParts = currentQ && !isYesNoQ && !isDragDropQ ? detectParts(currentQ.text) : null;
   const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId));
   const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const syllabusBreakdown = syllabus?.fields?.gradingBreakdown ?? [];
+  const gradeCatList = Object.values(gradeCategories ?? {});
+  const syllabusMismatch = gradeCatList.length > 0 && syllabusBreakdown.length > 0 && (
+    gradeCatList.length !== syllabusBreakdown.length ||
+    gradeCatList.some(cat => {
+      const match = syllabusBreakdown.find(g => g.name.toLowerCase() === cat.name.toLowerCase());
+      return !match || match.weight !== cat.weight;
+    })
+  );
 
   // Flattened student search across all active classes (used on the student-search screen).
   const allActiveStudents = [];
@@ -753,7 +762,7 @@ export default function App() {
       const firstActive = Object.entries(classes).filter(([, c]) => c?.metadata?.active !== false).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || ""))[0];
       if (firstActive) await switchToClass(firstActive[0]);
     }
-    setInstructorSection("gradebook");
+    setInstructorSection("modules");
     setScreen("instructor");
   };
   const doLogin = async () => {
@@ -1605,6 +1614,7 @@ export default function App() {
           <InstructorSyllabus
             syllabus={syllabus}
             classId={currentClassId}
+            syllabusMismatch={syllabusMismatch}
             onUploadFile={fbUpload}
             onSaveSyllabus={saveSyllabus}
             onDeleteSyllabus={deleteSyllabus}
@@ -1807,7 +1817,9 @@ export default function App() {
         )}
 
         {instructorSection === "evals" && (() => {
-          const allEvals = Object.values(courseEvals).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+          const allEvals = Object.values(courseEvals)
+            .filter(e => e.classId === currentClassId)
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
           const filtered = evalFilter === "all" ? allEvals : allEvals.filter(e => e.type === evalFilter);
           const LIKERT_LABELS = { SA: "Strongly Agree", A: "Agree", D: "Disagree", SD: "Strongly Disagree" };
           const SURVEY_QUESTIONS = [
@@ -1819,6 +1831,31 @@ export default function App() {
             { id: "q6", text: "The instructor provides constructive feedback on assignments." },
             { id: "q7", text: "The instructor shows respect for students." },
           ];
+          const exportEvalsCsv = () => {
+            const c = syllabus?.fields?.course;
+            const prefix = [c?.term, c?.number].filter(Boolean).join(" ");
+            const filename = (prefix ? `${prefix} - Evaluations` : "evaluations") + ".csv";
+            const headers = ["Timestamp", "Type", "Message", "Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Suggestions", "Most Helpful Assignment", "Liked Best"];
+            const rows = allEvals.map(ev => {
+              if (ev.type === "quick") {
+                return [new Date(ev.timestamp).toLocaleString(), "Quick Feedback", ev.message ?? "", "", "", "", "", "", "", "", "", "", ""];
+              }
+              const r = ev.responses ?? {};
+              const o = ev.openEnded ?? {};
+              return [
+                new Date(ev.timestamp).toLocaleString(), "End-of-Course Survey", "",
+                LIKERT_LABELS[r.q1] ?? "", LIKERT_LABELS[r.q2] ?? "", LIKERT_LABELS[r.q3] ?? "",
+                LIKERT_LABELS[r.q4] ?? "", LIKERT_LABELS[r.q5] ?? "", LIKERT_LABELS[r.q6] ?? "",
+                LIKERT_LABELS[r.q7] ?? "", o.suggestions ?? "", o.assignment ?? "", o.best ?? "",
+              ];
+            });
+            const csv = [headers, ...rows].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(a.href);
+          };
           return (
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 24, flexWrap: "wrap" }}>
@@ -1826,12 +1863,15 @@ export default function App() {
                   {allEvals.length} total
                   {unreadEvalCount > 0 && <span style={{ ...s.badge("#f87171"), marginLeft: 8 }}>{unreadEvalCount} unread</span>}
                 </p>
-                <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+                <div style={{ display: "flex", gap: 6, marginLeft: "auto", flexWrap: "wrap" }}>
                   {["all", "quick", "survey"].map(f => (
                     <button key={f} onClick={() => setEvalFilter(f)} style={{ ...s.btnGhost, padding: "4px 12px", fontSize: 12, background: evalFilter === f ? "rgba(0,130,140,0.15)" : "transparent", color: evalFilter === f ? TEAL : MUTED, border: `1px solid ${evalFilter === f ? TEAL : BORDER}` }}>
                       {f === "all" ? "All" : f === "quick" ? "Quick Feedback" : "Surveys"}
                     </button>
                   ))}
+                  {allEvals.length > 0 && (
+                    <button onClick={exportEvalsCsv} style={{ ...s.btnGhost, padding: "4px 12px", fontSize: 12 }}>Export CSV</button>
+                  )}
                 </div>
               </div>
               {filtered.length === 0 ? (
@@ -1844,9 +1884,6 @@ export default function App() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={s.badge(ev.type === "survey" ? "#818cf8" : TEAL)}>{ev.type === "survey" ? "End-of-Course Survey" : "Quick Feedback"}</span>
                           <span style={{ ...s.muted, fontSize: 12 }}>{new Date(ev.timestamp).toLocaleString()}</span>
-                          {ev.classId && classes[ev.classId]?.metadata?.name && (
-                            <span style={{ ...s.muted, fontSize: 12 }}>· {classes[ev.classId].metadata.name}</span>
-                          )}
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           {!ev.read && <span style={s.badge("#f87171")}>Unread</span>}
@@ -1860,7 +1897,7 @@ export default function App() {
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {SURVEY_QUESTIONS.map(q => (
                             <div key={q.id} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                              <span style={{ ...s.badge(TEAL), minWidth: 32, textAlign: "center", flexShrink: 0 }}>{ev.responses[q.id] || "—"}</span>
+                              <span style={{ ...s.badge(TEAL), minWidth: 110, textAlign: "center", flexShrink: 0, fontSize: 11 }}>{LIKERT_LABELS[ev.responses[q.id]] || "—"}</span>
                               <span style={{ color: "#fff", fontSize: 13, lineHeight: 1.5 }}>{q.text}</span>
                             </div>
                           ))}

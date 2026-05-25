@@ -144,7 +144,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
               />
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                 <input
-                  type="number" min="0" max="100"
+                  type="text" inputMode="numeric"
                   value={cat.weight}
                   onChange={e => updateCat(cat.id, "weight", Number(e.target.value) || 0)}
                   style={{ ...s.input, width: 52, padding: "6px 6px", fontSize: 13, textAlign: "center", height: "auto" }}
@@ -153,7 +153,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                 <input
-                  type="number" min="0" max="10"
+                  type="text" inputMode="numeric"
                   value={cat.dropLowest}
                   onChange={e => updateCat(cat.id, "dropLowest", Number(e.target.value) || 0)}
                   style={{ ...s.input, width: 44, padding: "6px 4px", fontSize: 13, textAlign: "center", height: "auto" }}
@@ -176,7 +176,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
             />
             <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
               <input
-                type="number" min="0" max="100"
+                type="text" inputMode="numeric"
                 value={newWeight}
                 onChange={e => setNewWeight(Number(e.target.value) || 0)}
                 style={{ ...s.input, width: 52, padding: "6px 6px", fontSize: 13, textAlign: "center", height: "auto" }}

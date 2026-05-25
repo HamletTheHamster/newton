@@ -17,7 +17,9 @@
 | `src/courses/` | Per-course content (`physics1.js`, `physics2.js`) — quizzes + modules |
 | `src/components/lms/` | LMS layout building blocks (Shell, Sidebar, TodoRail, ModuleList) |
 | `src/screens/student/` | Student section pages (Home, StudentCalendar, StudentGrades, CourseEvals, Stub) |
+| `src/screens/student/StudentSyllabus.jsx` | Student syllabus display — renders `syllabus.fields` as cards; `showHeader` prop used by instructor view |
 | `src/screens/instructor/Gradebook.jsx` | Instructor gradebook — weighted categories, per-student scores, CSV export, manual assignments |
+| `src/screens/instructor/InstructorSyllabus.jsx` | Instructor syllabus — upload/replace/remove PDF, mismatch warning, full content via `StudentSyllabus` |
 | `netlify/functions/claude.js` | Claude API proxy |
 | `netlify/functions/send-email.js` | Email broadcast proxy — validates shared secret, calls Resend API |
 | `src/components/ManualAddStudent.jsx` | Instructor roster manual-add form (name, ID, email) |

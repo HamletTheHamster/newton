@@ -32,13 +32,14 @@ classes/
     uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt}}
     announcements/                 {[annId]: {id, title, body, createdAt}}
     announcementReads/             {[studentId]: {[annId]: true}}  — orphaned; no longer read or written (notification feature removed in 6.9)
-    gradeCategories/               {[catId]: {id, name, weight, order}}
+    gradeCategories/               {[catId]: {id, name, weight, dropLowest, order}}  — used by Gradebook; separate from syllabus.fields.gradingBreakdown (PDF-extracted). A mismatch warning appears on the instructor Syllabus page when they diverge.
     gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}
     manualAssignments/             {[id]: {id, title, catId, maxPts, order}}  — seeded on first load (Midterm, Final, Lab 1a–14b)
     assignmentNameOverrides/       {[assignmentId]: overrideTitle}
     assignmentOrderOverrides/      {[assignmentId]: number}  — column drag/drop order; overrides natural sort
 settings/                          {passwordHash, passwordSalt, totpSecret?, trustedDevices?}  — shared across classes
 bugReports/                        {id: {id, message, timestamp, read}}                       — shared across classes
+courseEvals/                       {id: {id, type, classId, message?, responses?, openEnded?, timestamp, read}}  — shared across classes, scoped by classId field
 _test/                             scratch node for connectivity check on startup
 ```
 

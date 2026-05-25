@@ -134,11 +134,8 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
           <p style={{ color: "#4ade80", fontSize: 14, margin: 0 }}>Thank you for completing the end-of-course survey!</p>
         ) : (
           <>
-            <p style={{ ...s.muted, fontSize: 13, margin: "0 0 4px" }}>
-              Please rate each statement using the scale below. All responses are completely anonymous.
-            </p>
-            <p style={{ ...s.muted, fontSize: 12, margin: "0 0 24px" }}>
-              SA = Strongly Agree &nbsp;·&nbsp; A = Agree &nbsp;·&nbsp; D = Disagree &nbsp;·&nbsp; SD = Strongly Disagree
+            <p style={{ ...s.muted, fontSize: 13, margin: "0 0 24px" }}>
+              Please rate each statement below. All responses are completely anonymous.
             </p>
 
             <SectionLabel>Course</SectionLabel>
@@ -207,7 +204,7 @@ function LikertRow({ q, value, onChange }) {
             onClick={() => onChange(opt)}
             title={LIKERT_LABELS[opt]}
             style={{
-              padding: "4px 10px",
+              padding: "5px 14px",
               border: `1px solid ${value === opt ? TEAL : BORDER}`,
               borderRadius: 6,
               background: value === opt ? "rgba(0,130,140,0.2)" : "transparent",
@@ -216,10 +213,11 @@ function LikertRow({ q, value, onChange }) {
               fontSize: 12,
               fontWeight: value === opt ? 700 : 400,
               transition: "all 0.1s",
-              minWidth: 36,
+              minWidth: 110,
+              whiteSpace: "nowrap",
             }}
           >
-            {opt}
+            {LIKERT_LABELS[opt]}
           </button>
         ))}
       </div>

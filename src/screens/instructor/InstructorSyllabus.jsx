@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { s, TEAL, MUTED, BORDER } from "../../theme.js";
 import { fbDeleteStorage } from "../../firebase.js";
+import { StudentSyllabus } from "../student/StudentSyllabus.jsx";
 
 function fmtBytes(b) {
   if (b >= 1024 * 1024) return (b / (1024 * 1024)).toFixed(1) + " MB";
@@ -21,7 +22,7 @@ Return ONLY a valid JSON object — no markdown fences, no explanation — match
 }
 Use empty string or 0 for any fields not found in the document. officeHours should be an array of strings like ["Mon 2–3 PM", "By appointment"].`;
 
-export function InstructorSyllabus({ syllabus, classId, onUploadFile, onSaveSyllabus, onDeleteSyllabus }) {
+export function InstructorSyllabus({ syllabus, classId, syllabusMismatch, onUploadFile, onSaveSyllabus, onDeleteSyllabus }) {
   const [progress, setProgress] = useState(null);  // 0–1 while uploading, null otherwise
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
@@ -187,46 +188,19 @@ export function InstructorSyllabus({ syllabus, classId, onUploadFile, onSaveSyll
       {/* Error */}
       {error && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 14px" }}>{error}</p>}
 
-      {/* Extracted fields summary */}
-      {hasPdf && syllabus.fields && !extracting && (
-        <div style={{ ...s.card, padding: 20 }}>
-          <div style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 14 }}>
-            Extracted Information
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px 24px" }}>
-            {syllabus.fields.course?.number && (
-              <FieldPreview label="Course" value={`${syllabus.fields.course.number}${syllabus.fields.course.title ? ` — ${syllabus.fields.course.title}` : ""}`} />
-            )}
-            {syllabus.fields.instructor?.name && (
-              <FieldPreview label="Instructor" value={syllabus.fields.instructor.name} />
-            )}
-            {syllabus.fields.course?.schedule && (
-              <FieldPreview label="Schedule" value={syllabus.fields.course.schedule} />
-            )}
-            {syllabus.fields.gradingBreakdown?.length > 0 && (
-              <FieldPreview label="Grading" value={`${syllabus.fields.gradingBreakdown.length} categories`} />
-            )}
-            {syllabus.fields.materials?.length > 0 && (
-              <FieldPreview label="Materials" value={`${syllabus.fields.materials.length} item${syllabus.fields.materials.length !== 1 ? "s" : ""}`} />
-            )}
-            {syllabus.fields.policies?.length > 0 && (
-              <FieldPreview label="Policies" value={`${syllabus.fields.policies.length} section${syllabus.fields.policies.length !== 1 ? "s" : ""}`} />
-            )}
-          </div>
-          <p style={{ color: MUTED, fontSize: 12, margin: "16px 0 0" }}>
-            To update, use Replace above — fields are re-extracted automatically.
+      {/* Grade weight mismatch warning */}
+      {syllabusMismatch && (
+        <div style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.4)", borderRadius: 8, padding: "12px 16px", marginBottom: 16 }}>
+          <p style={{ color: "#fbbf24", fontSize: 13, margin: 0, lineHeight: 1.6 }}>
+            <strong>Grade weights out of sync:</strong> The grade category weights in Grade Settings differ from the values in the syllabus PDF. Students see the PDF values. Replace the PDF above to keep the syllabus accurate.
           </p>
         </div>
       )}
-    </div>
-  );
-}
 
-function FieldPreview({ label, value }) {
-  return (
-    <div>
-      <div style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 3 }}>{label}</div>
-      <div style={{ color: "#fff", fontSize: 13 }}>{value}</div>
+      {/* Full syllabus content (matches student view) */}
+      {hasPdf && syllabus.fields && !extracting && (
+        <StudentSyllabus syllabus={syllabus} showHeader={false} />
+      )}
     </div>
   );
 }
