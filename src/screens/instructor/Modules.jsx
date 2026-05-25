@@ -54,6 +54,8 @@ export function Modules({
   const [itemMenuFor, setItemMenuFor] = useState(null);     // "moduleId::itemId"
   const itemMenuRef = useRef(null);
   const [editingTimeFor, setEditingTimeFor] = useState(null);
+  const [renamingItemKey, setRenamingItemKey] = useState(null); // "moduleId::itemId"
+  const [renamingItemDraft, setRenamingItemDraft] = useState("");
 
   // Add-item flow state (one module's add bar active at a time)
   const [addingTo, setAddingTo] = useState(null);    // moduleId
@@ -212,6 +214,13 @@ export function Modules({
     } else if (item.type === "file" && item.uploadId && onDeleteUpload) {
       try { await onDeleteUpload(item.uploadId); } catch (e) { console.warn("Upload cleanup failed:", e?.message || e); }
     }
+  };
+
+  const renameItem = async (moduleId, itemId, newTitle) => {
+    const t = (newTitle || "").trim();
+    if (!t) { setRenamingItemKey(null); return; }
+    await updateItem(moduleId, itemId, it => ({ ...it, title: t }));
+    setRenamingItemKey(null);
   };
 
   const setItemUrl = async (moduleId, itemId, url) => {
@@ -428,6 +437,11 @@ export function Modules({
                         subtitle={subtitle}
                         isHidden={isHidden}
                         isDropTarget={isItemDropTarget}
+                        renameMode={renamingItemKey === itemKey}
+                        renameDraft={renamingItemDraft}
+                        onRenameDraftChange={setRenamingItemDraft}
+                        onRenameCommit={() => renameItem(mod.id, item.id, renamingItemDraft)}
+                        onRenameCancel={() => setRenamingItemKey(null)}
                         dragProps={{
                           draggable: true,
                           onDragStart: e => {
@@ -476,6 +490,7 @@ export function Modules({
                           <ItemMenu
                             onEditPage={item.type === "page" ? () => { setItemMenuFor(null); onOpenPageEditor(mod.id, item.id, item.pageId); } : undefined}
                             onEditQuiz={item.type === "quiz" && customQuizzes?.[item.refId] ? () => { setItemMenuFor(null); onOpenCustomQuizEditor?.(mod.id, item.refId); } : undefined}
+                            onRename={item.type === "file" ? () => { setItemMenuFor(null); setRenamingItemKey(itemKey); setRenamingItemDraft(item.title || upload?.name || ""); } : undefined}
                             dueField={item.type === "quiz" ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <input
@@ -571,14 +586,32 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu }) {
+function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel }) {
   const { s, muted, border, text, teal } = useTheme();
+  const activeDragProps = renameMode ? { ...dragProps, draggable: false } : (dragProps || {});
   return (
-    <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${border}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${teal}` : undefined }}>
+    <div {...activeDragProps} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${border}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: renameMode ? "default" : (dragProps?.draggable ? "grab" : "default"), boxShadow: isDropTarget ? `inset 0 3px 0 0 ${teal}` : undefined }}>
       <span style={{ color: muted, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
-        {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
+        {renameMode ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
+            <input
+              autoFocus
+              value={renameDraft}
+              onChange={e => onRenameDraftChange(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter") onRenameCommit(); if (e.key === "Escape") onRenameCancel(); }}
+              onBlur={onRenameCommit}
+              style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${teal}`, color: text, borderRadius: 6, padding: "4px 10px", fontSize: 14, outline: "none", flex: 1, minWidth: 0 }}
+            />
+            <button onMouseDown={e => e.preventDefault()} onClick={onRenameCommit} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${teal}`, color: teal, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700, flexShrink: 0 }}>✓</button>
+            <button onMouseDown={e => e.preventDefault()} onClick={onRenameCancel} style={{ background: "none", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, flexShrink: 0 }}>✕</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
+          </>
+        )}
       </div>
       {urlField && <div style={{ flex: "2 1 280px", minWidth: 0 }}>{urlField}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
@@ -826,9 +859,9 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
   );
 }
 
-function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, onEditQuiz }) {
+function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, onEditQuiz, onRename }) {
   const { s, muted, border, bg } = useTheme();
-  const hasEditAction = onEditPage || onEditQuiz;
+  const hasEditAction = onEditPage || onEditQuiz || onRename;
   return (
     <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "14px", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
       {dueField && (
@@ -843,7 +876,10 @@ function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, on
             <button onClick={onEditPage} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: 6 }}>✎ Edit page</button>
           )}
           {onEditQuiz && (
-            <button onClick={onEditQuiz} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Edit quiz</button>
+            <button onClick={onEditQuiz} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: onRename ? 6 : 0 }}>✎ Edit quiz</button>
+          )}
+          {onRename && (
+            <button onClick={onRename} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Rename</button>
           )}
         </div>
       )}
