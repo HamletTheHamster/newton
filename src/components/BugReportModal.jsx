@@ -1,8 +1,10 @@
 import { useState } from "react";
-import { s, BORDER } from "../theme.js";
+import { useTheme } from "../theme.js";
 import { fbSet } from "../firebase.js";
 
 export function BugReportModal({ bugReports, setBugReports, onClose }) {
+  const { s, text, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
   const [bugInput, setBugInput] = useState("");
   const [bugSubmitting, setBugSubmitting] = useState(false);
   const [bugSubmitMsg, setBugSubmitMsg] = useState("");
@@ -27,8 +29,8 @@ export function BugReportModal({ bugReports, setBugReports, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
-      <div style={{ ...s.card, padding: 24, width: "100%", maxWidth: 400 }}>
-        <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 16, margin: "0 0 12px" }}>Report a Bug</h3>
+      <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 400 }}>
+        <h3 style={{ color: text, fontWeight: 700, fontSize: 16, margin: "0 0 12px" }}>Report a Bug</h3>
         <textarea
           style={{ ...s.input, height: 100, resize: "vertical", marginBottom: 10, fontFamily: "inherit" }}
           placeholder="Describe the issue…"

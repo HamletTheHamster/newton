@@ -16,6 +16,7 @@ import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
 
 import { SyncBadge } from "./components/SyncBadge.jsx";
+import { CustomSelect } from "./components/CustomSelect.jsx";
 import { ChatMessages } from "./components/ChatMessages.jsx";
 import { DragDropQuestion } from "./components/DragDropQuestion.jsx";
 import { ManualAddStudent } from "./components/ManualAddStudent.jsx";
@@ -1102,28 +1103,30 @@ export default function App() {
     const s = appTh.s; const MUTED = appTh.muted; const text = appTh.text;
     return (
     <ThemeContext.Provider value={appTh}>
-    <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+    <div style={{ ...s.page, minHeight: "100vh", display: "flex", flexDirection: "column" }}>
       {bugModalJsx}
       <Footer onBugClick={() => setBugReportOpen(true)} />
-      <div style={{ maxWidth: 420, width: "100%" }}>
-        <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <h1 style={{ fontSize: 72, fontWeight: 700, color: TEAL, margin: "0 0 8px" }}>Newton</h1>
-          <p style={{ fontSize: 18, fontWeight: 600, color: text, margin: 0 }}>{selectedStudent.altName || selectedStudent.fullName}</p>
-        </div>
-        <input type="password" style={{ ...s.input, marginBottom: 10 }} placeholder="Password…" value={pwInput} onChange={e => setPwInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleStudentLogin()} autoFocus />
-        {pwError && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{pwError}</p>}
-        <button onClick={handleStudentLogin} style={s.btnPri}>Login</button>
-        {!studentPws[selectedStudent.studentId] && (
-          <div style={{ marginTop: 16, background: "rgba(202,138,4,0.08)", border: "1px solid rgba(202,138,4,0.25)", borderRadius: 10, padding: "12px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <span style={{ color: "#fbbf24", fontSize: 18, flexShrink: 0 }}>💡</span>
-            <div>
-              <p style={{ color: "#fbbf24", fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>First time logging in?</p>
-              <p style={{ color: "rgba(251,191,36,0.7)", fontSize: 13, margin: 0 }}>Your initial password is your <strong>Student ID number</strong>.</p>
+      <div style={{ padding: "12px 20px" }}>
+        <h1 style={{ fontSize: 22, fontWeight: 700, color: TEAL, margin: 0 }}>Newton</h1>
+      </div>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+        <div style={{ maxWidth: 420, width: "100%" }}>
+          <p style={{ fontSize: 30, fontWeight: 700, color: text, margin: "0 0 28px", textAlign: "center" }}>{selectedStudent.altName || selectedStudent.fullName}</p>
+          <input type="password" style={{ ...s.input, marginBottom: 10 }} placeholder="Password…" value={pwInput} onChange={e => setPwInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleStudentLogin()} autoFocus />
+          {pwError && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{pwError}</p>}
+          <button onClick={handleStudentLogin} style={s.btnPri}>Login</button>
+          {!studentPws[selectedStudent.studentId] && (
+            <div style={{ marginTop: 16, background: "rgba(202,138,4,0.08)", border: "1px solid rgba(202,138,4,0.25)", borderRadius: 10, padding: "12px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}>
+              <span style={{ color: "#fbbf24", fontSize: 18, flexShrink: 0 }}>💡</span>
+              <div>
+                <p style={{ color: "#fbbf24", fontWeight: 600, fontSize: 13, margin: "0 0 4px" }}>First time logging in?</p>
+                <p style={{ color: "rgba(251,191,36,0.7)", fontSize: 13, margin: 0 }}>Your initial password is your <strong>Student ID number</strong>.</p>
+              </div>
             </div>
+          )}
+          <div style={{ marginTop: 32, textAlign: "center" }}>
+            <button onClick={() => { setSelectedStudent(null); setScreen("student-search"); }} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 8px" }}>← Not me</button>
           </div>
-        )}
-        <div style={{ marginTop: 32, textAlign: "center" }}>
-          <button onClick={() => { setSelectedStudent(null); setScreen("student-search"); }} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 8px" }}>← Not me</button>
         </div>
       </div>
     </div>
@@ -1138,6 +1141,8 @@ export default function App() {
     if (showStudentSettings) return (
       <ThemeContext.Provider value={th}>
         <div style={{ ...th.s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          {bugModalJsx}
+          <Footer onBugClick={() => setBugReportOpen(true)} />
           <div style={{ maxWidth: 420, width: "100%", ...th.s.card, padding: 36 }}>
             <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }} style={{ ...th.s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: th.text, margin: "0 0 4px" }}>Account Settings</h2>
@@ -1152,19 +1157,6 @@ export default function App() {
                   <div><label style={th.s.label}>Confirm New Password</label><input type="password" style={th.s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
                   {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
                   <button onClick={handleChangePassword} style={th.s.btnPri}>Update Password</button>
-                </div>
-              </div>
-              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
-                <label style={th.s.label}>Appearance</label>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => setLightMode(false)}
-                    style={{ ...th.s.btnGhost, flex: 1, textAlign: "center", background: !lightMode ? TEAL : "transparent", color: !lightMode ? "#fff" : th.muted, border: `1px solid ${!lightMode ? TEAL : th.border}` }}
-                  >Dark</button>
-                  <button
-                    onClick={() => setLightMode(true)}
-                    style={{ ...th.s.btnGhost, flex: 1, textAlign: "center", background: lightMode ? TEAL : "transparent", color: lightMode ? "#fff" : th.muted, border: `1px solid ${lightMode ? TEAL : th.border}` }}
-                  >Light</button>
                 </div>
               </div>
               <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
@@ -1202,25 +1194,19 @@ export default function App() {
       item.id === "evals" ? { ...item, badge: evalNudge ? 1 : 0 } : item
     );
 
-    const arrowHex = th.muted.replace("#", "");
-    const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: th.text, fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", colorScheme: th.isLight ? "light" : "dark", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23${arrowHex}' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
-
     const header = (
       <>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
           <h1 style={{ color: TEAL, fontWeight: 700, fontSize: 22, margin: 0 }}>Newton</h1>
           {studentAvailableClasses.length > 1 ? (
-            <select
+            <CustomSelect
               value={currentClassId || ""}
-              onChange={e => { if (e.target.value) switchStudentClass(e.target.value); }}
-              style={classPickerStyle}
-            >
-              {studentAvailableClasses.map(({ classId, name }) => (
-                <option key={classId} value={classId} style={{ background: th.bg, color: th.text }}>{name}</option>
-              ))}
-            </select>
+              onChange={v => { if (v) switchStudentClass(v); }}
+              options={studentAvailableClasses.map(({ classId, name }) => ({ value: classId, label: name }))}
+              style={{ marginTop: 4 }}
+            />
           ) : (
-            classMeta && <span style={{ ...th.s.muted, fontSize: 14 }}>· {classMeta.name}</span>
+            classMeta && <span style={{ color: th.text, fontSize: 15, fontWeight: 600, marginTop: 4, display: "inline-block" }}>{classMeta.name}</span>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1255,6 +1241,7 @@ export default function App() {
       <ThemeContext.Provider value={th}>
         <>
           {bugModalJsx}
+          <Footer onBugClick={() => setBugReportOpen(true)} />
           {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
           <Shell
             header={header}
@@ -1451,23 +1438,21 @@ export default function App() {
     // Shadow module-level dark constants so inline styles in this block pick up the active theme.
     // eslint-disable-next-line no-shadow
     const s = th.s; const MUTED = th.muted; const BORDER = th.border; const text = th.text; const bg = th.bg; const isLight = th.isLight; // eslint-disable-line
-    const instClassPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: th.text, fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", colorScheme: th.isLight ? "light" : "dark", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
-
     const header = (
       <>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
           <h1 style={{ color: TEAL, fontWeight: 700, fontSize: 22, margin: 0 }}>Newton</h1>
           {Object.keys(classes).length > 0 ? (
-            <select
+            <CustomSelect
               value={currentClassId || ""}
-              onChange={e => { const v = e.target.value; if (v) switchToClass(v); }}
-              style={instClassPickerStyle}
-            >
-              {!currentClassId && <option value="" style={{ background: bg, color: text }}>— Select a class —</option>}
-              {Object.entries(classes).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || "")).map(([cid, c]) => (
-                <option key={cid} value={cid} style={{ background: bg, color: text }}>{(c?.metadata?.name || cid) + (c?.metadata?.active === false ? " (inactive)" : "")}</option>
-              ))}
-            </select>
+              onChange={v => { if (v) switchToClass(v); }}
+              placeholder="— Select a class —"
+              options={Object.entries(classes).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || "")).map(([cid, c]) => ({
+                value: cid,
+                label: (c?.metadata?.name || cid) + (c?.metadata?.active === false ? " (inactive)" : "")
+              }))}
+              style={{ marginTop: 4 }}
+            />
           ) : (
             <span style={{ ...s.muted, fontSize: 13 }}>No classes yet — create one in Settings.</span>
           )}
@@ -1796,9 +1781,12 @@ export default function App() {
                   </div>
                   <div>
                     <label style={s.label}>Course</label>
-                    <select style={{ ...s.input, width: "auto", paddingRight: 32, colorScheme: isLight ? "light" : "dark" }} value={newClassCourse} onChange={e => setNewClassCourse(e.target.value)}>
-                      {COURSE_OPTIONS.map(o => <option key={o.value} value={o.value} style={{ background: bg, color: text }}>{o.label}</option>)}
-                    </select>
+                    <CustomSelect
+                      variant="input"
+                      value={newClassCourse}
+                      onChange={setNewClassCourse}
+                      options={COURSE_OPTIONS}
+                    />
                   </div>
                   <button onClick={async () => {
                     try { setNewClassMsg(""); const id = await createClass(newClassName, newClassCourse); setNewClassName(""); setNewClassMsg("✅ Created."); await switchToClass(id); setTimeout(() => setNewClassMsg(""), 2500); }

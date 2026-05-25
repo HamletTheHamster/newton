@@ -28,6 +28,8 @@
 | `src/components/lms/PageEditor.jsx` | Modal for creating/editing pages and custom quizzes — shared via `editorLabel`/`contentLabel` props |
 | `src/components/ManualAddStudent.jsx` | Instructor roster manual-add form (name, ID, email) |
 | `src/components/lms/AnnouncementEditor.jsx` | Announcement compose modal — title, body, email checkbox |
+| `src/components/BugReportModal.jsx` | Bug report submit modal — uses `useTheme()` for dark/light support, `solidBg` card pattern; rendered on login screens, student portal, and student settings |
+| `src/components/Footer.jsx` | Fixed bottom footer (copyright, GitHub link, bug report button) — `zIndex: 30` to stay above Shell; rendered on all pre-portal screens and student portal |
 | `database.rules.json` | Firebase RTDB security rules |
 | `storage.rules` · `firebase.json` | Firebase Storage rules and CLI config (deploy with `firebase deploy --only storage` / `--only database`) |
 | `netlify.toml` | Netlify build config |

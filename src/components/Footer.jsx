@@ -6,7 +6,7 @@ export function Footer({ onBugClick }) {
   const [bugBtnHover, setBugBtnHover] = useState(false);
 
   return (
-    <div style={{ position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
+    <div style={{ position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, zIndex: 30 }}>
       <span style={{ color: MUTED, fontSize: 12 }}>© Joel N. Johnson 2026</span>
       <a href="https://github.com/HamletTheHamster/newton" target="_blank" rel="noopener noreferrer"
          onMouseEnter={() => setOctocatHover(true)} onMouseLeave={() => setOctocatHover(false)}

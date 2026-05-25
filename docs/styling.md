@@ -55,7 +55,7 @@ const solidBg = isLight ? "#fff" : "#252627";
 style={{ ...s.card, background: solidBg, ... }}
 ```
 
-Applied to: `GradeSettingsModal`, `AnnouncementEditor`, `SubViewModal`, and the "Leave quiz?" confirmation popup in the quiz screen.
+Applied to: `GradeSettingsModal`, `AnnouncementEditor`, `SubViewModal`, `BugReportModal`, and the "Leave quiz?" confirmation popup in the quiz screen.
 
 ### Native `<select>` dropdowns — `colorScheme`
 
