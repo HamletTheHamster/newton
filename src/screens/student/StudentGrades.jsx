@@ -113,8 +113,10 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                 <div style={{ width: 10, height: 10, borderRadius: "50%", background: cc, flexShrink: 0 }} />
                 <span style={{ color: text, fontWeight: 700, fontSize: 15 }}>{cat.name}</span>
                 <span style={{ color: muted, fontSize: 12 }}>· {cat.weight}% of grade</span>
-                {cat.dropLowest > 0 && data.dropped.length > 0 && (
-                  <span style={{ ...s.badge(muted), fontSize: 11 }}>1 lowest dropped</span>
+                {cat.dropLowest > 0 && (
+                  <span style={{ ...s.badge(muted), fontSize: 11 }}>
+                    {data.dropped.length > 0 ? `${data.dropped.length} lowest dropped` : `drops ${cat.dropLowest} lowest`}
+                  </span>
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>

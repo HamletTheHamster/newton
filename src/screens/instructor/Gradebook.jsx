@@ -413,6 +413,12 @@ export function Gradebook({
   const [editScore, setEditScore] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const panelRef = useRef(null);
+  const scrollRef = useRef(null);
+  const thumbDragRef = useRef(null);
+  const [scrollMetrics, setScrollMetrics] = useState({ left: 0, width: 0, clientWidth: 0 });
+  const [scrollbarVisible, setScrollbarVisible] = useState(false);
+  const scrollFadeTimer = useRef(null);
+  const STUDENT_W = 164, OVERALL_W = 80;
   const [viewSubModal, setViewSubModal] = useState(null); // { submission, studentName, assignmentTitle }
   const [catDropdownFor, setCatDropdownFor] = useState(null); // assignmentId
   const [editingAssignmentTitle, setEditingAssignmentTitle] = useState(null);
@@ -440,6 +446,44 @@ export function Gradebook({
     (!filterAssignment || a.title.toLowerCase().includes(filterAssignment.toLowerCase()))
   );
   const hasFilter = filterStudent || filterCatIds.size > 0 || filterAssignment;
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setScrollMetrics({ left: el.scrollLeft, width: el.scrollWidth, clientWidth: el.clientWidth });
+      setScrollbarVisible(true);
+      clearTimeout(scrollFadeTimer.current);
+      scrollFadeTimer.current = setTimeout(() => setScrollbarVisible(false), 500);
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => { el.removeEventListener('scroll', update); ro.disconnect(); };
+  }, []);
+
+  useEffect(() => {
+    const onMove = (e) => {
+      if (!thumbDragRef.current || !scrollRef.current) return;
+      const el = scrollRef.current;
+      const { startX, startScroll } = thumbDragRef.current;
+      const trackW = el.clientWidth - STUDENT_W - OVERALL_W;
+      const thumbW = Math.max(40, (el.clientWidth / el.scrollWidth) * trackW);
+      const maxThumb = trackW - thumbW;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxThumb <= 0) return;
+      el.scrollLeft = Math.max(0, Math.min(maxScroll, startScroll + (e.clientX - startX) / maxThumb * maxScroll));
+    };
+    const onUp = () => {
+      if (!thumbDragRef.current) return;
+      thumbDragRef.current = null;
+      scrollFadeTimer.current = setTimeout(() => setScrollbarVisible(false), 500);
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  }, []);
 
   // Build per-student score and excused maps (override > submission > null)
   const scoreMap = {};
@@ -659,8 +703,15 @@ export function Gradebook({
     );
   }
 
+  const canScroll = scrollMetrics.width > scrollMetrics.clientWidth;
+  const trackW = Math.max(0, scrollMetrics.clientWidth - STUDENT_W - OVERALL_W);
+  const thumbW = canScroll ? Math.max(40, (scrollMetrics.clientWidth / scrollMetrics.width) * trackW) : trackW;
+  const maxScroll = scrollMetrics.width - scrollMetrics.clientWidth;
+  const thumbLeft = canScroll && maxScroll > 0 ? (scrollMetrics.left / maxScroll) * (trackW - thumbW) : 0;
+
   return (
     <div>
+      <style>{`.gb-scroll::-webkit-scrollbar:horizontal { display: none; }`}</style>
       {headerBar}
       {filterBar}
 
@@ -685,8 +736,9 @@ export function Gradebook({
       {/* Table + right panel */}
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
 
-      {/* Scrollable gradebook table */}
-      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 180px)", borderRadius: 8, border: cellBorder }}>
+      {/* Scrollable gradebook table + custom scrollbar */}
+      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column" }}>
+      <div ref={scrollRef} className="gb-scroll" style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 180px)", borderRadius: 8, border: cellBorder, scrollbarWidth: "none" }}>
         <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: "max-content" }}>
           <thead>
             <tr>
@@ -789,10 +841,10 @@ export function Gradebook({
             {displayedStudents.map((stu, rIdx) => {
               const overall = overallGrades[stu.studentId]?.overall;
               const oc = overallColor(overall);
-              const altBg = isLight ? "rgba(0,0,0,0.025)" : "#1e1f21";
+              const altBg = isLight ? "#EEEAE5" : "#1e1f21";
               const stickyBg = rIdx % 2 === 0 ? bg : altBg;
               return (
-                <tr key={stu.studentId} style={{ background: rIdx % 2 === 0 ? "transparent" : isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.015)" }}>
+                <tr key={stu.studentId} style={{ background: stickyBg }}>
                   {/* Student name — sticky left */}
                   <td style={{
                     position: "sticky", left: 0, zIndex: 2, background: stickyBg,
@@ -813,7 +865,9 @@ export function Gradebook({
                       return (
                         <td key={a.id} style={{
                           padding: 0, borderRight: cellBorder, borderBottom: cellBorder,
-                          background: `${teal}1a`, outline: `2px solid ${teal}`, outlineOffset: -2,
+                          backgroundColor: stickyBg,
+                          backgroundImage: `linear-gradient(${teal}1a, ${teal}1a)`,
+                          outline: `2px solid ${teal}`, outlineOffset: -2,
                           textAlign: "center",
                         }}>
                           <EditCell
@@ -833,7 +887,8 @@ export function Gradebook({
                         onClick={() => handleCellClick(stu.studentId, a.id)}
                         title={isExcused ? "Excused — click to edit" : isMissing ? "No submission — click to override" : `${score}/10 — click to edit`}
                         style={{
-                          background: cellBg(score, isExcused, isMissing),
+                          backgroundColor: stickyBg,
+                          backgroundImage: `linear-gradient(${cellBg(score, isExcused, isMissing)}, ${cellBg(score, isExcused, isMissing)})`,
                           color: cellFg(score, isExcused, isMissing),
                           borderRight: cellBorder, borderBottom: cellBorder,
                           textAlign: "center", padding: "8px 4px",
@@ -859,6 +914,20 @@ export function Gradebook({
             })}
           </tbody>
         </table>
+      </div>
+      {canScroll && (
+        <div style={{ marginLeft: 165, marginRight: 81, height: 8, marginTop: 4, position: "relative", borderRadius: 4, background: isLight ? "rgba(0,0,0,0.07)" : "rgba(255,255,255,0.1)", opacity: scrollbarVisible ? 1 : 0, transition: scrollbarVisible ? "none" : "opacity 0.2s ease" }}>
+          <div
+            style={{ position: "absolute", left: thumbLeft, width: thumbW, top: 0, bottom: 0, borderRadius: 4, background: isLight ? "rgba(0,0,0,0.22)" : "rgba(255,255,255,0.3)", cursor: "grab" }}
+            onMouseDown={(e) => {
+              thumbDragRef.current = { startX: e.clientX, startScroll: scrollMetrics.left };
+              setScrollbarVisible(true);
+              clearTimeout(scrollFadeTimer.current);
+              e.preventDefault();
+            }}
+          />
+        </div>
+      )}
       </div>
 
       {/* Right panel */}
