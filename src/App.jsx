@@ -205,13 +205,14 @@ export default function App() {
   const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const syllabusBreakdown = syllabus?.fields?.gradingBreakdown ?? [];
   const gradeCatList = Object.values(gradeCategories ?? {});
-  const syllabusMismatch = gradeCatList.length > 0 && syllabusBreakdown.length > 0 && (
-    gradeCatList.length !== syllabusBreakdown.length ||
-    gradeCatList.some(cat => {
-      const match = syllabusBreakdown.find(g => g.name.toLowerCase() === cat.name.toLowerCase());
-      return !match || match.weight !== cat.weight;
-    })
-  );
+  const syllabusMismatch = gradeCatList.length > 0 && syllabusBreakdown.length > 0 && (() => {
+    const nameMatch = (a, b) => { const la = a.toLowerCase().trim(), lb = b.toLowerCase().trim(); return la === lb || la.startsWith(lb) || lb.startsWith(la); };
+    return gradeCatList.length !== syllabusBreakdown.length ||
+      gradeCatList.some(cat => {
+        const match = syllabusBreakdown.find(g => nameMatch(g.name, cat.name));
+        return !match || Number(match.weight) !== Number(cat.weight);
+      });
+  })();
 
   // Flattened student search across all active classes (used on the student-search screen).
   const allActiveStudents = [];
