@@ -38,52 +38,194 @@ function cellFg(score, isExcused, isMissing) {
 const CELL_BORDER = `1px solid ${BORDER}`;
 
 // ── EditCell ──────────────────────────────────────────────────────────────────
-function EditCell({ score, isExcused, hasSubmission, onScoreChange, onToggleExcused, onRemoveExcuse, onViewSub, onCommit, onCancel }) {
+function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.select(); }, []);
 
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 2, padding: "2px 4px", minWidth: 70 }}>
+    <div style={{ padding: "2px 4px", minWidth: 60 }}>
       <input
         ref={inputRef}
         type="text"
         inputMode="decimal"
-        value={isExcused ? "" : score}
-        disabled={isExcused}
+        value={score}
         onChange={e => onScoreChange(e.target.value)}
         onKeyDown={e => {
           if (e.key === "Enter") { e.preventDefault(); onCommit(); }
           else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
         }}
-        onBlur={onCommit}
-        style={{ width: 36, background: "transparent", border: "none", color: isExcused ? MUTED : "#fff", fontSize: 13, fontFamily: "monospace", textAlign: "center", outline: "none" }}
+        onBlur={e => {
+          if (panelRef?.current?.contains(e.relatedTarget)) return;
+          onCommit();
+        }}
+        data-grade-input="true"
+        style={{ width: 44, background: "transparent", border: "none", color: "#fff", fontSize: 13, fontFamily: "monospace", textAlign: "center", outline: "none" }}
       />
-      <button
-        onMouseDown={e => e.preventDefault()}
-        onClick={onToggleExcused}
-        title={isExcused ? "Remove excused" : "Mark as excused"}
-        style={{ background: isExcused ? TEAL : "rgba(255,255,255,0.1)", border: "none", borderRadius: 3, color: isExcused ? "#fff" : MUTED, fontSize: 9, fontWeight: 700, cursor: "pointer", padding: "2px 5px", lineHeight: 1.5, flexShrink: 0 }}
-      >
-        EX
-      </button>
-      {isExcused && (
-        <button
-          onMouseDown={e => e.preventDefault()}
-          onClick={onRemoveExcuse}
-          title="Restore original score"
-          style={{ background: "rgba(248,113,113,0.15)", border: "none", borderRadius: 3, color: "#f87171", fontSize: 9, fontWeight: 700, cursor: "pointer", padding: "2px 5px", lineHeight: 1.5, flexShrink: 0 }}
-        >×</button>
-      )}
-      {hasSubmission && (
+    </div>
+  );
+}
+
+// ── GradeDetailPanel ──────────────────────────────────────────────────────────
+function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissions, gradeOverrides,
+    excusedMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, setEditingCell }) {
+  const { studentId, assignmentId } = editingCell;
+  const stu = (roster || []).find(r => r.studentId === studentId);
+  const asgn = (assignments || []).find(a => a.id === assignmentId);
+  const ov = (gradeOverrides[studentId] || {})[assignmentId] || {};
+  const isExcused = !!excusedMap[studentId]?.[assignmentId];
+  const sub = (submissions || []).find(s => s.studentId === studentId && s.quizId === assignmentId);
+  const [showExtendPicker, setShowExtendPicker] = useState(false);
+  const [localDate, setLocalDate] = useState("");
+  const [localHour, setLocalHour] = useState("");
+  const [localMinute, setLocalMinute] = useState("");
+  const [localAmPm, setLocalAmPm] = useState("");
+
+  const openPicker = () => {
+    setLocalDate(""); setLocalHour(""); setLocalMinute(""); setLocalAmPm("");
+    setShowExtendPicker(true);
+  };
+
+  const tryAutoSave = (d, h, m, ap) => {
+    if (!d || !h || m === "" || !ap) return;
+    const h24 = ap === "PM" && h !== "12" ? +h + 12 : ap === "AM" && h === "12" ? 0 : +h;
+    onSaveDueDate(studentId, assignmentId, `${d}T${String(h24).padStart(2, "0")}:${m}`);
+  };
+
+  return (
+    <div
+      ref={panelRef}
+      tabIndex={-1}
+      onBlur={e => {
+        if (e.currentTarget.contains(e.relatedTarget)) return;
+        if (e.relatedTarget?.dataset?.gradeInput) return;
+        setEditingCell(null);
+      }}
+      style={{
+        width: 220, flexShrink: 0, background: CARD, border: CELL_BORDER,
+        borderRadius: 8, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 16,
+        outline: "none", alignSelf: "flex-start",
+      }}
+    >
+      {/* Header */}
+      <div>
+        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>
+          {stu?.altName || stu?.fullName || "Student"}
+        </div>
+        <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.4 }}>{asgn?.title || "Assignment"}</div>
+      </div>
+
+      {/* View Submission */}
+      {sub && (
         <button
           onMouseDown={e => e.preventDefault()}
           onClick={onViewSub}
-          title="View submission"
-          style={{ background: "rgba(255,255,255,0.1)", border: "none", borderRadius: 3, color: MUTED, fontSize: 11, cursor: "pointer", padding: "2px 6px", lineHeight: 1.5, flexShrink: 0 }}
+          style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`, borderRadius: 6,
+            color: "#fff", fontSize: 12, cursor: "pointer", padding: "7px 12px", textAlign: "left",
+            display: "flex", alignItems: "center", justifyContent: "space-between" }}
         >
-          →
+          <span>View Submission</span>
+          <span style={{ color: MUTED }}>→</span>
         </button>
       )}
+
+      {/* Excuse / Unexcuse */}
+      <div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Excuse Grade</div>
+        {isExcused ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ fontSize: 11, color: TEAL }}>Currently excused</div>
+            <button
+              onMouseDown={e => e.preventDefault()}
+              onClick={() => onUnexcuse(studentId, assignmentId)}
+              style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.3)",
+                borderRadius: 6, color: "#f87171", fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
+            >
+              Unexcuse
+            </button>
+          </div>
+        ) : (
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onExcuse(studentId, assignmentId)}
+            style={{ width: "100%", background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`,
+              borderRadius: 6, color: "#fff", fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
+          >
+            Excuse Grade
+          </button>
+        )}
+      </div>
+
+      {/* Deadline Extension */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em" }}>Deadline Extension</div>
+        {asgn?.dueDate && (
+          <div style={{ fontSize: 11, color: MUTED }}>Default: {asgn.dueDate}</div>
+        )}
+        {ov.dueDate && (
+          <div style={{ fontSize: 11, color: TEAL }}>
+            Extended: {new Date(ov.dueDate).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 6 }}>
+          <button
+            onClick={openPicker}
+            style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`,
+              borderRadius: 6, color: "#fff", fontSize: 12, cursor: "pointer", padding: "7px 8px" }}
+          >
+            Extend Deadline
+          </button>
+          {ov.dueDate && (
+            <button
+              onClick={() => onSaveDueDate(studentId, assignmentId, "")}
+              style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`, borderRadius: 6,
+                color: MUTED, fontSize: 12, cursor: "pointer", padding: "7px 8px" }}
+            >
+              Clear
+            </button>
+          )}
+        </div>
+        {showExtendPicker && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <input
+              type="date"
+              value={localDate}
+              onChange={e => { setLocalDate(e.target.value); tryAutoSave(e.target.value, localHour, localMinute, localAmPm); }}
+              style={{ width: "100%", background: "#1c1d1f", border: `1px solid ${BORDER}`, borderRadius: 6,
+                color: localDate ? "#fff" : MUTED, fontSize: 12, padding: "6px 10px",
+                boxSizing: "border-box", colorScheme: "dark" }}
+            />
+            <div style={{ display: "flex", gap: 4 }}>
+              {[
+                { val: localHour, set: setLocalHour, opts: ["Hr", ...Array.from({length:12},(_,i)=>String(12-i))], key: "h" },
+                { val: localMinute, set: setLocalMinute, opts: ["Min", ...Array.from({length:60},(_,i)=>String(59-i).padStart(2,"0"))], key: "m" },
+                { val: localAmPm, set: setLocalAmPm, opts: ["—","PM","AM"], key: "ap" },
+              ].map(({ val, set, opts, key }) => (
+                <select
+                  key={key}
+                  value={val}
+                  onChange={e => {
+                    set(e.target.value);
+                    const upd = { h: localHour, m: localMinute, ap: localAmPm, [key]: e.target.value };
+                    tryAutoSave(localDate, upd.h, upd.m, upd.ap);
+                  }}
+                  style={{ flex: 1, background: "#1c1d1f", border: `1px solid ${BORDER}`, borderRadius: 6,
+                    color: val ? "#fff" : MUTED, fontSize: 12, padding: "6px 4px",
+                    colorScheme: "dark", cursor: "pointer" }}
+                >
+                  {opts.map(o => <option key={o} value={o === opts[0] ? "" : o} style={{ background: "#1c1d1f" }}>{o}</option>)}
+                </select>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowExtendPicker(false)}
+              style={{ background: "none", border: "none", color: MUTED, fontSize: 11,
+                cursor: "pointer", padding: "2px 0", textAlign: "left" }}
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -259,8 +401,8 @@ export function Gradebook({
 }) {
   const [editingCell, setEditingCell] = useState(null); // { studentId, assignmentId }
   const [editScore, setEditScore] = useState("");
-  const [editExcused, setEditExcused] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const panelRef = useRef(null);
   const [viewSubModal, setViewSubModal] = useState(null); // { submission, studentName, assignmentTitle }
   const [catDropdownFor, setCatDropdownFor] = useState(null); // assignmentId
   const [editingAssignmentTitle, setEditingAssignmentTitle] = useState(null);
@@ -326,11 +468,9 @@ export function Gradebook({
   }
 
   const handleCellClick = (studentId, assignmentId) => {
-    const isExc = !!(excusedMap[studentId]?.[assignmentId]);
     const sc = scoreMap[studentId]?.[assignmentId];
     setEditingCell({ studentId, assignmentId });
     setEditScore(sc != null ? String(sc) : "");
-    setEditExcused(isExc);
   };
 
   const commitEdit = async () => {
@@ -338,26 +478,64 @@ export function Gradebook({
     const { studentId, assignmentId } = editingCell;
     setEditingCell(null);
     const current = { ...(gradeOverrides[studentId] || {}) };
-    if (editExcused) {
-      current[assignmentId] = { excused: true };
+    const existing = current[assignmentId] || {};
+    const parsed = parseFloat(editScore);
+    if (!isNaN(parsed)) {
+      // Typing a score clears excused status
+      const { excused: _e, previousScore: _p, ...rest } = existing;
+      current[assignmentId] = { ...rest, score: Math.max(0, Math.min(10, parsed)) };
     } else {
-      const parsed = parseFloat(editScore);
-      if (!isNaN(parsed)) {
-        current[assignmentId] = { score: Math.max(0, Math.min(10, parsed)) };
-      } else {
-        delete current[assignmentId]; // clear override → revert to submission score
-      }
+      // No score entered — preserve existing override as-is (keeps excused, dueDate, etc.)
+      const { score: _, ...rest } = existing;
+      if (Object.keys(rest).length) current[assignmentId] = rest;
+      else delete current[assignmentId];
     }
     await onSaveOverrideForStudent(studentId, current);
   };
 
-  const removeExcuse = async () => {
-    if (!editingCell) return;
-    const { studentId, assignmentId } = editingCell;
+  const excuseCell = async (studentId, assignmentId) => {
     setEditingCell(null);
     const current = { ...(gradeOverrides[studentId] || {}) };
-    delete current[assignmentId];
+    const prevOv = current[assignmentId] || {};
+    current[assignmentId] = {
+      excused: true,
+      previousScore: prevOv.score ?? null,
+      ...(prevOv.dueDate ? { dueDate: prevOv.dueDate } : {}),
+    };
     await onSaveOverrideForStudent(studentId, current);
+  };
+
+  const unexcuseCell = async (studentId, assignmentId) => {
+    setEditingCell(null);
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    const ov = current[assignmentId] || {};
+    const { excused: _e, previousScore: _p, ...rest } = ov;
+    if (ov.previousScore != null) {
+      current[assignmentId] = { ...rest, score: ov.previousScore };
+    } else if (Object.keys(rest).length) {
+      current[assignmentId] = rest;
+    } else {
+      delete current[assignmentId];
+    }
+    await onSaveOverrideForStudent(studentId, current);
+  };
+
+  const saveDueDate = async (studentId, assignmentId, dateStr) => {
+    setEditingCell(null);
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    const existing = current[assignmentId] || {};
+    let label;
+    if (dateStr) {
+      current[assignmentId] = { ...existing, dueDate: dateStr };
+      const fmt = new Date(dateStr).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+      label = `✓ Deadline extended to ${fmt}`;
+    } else {
+      const { dueDate: _, ...rest } = existing;
+      if (Object.keys(rest).length) current[assignmentId] = rest;
+      else delete current[assignmentId];
+      label = "✓ Extension cleared";
+    }
+    await onSaveOverrideForStudent(studentId, current, label);
   };
 
   const commitAssignmentTitle = async id => {
@@ -494,8 +672,11 @@ export function Gradebook({
         </div>
       )}
 
+      {/* Table + right panel */}
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+
       {/* Scrollable gradebook table */}
-      <div style={{ overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 180px)", borderRadius: 8, border: CELL_BORDER }}>
+      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 180px)", borderRadius: 8, border: CELL_BORDER }}>
         <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: "max-content" }}>
           <thead>
             <tr>
@@ -626,17 +807,10 @@ export function Gradebook({
                         }}>
                           <EditCell
                             score={editScore}
-                            isExcused={editExcused}
-                            hasSubmission={(submissions || []).some(s => s.studentId === stu.studentId && s.quizId === a.id)}
                             onScoreChange={setEditScore}
-                            onToggleExcused={() => setEditExcused(ex => !ex)}
-                            onRemoveExcuse={removeExcuse}
-                            onViewSub={() => {
-                              const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
-                              if (sub) setViewSubModal({ submission: sub, studentName: stu.altName || stu.fullName, assignmentTitle: a.title });
-                            }}
                             onCommit={commitEdit}
                             onCancel={() => setEditingCell(null)}
+                            panelRef={panelRef}
                           />
                         </td>
                       );
@@ -675,6 +849,32 @@ export function Gradebook({
           </tbody>
         </table>
       </div>
+
+      {/* Right panel */}
+      {editingCell && (
+        <GradeDetailPanel
+          panelRef={panelRef}
+          editingCell={editingCell}
+          roster={roster}
+          assignments={assignments}
+          submissions={submissions}
+          gradeOverrides={gradeOverrides}
+          excusedMap={excusedMap}
+          onExcuse={excuseCell}
+          onUnexcuse={unexcuseCell}
+          onViewSub={() => {
+            const { studentId, assignmentId } = editingCell;
+            const stu = (roster || []).find(r => r.studentId === studentId);
+            const asgn = (assignments || []).find(a => a.id === assignmentId);
+            const sub = (submissions || []).find(s => s.studentId === studentId && s.quizId === assignmentId);
+            if (sub) setViewSubModal({ submission: sub, studentName: stu?.altName || stu?.fullName, assignmentTitle: asgn?.title });
+          }}
+          onSaveDueDate={saveDueDate}
+          setEditingCell={setEditingCell}
+        />
+      )}
+
+      </div>{/* end Table + right panel flex wrapper */}
 
       {showSettings && (
         <GradeSettingsModal

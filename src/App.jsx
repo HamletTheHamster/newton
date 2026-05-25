@@ -123,6 +123,7 @@ export default function App() {
   const [ready, setReady] = useState(false);
   const [classDataLoading, setClassDataLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState('idle');
+  const [syncLabel, setSyncLabel] = useState('');
   const [syncError, setSyncError] = useState('');
   const [fbConnStatus, setFbConnStatus] = useState('checking');
   const [fbConnError, setFbConnError] = useState('');
@@ -430,8 +431,8 @@ export default function App() {
   }, [busy]);
 
   // ── Firebase save helper ───────────────────────────────────────────────────
-  const fbSave = async (path, data) => {
-    setSyncStatus('saving'); setSyncError('');
+  const fbSave = async (path, data, label) => {
+    setSyncStatus('saving'); setSyncLabel(label || ''); setSyncError('');
     clearTimeout(syncTimer.current);
     try {
       await fbSet(path, data);
@@ -612,12 +613,12 @@ export default function App() {
     setAssignmentOrderOverrides(next);
     await fbSave(classPath(cid, 'assignmentOrderOverrides'), Object.keys(next).length ? next : null);
   };
-  const saveOverrideForStudent = async (studentId, studentOverrides) => {
+  const saveOverrideForStudent = async (studentId, studentOverrides, label) => {
     const cid = requireClass();
     const updated = { ...gradeOverrides, [studentId]: studentOverrides };
     setGradeOverrides(updated);
     updateClassCache(cid, 'gradeOverrides', updated);
-    await fbSave(classPath(cid, `gradeOverrides/${studentId}`), studentOverrides);
+    await fbSave(classPath(cid, `gradeOverrides/${studentId}`), studentOverrides, label);
   };
 
   const saveSubs = async (newSubs, studentId = null) => {
@@ -1396,7 +1397,7 @@ export default function App() {
             <span style={{ ...s.muted, fontSize: 13 }}>No classes yet — create one in Settings.</span>
           )}
           {classDataLoading && <span style={{ ...s.muted, fontSize: 12 }}>Loading class data…</span>}
-          <SyncBadge status={syncStatus} error={syncError} />
+          <SyncBadge status={syncStatus} label={syncLabel} error={syncError} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <button
