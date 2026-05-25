@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { s, BG, CARD, TEAL, MUTED, BORDER } from "../../theme.js";
+import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
 import { ChatMessages } from "../../components/ChatMessages.jsx";
 import { newId } from "../../courses/ids.js";
@@ -35,10 +35,11 @@ function cellFg(score, isExcused, isMissing) {
   return "#f87171";
 }
 
-const CELL_BORDER = `1px solid ${BORDER}`;
+// cellBorder is computed inside each component from useTheme().border
 
 // ── EditCell ──────────────────────────────────────────────────────────────────
 function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
+  const { text } = useTheme();
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.select(); }, []);
 
@@ -59,7 +60,7 @@ function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
           onCommit();
         }}
         data-grade-input="true"
-        style={{ width: 44, background: "transparent", border: "none", color: "#fff", fontSize: 13, fontFamily: "monospace", textAlign: "center", outline: "none" }}
+        style={{ width: 44, background: "transparent", border: "none", color: text, fontSize: 13, fontFamily: "monospace", textAlign: "center", outline: "none" }}
       />
     </div>
   );
@@ -68,6 +69,8 @@ function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
 // ── GradeDetailPanel ──────────────────────────────────────────────────────────
 function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissions, gradeOverrides,
     excusedMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, setEditingCell }) {
+  const { s, muted, border, text, teal, card, bg, isLight } = useTheme();
+  const cellBorder = `1px solid ${border}`;
   const { studentId, assignmentId } = editingCell;
   const stu = (roster || []).find(r => r.studentId === studentId);
   const asgn = (assignments || []).find(a => a.id === assignmentId);
@@ -101,17 +104,17 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
         setEditingCell(null);
       }}
       style={{
-        width: 220, flexShrink: 0, background: CARD, border: CELL_BORDER,
+        width: 220, flexShrink: 0, background: card, border: cellBorder,
         borderRadius: 8, padding: "14px 16px", display: "flex", flexDirection: "column", gap: 16,
         outline: "none", alignSelf: "flex-start",
       }}
     >
       {/* Header */}
       <div>
-        <div style={{ fontSize: 13, fontWeight: 700, color: "#fff", marginBottom: 2 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, color: text, marginBottom: 2 }}>
           {stu?.altName || stu?.fullName || "Student"}
         </div>
-        <div style={{ fontSize: 11, color: MUTED, lineHeight: 1.4 }}>{asgn?.title || "Assignment"}</div>
+        <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>{asgn?.title || "Assignment"}</div>
       </div>
 
       {/* View Submission */}
@@ -119,21 +122,21 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
         <button
           onMouseDown={e => e.preventDefault()}
           onClick={onViewSub}
-          style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`, borderRadius: 6,
-            color: "#fff", fontSize: 12, cursor: "pointer", padding: "7px 12px", textAlign: "left",
+          style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`, borderRadius: 6,
+            color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px", textAlign: "left",
             display: "flex", alignItems: "center", justifyContent: "space-between" }}
         >
           <span>View Submission</span>
-          <span style={{ color: MUTED }}>→</span>
+          <span style={{ color: muted }}>→</span>
         </button>
       )}
 
       {/* Excuse / Unexcuse */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Excuse Grade</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Excuse Grade</div>
         {isExcused ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ fontSize: 11, color: TEAL }}>Currently excused</div>
+            <div style={{ fontSize: 11, color: teal }}>Currently excused</div>
             <button
               onMouseDown={e => e.preventDefault()}
               onClick={() => onUnexcuse(studentId, assignmentId)}
@@ -147,8 +150,8 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
           <button
             onMouseDown={e => e.preventDefault()}
             onClick={() => onExcuse(studentId, assignmentId)}
-            style={{ width: "100%", background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`,
-              borderRadius: 6, color: "#fff", fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
+            style={{ width: "100%", background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`,
+              borderRadius: 6, color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
           >
             Excuse Grade
           </button>
@@ -157,28 +160,28 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
 
       {/* Deadline Extension */}
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: MUTED, textTransform: "uppercase", letterSpacing: "0.06em" }}>Deadline Extension</div>
+        <div style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.06em" }}>Deadline Extension</div>
         {asgn?.dueDate && (
-          <div style={{ fontSize: 11, color: MUTED }}>Default: {asgn.dueDate}</div>
+          <div style={{ fontSize: 11, color: muted }}>Default: {asgn.dueDate}</div>
         )}
         {ov.dueDate && (
-          <div style={{ fontSize: 11, color: TEAL }}>
+          <div style={{ fontSize: 11, color: teal }}>
             Extended: {new Date(ov.dueDate).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
           </div>
         )}
         <div style={{ display: "flex", gap: 6 }}>
           <button
             onClick={openPicker}
-            style={{ flex: 1, background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`,
-              borderRadius: 6, color: "#fff", fontSize: 12, cursor: "pointer", padding: "7px 8px" }}
+            style={{ flex: 1, background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`,
+              borderRadius: 6, color: text, fontSize: 12, cursor: "pointer", padding: "7px 8px" }}
           >
             Extend Deadline
           </button>
           {ov.dueDate && (
             <button
               onClick={() => onSaveDueDate(studentId, assignmentId, "")}
-              style={{ background: "rgba(255,255,255,0.07)", border: `1px solid ${BORDER}`, borderRadius: 6,
-                color: MUTED, fontSize: 12, cursor: "pointer", padding: "7px 8px" }}
+              style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`, borderRadius: 6,
+                color: muted, fontSize: 12, cursor: "pointer", padding: "7px 8px" }}
             >
               Clear
             </button>
@@ -190,9 +193,9 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
               type="date"
               value={localDate}
               onChange={e => { setLocalDate(e.target.value); tryAutoSave(e.target.value, localHour, localMinute, localAmPm); }}
-              style={{ width: "100%", background: "#1c1d1f", border: `1px solid ${BORDER}`, borderRadius: 6,
-                color: localDate ? "#fff" : MUTED, fontSize: 12, padding: "6px 10px",
-                boxSizing: "border-box", colorScheme: "dark" }}
+              style={{ width: "100%", background: bg, border: `1px solid ${border}`, borderRadius: 6,
+                color: localDate ? text : muted, fontSize: 12, padding: "6px 10px",
+                boxSizing: "border-box", colorScheme: isLight ? "light" : "dark" }}
             />
             <div style={{ display: "flex", gap: 4 }}>
               {[
@@ -208,17 +211,17 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
                     const upd = { h: localHour, m: localMinute, ap: localAmPm, [key]: e.target.value };
                     tryAutoSave(localDate, upd.h, upd.m, upd.ap);
                   }}
-                  style={{ flex: 1, background: "#1c1d1f", border: `1px solid ${BORDER}`, borderRadius: 6,
-                    color: val ? "#fff" : MUTED, fontSize: 12, padding: "6px 4px",
-                    colorScheme: "dark", cursor: "pointer" }}
+                  style={{ flex: 1, background: bg, border: `1px solid ${border}`, borderRadius: 6,
+                    color: val ? text : muted, fontSize: 12, padding: "6px 4px",
+                    colorScheme: isLight ? "light" : "dark", cursor: "pointer" }}
                 >
-                  {opts.map(o => <option key={o} value={o === opts[0] ? "" : o} style={{ background: "#1c1d1f" }}>{o}</option>)}
+                  {opts.map(o => <option key={o} value={o === opts[0] ? "" : o} style={{ background: bg }}>{o}</option>)}
                 </select>
               ))}
             </div>
             <button
               onClick={() => setShowExtendPicker(false)}
-              style={{ background: "none", border: "none", color: MUTED, fontSize: 11,
+              style={{ background: "none", border: "none", color: muted, fontSize: 11,
                 cursor: "pointer", padding: "2px 0", textAlign: "left" }}
             >
               Cancel
@@ -232,6 +235,9 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
 
 // ── GradeSettingsModal ────────────────────────────────────────────────────────
 function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
+  const { s, muted, border, text, teal, isLight } = useTheme();
+  const cellBorder = `1px solid ${border}`;
+  const solidBg = isLight ? "#fff" : "#252627";
   const [drafts, setDrafts] = useState(() => ({ ...gradeCategories }));
   const [newName, setNewName] = useState("");
   const [newWeight, setNewWeight] = useState(0);
@@ -267,24 +273,24 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
-      <div style={{ ...s.card, width: "100%", maxWidth: 580, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: CELL_BORDER, flexShrink: 0 }}>
-          <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>Grade Categories</h3>
-          <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+      <div style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 580, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: cellBorder, flexShrink: 0 }}>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0 }}>Grade Categories</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
         </div>
 
         <div style={{ overflowY: "auto", padding: "8px 22px", flex: 1 }}>
           {/* Column labels */}
           <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0 4px", marginBottom: 2 }}>
             <div style={{ width: 10, flexShrink: 0 }} />
-            <span style={{ flex: 1, color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Name</span>
-            <span style={{ width: 52, textAlign: "center", color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Weight</span>
+            <span style={{ flex: 1, color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Name</span>
+            <span style={{ width: 52, textAlign: "center", color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Weight</span>
             <span style={{ width: 8 }} />
-            <span style={{ width: 100, textAlign: "center", color: MUTED, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Drop lowest</span>
+            <span style={{ width: 100, textAlign: "center", color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Drop lowest</span>
             <span style={{ width: 34 }} />
           </div>
           {sorted.map(cat => (
-            <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: CELL_BORDER }}>
+            <div key={cat.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 0", borderBottom: cellBorder }}>
               <div style={{ width: 10, height: 10, borderRadius: "50%", background: catColor(cat.id), flexShrink: 0 }} />
               <input
                 value={cat.name}
@@ -299,7 +305,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
                   onChange={e => updateCat(cat.id, "weight", Number(e.target.value) || 0)}
                   style={{ ...s.input, width: 52, padding: "6px 6px", fontSize: 13, textAlign: "center", height: "auto" }}
                 />
-                <span style={{ color: MUTED, fontSize: 12 }}>%</span>
+                <span style={{ color: muted, fontSize: 12 }}>%</span>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
                 <input
@@ -308,7 +314,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
                   onChange={e => updateCat(cat.id, "dropLowest", Number(e.target.value) || 0)}
                   style={{ ...s.input, width: 44, padding: "6px 4px", fontSize: 13, textAlign: "center", height: "auto" }}
                 />
-                <span style={{ color: MUTED, fontSize: 11, whiteSpace: "nowrap" }}>lowest</span>
+                <span style={{ color: muted, fontSize: 11, whiteSpace: "nowrap" }}>lowest</span>
               </div>
               <button onClick={() => deleteCat(cat.id)} style={{ ...s.btnDanger, width: "auto", padding: "5px 10px", fontSize: 12, flexShrink: 0 }}>✕</button>
             </div>
@@ -331,16 +337,16 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
                 onChange={e => setNewWeight(Number(e.target.value) || 0)}
                 style={{ ...s.input, width: 52, padding: "6px 6px", fontSize: 13, textAlign: "center", height: "auto" }}
               />
-              <span style={{ color: MUTED, fontSize: 12 }}>%</span>
+              <span style={{ color: muted, fontSize: 12 }}>%</span>
             </div>
             <div style={{ width: 100 }} />
             <button onClick={addCat} style={{ ...s.btnSec, width: "auto", padding: "6px 14px", fontSize: 13, flexShrink: 0 }}>Add</button>
           </div>
         </div>
 
-        <div style={{ padding: "14px 22px", borderTop: CELL_BORDER, flexShrink: 0 }}>
+        <div style={{ padding: "14px 22px", borderTop: cellBorder, flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <span style={{ fontSize: 13, color: MUTED }}>
+            <span style={{ fontSize: 13, color: muted }}>
               Total: <span style={{ fontWeight: 700, color: Math.round(weightSum) === 100 ? "#4ade80" : "#f87171" }}>{weightSum.toFixed(1)}%</span>
               {Math.round(weightSum) !== 100 && <span style={{ color: "#f87171", fontSize: 12, marginLeft: 6 }}>(must equal 100%)</span>}
             </span>
@@ -358,21 +364,23 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
 
 // ── SubViewModal ──────────────────────────────────────────────────────────────
 function SubViewModal({ submission, studentName, assignmentTitle, onClose }) {
+  const { s, muted, border, text, card, bg } = useTheme();
+  const cellBorder = `1px solid ${border}`;
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.82)", display: "flex", flexDirection: "column", zIndex: 60 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: CARD, borderBottom: CELL_BORDER, padding: "14px 20px", flexShrink: 0 }}>
+    <div style={{ position: "fixed", inset: 0, background: bg, display: "flex", flexDirection: "column", zIndex: 60 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: card, borderBottom: cellBorder, padding: "14px 20px", flexShrink: 0 }}>
         <div>
-          <div style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{studentName} — {assignmentTitle}</div>
-          <div style={{ color: MUTED, fontSize: 12, marginTop: 2 }}>
+          <div style={{ color: text, fontWeight: 700, fontSize: 15 }}>{studentName} — {assignmentTitle}</div>
+          <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
             Score: {submission.score}/10{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
           </div>
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: MUTED, fontSize: 28, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+        <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 28, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
         {submission.dialogue?.length > 0
           ? <ChatMessages messages={submission.dialogue} />
-          : <div style={{ ...s.card, padding: 32, textAlign: "center", color: MUTED }}>No dialogue saved for this submission.</div>}
+          : <div style={{ ...s.card, padding: 32, textAlign: "center", color: muted }}>No dialogue saved for this submission.</div>}
       </div>
     </div>
   );
@@ -399,6 +407,8 @@ export function Gradebook({
   customQuizzes,
   onEditCustomQuiz,
 }) {
+  const { s, muted, border, text, teal, bg, card, isLight } = useTheme();
+  const cellBorder = `1px solid ${border}`;
   const [editingCell, setEditingCell] = useState(null); // { studentId, assignmentId }
   const [editScore, setEditScore] = useState("");
   const [showSettings, setShowSettings] = useState(false);
@@ -628,9 +638,9 @@ export function Gradebook({
 
   const headerBar = (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12, flexWrap: "wrap", gap: 10 }}>
-      <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 20, margin: 0 }}>Gradebook</h2>
+      <h2 style={{ color: text, fontWeight: 700, fontSize: 20, margin: 0 }}>Gradebook</h2>
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-        {roster?.length > 0 && <span style={{ color: MUTED, fontSize: 12 }}>{displayedStudents.length}/{roster.length} students · {displayedAssignments.length}/{assignments.length} assignments</span>}
+        {roster?.length > 0 && <span style={{ color: muted, fontSize: 12 }}>{displayedStudents.length}/{roster.length} students · {displayedAssignments.length}/{assignments.length} assignments</span>}
         <button onClick={exportCsv} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Export CSV</button>
         <button onClick={() => setAddingAssignment(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>+ Assignment</button>
         <button onClick={() => setShowSettings(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Grade Settings</button>
@@ -643,7 +653,7 @@ export function Gradebook({
       <div>
         {headerBar}
         {filterBar}
-        <div style={{ ...s.card, padding: 40, textAlign: "center", color: MUTED }}>No students enrolled in this class yet.</div>
+        <div style={{ ...s.card, padding: 40, textAlign: "center", color: muted }}>No students enrolled in this class yet.</div>
         {showSettings && <GradeSettingsModal gradeCategories={gradeCategories} onSave={onSaveGradeCategories} onClose={() => setShowSettings(false)} />}
       </div>
     );
@@ -664,7 +674,7 @@ export function Gradebook({
           />
           <select value={newAsgCat} onChange={e => setNewAsgCat(e.target.value)} style={{ ...s.input, width: "auto", padding: "6px 10px", fontSize: 13 }}>
             {Object.values(gradeCategories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map(c => (
-              <option key={c.id} value={c.id} style={{ background: "#252627" }}>{c.name}</option>
+              <option key={c.id} value={c.id} style={{ background: bg }}>{c.name}</option>
             ))}
           </select>
           <button onClick={submitNewAssignment} style={{ ...s.btnPri, width: "auto", padding: "6px 14px" }}>Add</button>
@@ -676,16 +686,16 @@ export function Gradebook({
       <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
 
       {/* Scrollable gradebook table */}
-      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 180px)", borderRadius: 8, border: CELL_BORDER }}>
+      <div style={{ flex: 1, minWidth: 0, overflowX: "auto", overflowY: "auto", maxHeight: "calc(100vh - 180px)", borderRadius: 8, border: cellBorder }}>
         <table style={{ borderCollapse: "separate", borderSpacing: 0, minWidth: "max-content" }}>
           <thead>
             <tr>
               {/* Student column header — sticky top-left */}
               <th style={{
-                position: "sticky", top: 0, left: 0, zIndex: 4, background: BG,
-                padding: "10px 14px", textAlign: "left", fontSize: 11, color: MUTED,
+                position: "sticky", top: 0, left: 0, zIndex: 4, background: bg,
+                padding: "10px 14px", textAlign: "left", fontSize: 11, color: muted,
                 fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-                borderBottom: CELL_BORDER, borderRight: CELL_BORDER, whiteSpace: "nowrap", minWidth: 164,
+                borderBottom: cellBorder, borderRight: cellBorder, whiteSpace: "nowrap", minWidth: 164,
               }}>
                 Student
               </th>
@@ -704,11 +714,11 @@ export function Gradebook({
                     onDrop={async e => { e.preventDefault(); await dropColumn(dragColId, a.id); setDragColId(null); setDragOverColId(null); }}
                     onDragEnd={() => { setDragColId(null); setDragOverColId(null); }}
                     style={{
-                      position: "sticky", top: 0, zIndex: 3, background: BG,
+                      position: "sticky", top: 0, zIndex: 3, background: bg,
                       padding: "6px 8px", textAlign: "center",
-                      borderBottom: CELL_BORDER, borderRight: CELL_BORDER,
+                      borderBottom: cellBorder, borderRight: cellBorder,
                       minWidth: 72, verticalAlign: "bottom",
-                      boxShadow: isColDragTarget ? `inset 3px 0 0 ${TEAL}` : "none",
+                      boxShadow: isColDragTarget ? `inset 3px 0 0 ${teal}` : "none",
                       cursor: dragColId ? "grabbing" : "grab",
                       opacity: dragColId === a.id ? 0.5 : 1,
                     }}
@@ -719,14 +729,14 @@ export function Gradebook({
                         onChange={e => setAssignmentTitleDraft(e.target.value)}
                         onKeyDown={e => { if (e.key === "Enter") commitAssignmentTitle(a.id); if (e.key === "Escape") setEditingAssignmentTitle(null); }}
                         onBlur={() => commitAssignmentTitle(a.id)}
-                        style={{ width: "100%", minWidth: 64, fontSize: 10, background: "transparent", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 3, padding: "1px 3px", outline: "none", textAlign: "center", boxSizing: "border-box" }}
+                        style={{ width: "100%", minWidth: 64, fontSize: 10, background: "transparent", border: `1px solid ${teal}`, color: text, borderRadius: 3, padding: "1px 3px", outline: "none", textAlign: "center", boxSizing: "border-box" }}
                       />
                     ) : (
-                      <div onClick={() => { setEditingAssignmentTitle(a.id); setAssignmentTitleDraft(a.title); }} style={{ fontSize: 11, color: "#fff", fontWeight: 600, whiteSpace: "nowrap", margin: "0 auto 2px", cursor: "text" }} title={`Click to rename · ${a.title}`}>
+                      <div onClick={() => { setEditingAssignmentTitle(a.id); setAssignmentTitleDraft(a.title); }} style={{ fontSize: 11, color: text, fontWeight: 600, whiteSpace: "nowrap", margin: "0 auto 2px", cursor: "text" }} title={`Click to rename · ${a.title}`}>
                         {a.title}
                       </div>
                     )}
-                    <div style={{ fontSize: 10, color: MUTED, marginBottom: 3 }}>/ {a.maxPts}</div>
+                    <div style={{ fontSize: 10, color: muted, marginBottom: 3 }}>/ {a.maxPts}</div>
                     {isDropping ? (
                       <select
                         autoFocus
@@ -736,7 +746,7 @@ export function Gradebook({
                           setCatDropdownFor(null);
                         }}
                         onBlur={() => setCatDropdownFor(null)}
-                        style={{ fontSize: 10, background: "#1c1d1f", color: "#fff", border: `1px solid ${BORDER}`, borderRadius: 4, padding: "2px", cursor: "pointer", maxWidth: 66 }}
+                        style={{ fontSize: 10, background: bg, color: text, border: `1px solid ${border}`, borderRadius: 4, padding: "2px", cursor: "pointer", maxWidth: 66 }}
                       >
                         {Object.values(gradeCategories).sort((x, y) => (x.order ?? 0) - (y.order ?? 0)).map(cat => (
                           <option key={cat.id} value={cat.id}>{cat.name}</option>
@@ -755,7 +765,7 @@ export function Gradebook({
                       <button
                         onClick={e => { e.stopPropagation(); onEditCustomQuiz?.(a.id); }}
                         title="Edit quiz prompt"
-                        style={{ display: "block", margin: "3px auto 0", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 3, color: MUTED, fontSize: 9, cursor: "pointer", padding: "1px 6px", lineHeight: 1.5 }}
+                        style={{ display: "block", margin: "3px auto 0", background: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)", border: "none", borderRadius: 3, color: muted, fontSize: 9, cursor: "pointer", padding: "1px 6px", lineHeight: 1.5 }}
                       >
                         edit
                       </button>
@@ -766,10 +776,10 @@ export function Gradebook({
 
               {/* Overall header — sticky top-right */}
               <th style={{
-                position: "sticky", top: 0, right: 0, zIndex: 4, background: BG,
-                padding: "10px 14px", textAlign: "center", fontSize: 11, color: MUTED,
+                position: "sticky", top: 0, right: 0, zIndex: 4, background: bg,
+                padding: "10px 14px", textAlign: "center", fontSize: 11, color: muted,
                 fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em",
-                borderBottom: CELL_BORDER, borderLeft: CELL_BORDER, whiteSpace: "nowrap", minWidth: 80,
+                borderBottom: cellBorder, borderLeft: cellBorder, whiteSpace: "nowrap", minWidth: 80,
               }}>
                 Overall
               </th>
@@ -779,14 +789,15 @@ export function Gradebook({
             {displayedStudents.map((stu, rIdx) => {
               const overall = overallGrades[stu.studentId]?.overall;
               const oc = overallColor(overall);
-              const stickyBg = rIdx % 2 === 0 ? BG : "#1e1f21";
+              const altBg = isLight ? "rgba(0,0,0,0.025)" : "#1e1f21";
+              const stickyBg = rIdx % 2 === 0 ? bg : altBg;
               return (
-                <tr key={stu.studentId} style={{ background: rIdx % 2 === 0 ? "transparent" : "rgba(255,255,255,0.015)" }}>
+                <tr key={stu.studentId} style={{ background: rIdx % 2 === 0 ? "transparent" : isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.015)" }}>
                   {/* Student name — sticky left */}
                   <td style={{
                     position: "sticky", left: 0, zIndex: 2, background: stickyBg,
-                    padding: "8px 14px", fontSize: 13, color: "#fff", fontWeight: 500,
-                    borderRight: CELL_BORDER, borderBottom: CELL_BORDER, whiteSpace: "nowrap",
+                    padding: "8px 14px", fontSize: 13, color: text, fontWeight: 500,
+                    borderRight: cellBorder, borderBottom: cellBorder, whiteSpace: "nowrap",
                   }}>
                     {stu.altName || stu.fullName}
                   </td>
@@ -801,8 +812,8 @@ export function Gradebook({
                     if (isEditing) {
                       return (
                         <td key={a.id} style={{
-                          padding: 0, borderRight: CELL_BORDER, borderBottom: CELL_BORDER,
-                          background: `${TEAL}1a`, outline: `2px solid ${TEAL}`, outlineOffset: -2,
+                          padding: 0, borderRight: cellBorder, borderBottom: cellBorder,
+                          background: `${teal}1a`, outline: `2px solid ${teal}`, outlineOffset: -2,
                           textAlign: "center",
                         }}>
                           <EditCell
@@ -824,7 +835,7 @@ export function Gradebook({
                         style={{
                           background: cellBg(score, isExcused, isMissing),
                           color: cellFg(score, isExcused, isMissing),
-                          borderRight: CELL_BORDER, borderBottom: CELL_BORDER,
+                          borderRight: cellBorder, borderBottom: cellBorder,
                           textAlign: "center", padding: "8px 4px",
                           fontSize: 13, fontFamily: "monospace", cursor: "pointer",
                         }}
@@ -839,7 +850,7 @@ export function Gradebook({
                     position: "sticky", right: 0, zIndex: 2, background: stickyBg,
                     padding: "8px 14px", textAlign: "center",
                     fontFamily: "monospace", fontWeight: 700, fontSize: 13, color: oc,
-                    borderLeft: CELL_BORDER, borderBottom: CELL_BORDER,
+                    borderLeft: cellBorder, borderBottom: cellBorder,
                   }}>
                     {overall != null ? overall.toFixed(1) + "%" : "—"}
                   </td>

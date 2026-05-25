@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { s, TEAL, MUTED, BORDER } from "../../theme.js";
+import { TEAL, useTheme } from "../../theme.js";
 import { fbDeleteStorage } from "../../firebase.js";
 import { StudentSyllabus } from "../student/StudentSyllabus.jsx";
 
@@ -23,6 +23,7 @@ Return ONLY a valid JSON object — no markdown fences, no explanation — match
 Use empty string or 0 for any fields not found in the document. officeHours should be an array of strings like ["Mon 2–3 PM", "By appointment"].`;
 
 export function InstructorSyllabus({ syllabus, classId, syllabusMismatch, onUploadFile, onSaveSyllabus, onDeleteSyllabus }) {
+  const { s, muted, text } = useTheme();
   const [progress, setProgress] = useState(null);  // 0–1 while uploading, null otherwise
   const [extracting, setExtracting] = useState(false);
   const [error, setError] = useState("");
@@ -124,15 +125,15 @@ export function InstructorSyllabus({ syllabus, classId, syllabusMismatch, onUplo
 
   return (
     <div>
-      <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 22, margin: "0 0 22px" }}>Syllabus</h2>
+      <h2 style={{ color: text, fontWeight: 700, fontSize: 22, margin: "0 0 22px" }}>Syllabus</h2>
 
       {!hasPdf ? (
         <div style={{ ...s.card, padding: 40, textAlign: "center" }}>
-          <p style={{ color: MUTED, fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>
+          <p style={{ color: muted, fontSize: 14, margin: "0 0 8px", lineHeight: 1.6 }}>
             Upload the course syllabus PDF. Newton will automatically extract key information
             and display it to students on the Syllabus page.
           </p>
-          <p style={{ color: MUTED, fontSize: 12, margin: "0 0 24px" }}>Max 25 MB · PDF only</p>
+          <p style={{ color: muted, fontSize: 12, margin: "0 0 24px" }}>Max 25 MB · PDF only</p>
           <label style={{ ...s.btnPri, display: "inline-block", width: "auto", padding: "10px 28px", cursor: "pointer" }}>
             Upload Syllabus PDF
             <input ref={fileInputRef} type="file" accept=".pdf,application/pdf" onChange={handleFileChange} style={{ display: "none" }} />
@@ -142,10 +143,10 @@ export function InstructorSyllabus({ syllabus, classId, syllabusMismatch, onUplo
         <div style={{ ...s.card, padding: 20, marginBottom: 16 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
             <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ color: "#fff", fontWeight: 600, fontSize: 15, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              <div style={{ color: text, fontWeight: 600, fontSize: 15, marginBottom: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {syllabus.pdf.name}
               </div>
-              <div style={{ color: MUTED, fontSize: 13 }}>
+              <div style={{ color: muted, fontSize: 13 }}>
                 {fmtBytes(syllabus.pdf.size)} · Uploaded {new Date(syllabus.pdf.uploadedAt).toLocaleDateString()}
               </div>
             </div>
@@ -171,7 +172,7 @@ export function InstructorSyllabus({ syllabus, classId, syllabusMismatch, onUplo
       {/* Upload progress */}
       {progress !== null && (
         <div style={{ ...s.card, padding: 16, marginBottom: 12 }}>
-          <div style={{ color: MUTED, fontSize: 13, marginBottom: 8 }}>Uploading…</div>
+          <div style={{ color: muted, fontSize: 13, marginBottom: 8 }}>Uploading…</div>
           <div style={{ background: "rgba(255,255,255,0.07)", borderRadius: 4, height: 6, overflow: "hidden" }}>
             <div style={{ background: TEAL, width: `${Math.round(progress * 100)}%`, height: "100%", borderRadius: 4, transition: "width 0.15s" }} />
           </div>

@@ -50,7 +50,9 @@ export function buildTheme(light) {
       : { background: "rgba(127,29,29,0.4)", color: "#fca5a5", border: "1px solid rgba(127,29,29,0.6)", borderRadius: 8, padding: "10px 16px", cursor: "pointer", width: "100%", fontSize: 13, fontWeight: 500 },
     label: { color: muted, fontSize: 13, fontWeight: 500, display: "block", marginBottom: 6 },
     muted: { color: muted, fontSize: 13 },
-    badge: (color) => ({ background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }),
+    badge: (color) => light
+      ? { background: color + "28", color, border: `1px solid ${color}70`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }
+      : { background: color + "22", color, border: `1px solid ${color}44`, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" },
   };
 
   return { isLight: light, bg, card, text, muted, border, teal: TEAL, tealDim, hover, s: ts };

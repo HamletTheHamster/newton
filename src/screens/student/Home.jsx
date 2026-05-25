@@ -9,7 +9,7 @@ import { ModuleList } from "../../components/lms/ModuleList.jsx";
 //   submissions: all submissions for the active class
 //   onStartQuiz(quiz): called when a quiz item is clicked
 //   onOpenPage(item): called when a page item is clicked
-export function Home({ loggedInStudent, modules, quizzes, submissions, onStartQuiz, onOpenPage }) {
+export function Home({ loggedInStudent, modules, quizzes, submissions, onStartQuiz, onOpenPage, storageKey }) {
   const completedQuizIds = new Set(
     submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId)
   );
@@ -42,7 +42,7 @@ export function Home({ loggedInStudent, modules, quizzes, submissions, onStartQu
 
   return (
     <div>
-      <ModuleList modules={modules} resolveItem={resolveItem} onItemClick={onItemClick} />
+      <ModuleList modules={modules} resolveItem={resolveItem} onItemClick={onItemClick} storageKey={storageKey} />
     </div>
   );
 }

@@ -145,13 +145,18 @@ export default function App() {
   const [newPw1, setNewPw1] = useState(""); const [newPw2, setNewPw2] = useState(""); const [pwChangeMsg, setPwChangeMsg] = useState("");
   const [stuEmailDraft, setStuEmailDraft] = useState(""); const [stuEmailMsg, setStuEmailMsg] = useState("");
   const [lightModeState, setLightModeStateRaw] = useState(() => {
-    try { return localStorage.getItem("newton_light_mode") === "1"; } catch { return false; }
+    try {
+      const saved = localStorage.getItem("newton_light_mode");
+      if (saved !== null) return saved === "1";
+      return window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
+    } catch { return false; }
   });
   const lightMode = lightModeState;
   const setLightMode = v => {
     setLightModeStateRaw(v);
     try { localStorage.setItem("newton_light_mode", v ? "1" : "0"); } catch {}
   };
+  const appTh = buildTheme(lightMode);
 
   // ── Quiz state ──────────────────────────────────────────────────────────────
   const [activeQuiz, setActiveQuiz] = useState(null);
@@ -466,14 +471,17 @@ export default function App() {
   };
   const saveRoster = async r => { const cid = requireClass(); setRoster(r); updateClassCache(cid, 'roster', r); await fbSave(classPath(cid, 'roster'), r); };
   const saveAltName = async stu => { const val = altNameInput.trim(); const updated = roster.map(r => r.studentId === stu.studentId ? { ...r, altName: val || undefined } : r); await saveRoster(updated); setEditingAltName(null); };
+  const isValidEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const saveEmail = async stu => {
     const val = emailInput.trim();
+    if (val && !isValidEmail(val)) return;
     const updated = roster.map(r => { if (r.studentId !== stu.studentId) return r; const { email: _, ...rest } = r; return val ? { ...rest, email: val } : rest; });
     await saveRoster(updated);
     setEditingEmail(null);
   };
   const saveStudentEmail = async () => {
     const val = stuEmailDraft.trim();
+    if (val && !isValidEmail(val)) { setStuEmailMsg("Please enter a valid email address."); return; }
     const updated = roster.map(r => { if (r.studentId !== loggedInStudent.studentId) return r; const { email: _, ...rest } = r; return val ? { ...rest, email: val } : rest; });
     await saveRoster(updated);
     setLoggedInStudent(prev => { const { email: _, ...rest } = prev; return val ? { ...rest, email: val } : rest; });
@@ -1040,7 +1048,12 @@ export default function App() {
   const bugModalJsx = bugReportOpen && <BugReportModal bugReports={bugReports} setBugReports={setBugReports} onClose={() => setBugReportOpen(false)} />;
 
   // ── Student Search screen ─────────────────────────────────────────────────
-  if (screen === "student-search") return (
+  if (screen === "student-search") {
+    // eslint-disable-next-line no-shadow
+    const s = appTh.s; const MUTED = appTh.muted; const BORDER = appTh.border; const text = appTh.text; const bg = appTh.bg;
+    const recaptchaColor = appTh.isLight ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.2)";
+    return (
+    <ThemeContext.Provider value={appTh}>
     <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       {bugModalJsx}
       <button onClick={() => { setScreen("inst-login"); history.pushState({ newton: "inst-login" }, "", ""); }} style={{ position: "fixed", top: 16, right: 16, background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "4px 8px" }}>Instructor</button>
@@ -1064,32 +1077,38 @@ export default function App() {
             autoFocus
           />
           {filteredRoster.length > 0 && (
-            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#252627", border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden", zIndex: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: bg, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: "hidden", zIndex: 10, boxShadow: "0 8px 32px rgba(0,0,0,0.18)" }}>
               {filteredRoster.map((st, i) => (
-                <button key={st.studentId} onClick={() => handleSelectStudent(st)} style={{ width: "100%", textAlign: "left", padding: "12px 16px", background: highlightIdx === i ? TEAL_DIM : "transparent", border: "none", borderBottom: `1px solid ${BORDER}`, color: highlightIdx === i ? TEAL : "#fff", fontSize: 14, cursor: "pointer", fontWeight: highlightIdx === i ? 600 : 400 }} onMouseEnter={() => setHighlightIdx(i)}>
+                <button key={st.studentId} onClick={() => handleSelectStudent(st)} style={{ width: "100%", textAlign: "left", padding: "12px 16px", background: highlightIdx === i ? TEAL_DIM : "transparent", border: "none", borderBottom: `1px solid ${BORDER}`, color: highlightIdx === i ? TEAL : text, fontSize: 14, cursor: "pointer", fontWeight: highlightIdx === i ? 600 : 400 }} onMouseEnter={() => setHighlightIdx(i)}>
                   {st.altName || st.fullName}
                 </button>
               ))}
             </div>
           )}
           {nameQuery.trim().length > 0 && filteredRoster.length === 0 && allActiveStudents.length > 0 && (
-            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: "#252627", border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 16px", color: MUTED, fontSize: 13, zIndex: 10 }}>No matches found. Check your spelling.</div>
+            <div style={{ position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, background: bg, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "12px 16px", color: MUTED, fontSize: 13, zIndex: 10 }}>No matches found. Check your spelling.</div>
           )}
         </div>
       </div>
-      {!import.meta.env.DEV && <p style={{ position: "fixed", bottom: 8, right: 12, fontSize: 11, color: "rgba(255,255,255,0.2)", margin: 0, textAlign: "right" }}>Protected by reCAPTCHA · <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{ color: "rgba(255,255,255,0.2)" }}>Privacy</a> · <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" style={{ color: "rgba(255,255,255,0.2)" }}>Terms</a></p>}
+      {!import.meta.env.DEV && <p style={{ position: "fixed", bottom: 8, right: 12, fontSize: 11, color: recaptchaColor, margin: 0, textAlign: "right" }}>Protected by reCAPTCHA · <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" style={{ color: recaptchaColor }}>Privacy</a> · <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" style={{ color: recaptchaColor }}>Terms</a></p>}
     </div>
-  );
+    </ThemeContext.Provider>
+    );
+  }
 
   // ── Student Password ──────────────────────────────────────────────────────
-  if (screen === "student-pw" && selectedStudent) return (
+  if (screen === "student-pw" && selectedStudent) {
+    // eslint-disable-next-line no-shadow
+    const s = appTh.s; const MUTED = appTh.muted; const text = appTh.text;
+    return (
+    <ThemeContext.Provider value={appTh}>
     <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       {bugModalJsx}
       <Footer onBugClick={() => setBugReportOpen(true)} />
       <div style={{ maxWidth: 420, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <h1 style={{ fontSize: 72, fontWeight: 700, color: TEAL, margin: "0 0 8px" }}>Newton</h1>
-          <p style={{ fontSize: 18, fontWeight: 600, color: "#fff", margin: 0 }}>{selectedStudent.altName || selectedStudent.fullName}</p>
+          <p style={{ fontSize: 18, fontWeight: 600, color: text, margin: 0 }}>{selectedStudent.altName || selectedStudent.fullName}</p>
         </div>
         <input type="password" style={{ ...s.input, marginBottom: 10 }} placeholder="Password…" value={pwInput} onChange={e => setPwInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleStudentLogin()} autoFocus />
         {pwError && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{pwError}</p>}
@@ -1108,7 +1127,9 @@ export default function App() {
         </div>
       </div>
     </div>
-  );
+    </ThemeContext.Provider>
+    );
+  }
 
   // ── Student Portal (LMS-style) ────────────────────────────────────────────
   if (screen === "student-portal" && loggedInStudent) {
@@ -1123,7 +1144,7 @@ export default function App() {
             <p style={{ ...th.s.muted, marginBottom: 28 }}>{loggedInStudent.fullName}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div><label style={th.s.label}>Email</label><input type="email" style={th.s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
-              {stuEmailMsg && <p style={{ color: "#4ade80", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
+              {stuEmailMsg && <p style={{ color: stuEmailMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
               <button onClick={saveStudentEmail} style={th.s.btnPri}>Update Email</button>
               <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
                 <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1182,7 +1203,7 @@ export default function App() {
     );
 
     const arrowHex = th.muted.replace("#", "");
-    const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: th.text, fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23${arrowHex}' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
+    const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: th.text, fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", colorScheme: th.isLight ? "light" : "dark", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23${arrowHex}' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
     const header = (
       <>
@@ -1195,7 +1216,7 @@ export default function App() {
               style={classPickerStyle}
             >
               {studentAvailableClasses.map(({ classId, name }) => (
-                <option key={classId} value={classId} style={{ background: th.isLight ? "#ede9e3" : "#252627", color: th.text }}>{name}</option>
+                <option key={classId} value={classId} style={{ background: th.bg, color: th.text }}>{name}</option>
               ))}
             </select>
           ) : (
@@ -1203,6 +1224,11 @@ export default function App() {
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => setLightMode(!lightMode)}
+            title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+            style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", color: th.muted, fontSize: 16 }}
+          >{lightMode ? "☀" : "☽"}</button>
           <button onClick={() => { setShowStudentSettings(true); setStuEmailDraft(loggedInStudent?.email || ""); setStuEmailMsg(""); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...th.s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
         </div>
       </>
@@ -1210,7 +1236,7 @@ export default function App() {
 
     let mainContent;
     if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
@@ -1243,12 +1269,17 @@ export default function App() {
   }
 
   // ── Quiz screen ───────────────────────────────────────────────────────────
-  if (screen === "quiz") return (
+  if (screen === "quiz") {
+    // eslint-disable-next-line no-shadow
+    const s = appTh.s; const MUTED = appTh.muted; const BORDER = appTh.border; const CARD = appTh.card; const text = appTh.text;
+    const solidBg = appTh.isLight ? "#fff" : "#252627";
+    return (
+    <ThemeContext.Provider value={appTh}>
     <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
       {showLeaveConfirm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
-          <div style={{ ...s.card, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
-            <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave quiz?</h3>
+          <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
+            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave quiz?</h3>
             <p style={{ ...s.muted, marginBottom: 20 }}>Your progress will be lost and this attempt will not be saved.</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeaveConfirm(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
@@ -1262,7 +1293,7 @@ export default function App() {
           <button onClick={handleLeaveQuiz} disabled={subSaveError} title={subSaveError ? "Please retry saving before leaving" : ""} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto", opacity: subSaveError ? 0.35 : 1, cursor: subSaveError ? "not-allowed" : "pointer" }}>← Back</button>
           <div style={{ width: 1, height: 20, background: BORDER }} />
           <div>
-            <div style={{ color: "#fff", fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>{activeQuiz?.title}{practiceMode && <span style={s.badge(TEAL)}>Practice</span>}</div>
+            <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>{activeQuiz?.title}{practiceMode && <span style={s.badge(TEAL)}>Practice</span>}</div>
             <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{loggedInStudent?.fullName}</p>
           </div>
         </div>
@@ -1279,7 +1310,7 @@ export default function App() {
         {quizDone && subSaveError && (
           <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 12, padding: "16px 20px", marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
             <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission could not be saved</p>
-            <p style={{ color: "rgba(255,255,255,0.75)", fontSize: 13, margin: 0, lineHeight: 1.5 }}>There was a network or server error. Please check your internet connection and tap Retry. If it keeps failing, contact your instructor and show them this screen.</p>
+            <p style={{ color: MUTED, fontSize: 13, margin: 0, lineHeight: 1.5 }}>There was a network or server error. Please check your internet connection and tap Retry. If it keeps failing, contact your instructor and show them this screen.</p>
             <button onClick={retrySaveSub} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>Retry saving submission</button>
           </div>
         )}
@@ -1302,7 +1333,7 @@ export default function App() {
                     <div style={{ display: "flex", alignItems: "flex-start", gap: 12, ...s.card, padding: 12 }}>
                       <img src={pendingFile.previewUrl} alt="Preview" style={{ height: 72, width: 72, objectFit: "cover", borderRadius: 8, border: `1px solid ${BORDER}`, flexShrink: 0 }} />
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p style={{ color: "#fff", fontSize: 12, fontWeight: 500, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.file.name}</p>
+                        <p style={{ color: text, fontSize: 12, fontWeight: 500, margin: "0 0 2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pendingFile.file.name}</p>
                         <p style={{ ...s.muted, fontSize: 12, margin: "0 0 4px" }}>{(pendingFile.file.size / 1024).toFixed(1)} KB</p>
                         {pendingFile.readability === "checking" && <p style={{ color: TEAL, fontSize: 12, margin: 0 }}>🔍 Checking image quality…</p>}
                         {pendingFile.readability === "ok" && <p style={{ color: "#4ade80", fontSize: 12, margin: 0 }}>✓ Image looks clear and readable</p>}
@@ -1310,7 +1341,7 @@ export default function App() {
                       </div>
                       <button onClick={clearFile} style={{ background: "none", border: "none", color: MUTED, fontSize: 20, cursor: "pointer", lineHeight: 1, flexShrink: 0 }}>×</button>
                     </div>
-                    {pendingFile.readability?.status === "fail" && <div style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: "rgba(255,255,255,0.8)", lineHeight: 1.5 }}>Please retake the photo and re-upload. Tips: make sure the drawing is well-lit, hold the camera steady, and ensure the full page is visible.</div>}
+                    {pendingFile.readability?.status === "fail" && <div style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, padding: "10px 14px", fontSize: 13, color: MUTED, lineHeight: 1.5 }}>Please retake the photo and re-upload. Tips: make sure the drawing is well-lit, hold the camera steady, and ensure the full page is visible.</div>}
                   </div>
                 )}
                 <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
@@ -1343,10 +1374,16 @@ export default function App() {
         </div>
       )}
     </div>
-  );
+    </ThemeContext.Provider>
+    );
+  }
 
   // ── Instructor Login ──────────────────────────────────────────────────────
-  if (screen === "inst-login") return (
+  if (screen === "inst-login") {
+    // eslint-disable-next-line no-shadow
+    const s = appTh.s; const MUTED = appTh.muted;
+    return (
+    <ThemeContext.Provider value={appTh}>
     <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <Footer />
       <div style={{ maxWidth: 400, width: "100%" }}>
@@ -1377,18 +1414,23 @@ export default function App() {
         </div>
       </div>
     </div>
-  );
+    </ThemeContext.Provider>
+    );
+  }
 
   // ── Instructor Submission Detail ──────────────────────────────────────────
   if (screen === "inst-sub-detail" && viewingSub) {
+    // eslint-disable-next-line no-shadow
+    const s = appTh.s; const MUTED = appTh.muted; const BORDER = appTh.border; const CARD = appTh.card; const text = appTh.text;
     const scoreColor = viewingSub.score >= 8 ? "#4ade80" : viewingSub.score >= 6 ? "#facc15" : viewingSub.score >= 4 ? "#fb923c" : "#f87171";
     return (
+      <ThemeContext.Provider value={appTh}>
       <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
         <div style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
             <button onClick={() => { setScreen("instructor"); setViewingSub(null); }} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto" }}>← Back</button>
             <div style={{ width: 1, height: 20, background: BORDER }} />
-            <div><div style={{ color: "#fff", fontWeight: 700, fontSize: 14 }}>{viewingSub.quizTitle}</div><p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{viewingSub.studentName} · {fmtDate(viewingSub.timestamp)}</p></div>
+            <div><div style={{ color: text, fontWeight: 700, fontSize: 14 }}>{viewingSub.quizTitle}</div><p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{viewingSub.studentName} · {fmtDate(viewingSub.timestamp)}</p></div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {viewingSub.late && <span style={s.badge("#facc15")}>LATE</span>}
@@ -1399,12 +1441,17 @@ export default function App() {
           {viewingSub.dialogue?.length > 0 ? <ChatMessages messages={viewingSub.dialogue} /> : <div style={{ ...s.card, padding: 32, textAlign: "center", color: MUTED }}>No dialogue saved for this submission.</div>}
         </div>
       </div>
+      </ThemeContext.Provider>
     );
   }
 
   // ── Instructor Portal (LMS-style) ─────────────────────────────────────────
   if (screen === "instructor") {
-    const instClassPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
+    const th = buildTheme(lightMode);
+    // Shadow module-level dark constants so inline styles in this block pick up the active theme.
+    // eslint-disable-next-line no-shadow
+    const s = th.s; const MUTED = th.muted; const BORDER = th.border; const text = th.text; const bg = th.bg; const isLight = th.isLight; // eslint-disable-line
+    const instClassPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: th.text, fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", colorScheme: th.isLight ? "light" : "dark", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
     const header = (
       <>
@@ -1416,9 +1463,9 @@ export default function App() {
               onChange={e => { const v = e.target.value; if (v) switchToClass(v); }}
               style={instClassPickerStyle}
             >
-              {!currentClassId && <option value="" style={{ background: "#252627", color: "#fff" }}>— Select a class —</option>}
+              {!currentClassId && <option value="" style={{ background: bg, color: text }}>— Select a class —</option>}
               {Object.entries(classes).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || "")).map(([cid, c]) => (
-                <option key={cid} value={cid} style={{ background: "#252627", color: "#fff" }}>{(c?.metadata?.name || cid) + (c?.metadata?.active === false ? " (inactive)" : "")}</option>
+                <option key={cid} value={cid} style={{ background: bg, color: text }}>{(c?.metadata?.name || cid) + (c?.metadata?.active === false ? " (inactive)" : "")}</option>
               ))}
             </select>
           ) : (
@@ -1428,6 +1475,11 @@ export default function App() {
           <SyncBadge status={syncStatus} label={syncLabel} error={syncError} />
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => setLightMode(!lightMode)}
+            title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+            style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", display: "flex", alignItems: "center", color: th.muted, fontSize: 16 }}
+          >{lightMode ? "☀" : "☽"}</button>
           <button
             onClick={() => setInstructorSection("bugs")}
             onMouseEnter={() => setInstBugHover(true)}
@@ -1461,6 +1513,7 @@ export default function App() {
     );
 
     return (
+      <ThemeContext.Provider value={th}>
       <Shell
         header={header}
         sidebar={<Sidebar items={sidebarItems} activeId={instructorSection} onSelect={setInstructorSection} />}
@@ -1530,8 +1583,8 @@ export default function App() {
                 {removeStudent && (
                   <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
                     <div style={{ ...s.card, border: "1px solid rgba(127,29,29,0.6)", padding: 24, width: "100%", maxWidth: 360 }}>
-                      <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Remove Student</h3>
-                      <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 4px" }}>{removeStudent.fullName}</p>
+                      <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Remove Student</h3>
+                      <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 4px" }}>{removeStudent.fullName}</p>
                       <p style={{ color: MUTED, fontFamily: "monospace", fontSize: 13, margin: "0 0 16px" }}>ID: {removeStudent.studentId}</p>
                       <p style={{ ...s.muted, fontSize: 13, marginBottom: 16 }}>This removes them from the roster only. Their submissions will remain.</p>
                       <input type="password" style={{ ...s.input, marginBottom: 8 }} placeholder="Instructor password" value={removePw} onChange={e => setRemovePw(e.target.value)} autoFocus />
@@ -1555,9 +1608,9 @@ export default function App() {
                     <tbody>{roster.map((stu, i) => (
                       <tr key={stu.studentId} style={{ borderBottom: i < roster.length - 1 ? `1px solid ${BORDER}` : "none" }}>
                         <td style={{ padding: "12px 16px", color: MUTED, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
-                        <td style={{ padding: "12px 16px", color: "#fff", fontWeight: 500 }}>{editingAltName === stu.studentId ? (
+                        <td style={{ padding: "12px 16px", color: text, fontWeight: 500 }}>{editingAltName === stu.studentId ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input value={altNameInput} onChange={e => setAltNameInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveAltName(stu); if (e.key === "Escape") setEditingAltName(null); }} placeholder="Preferred name (blank to clear)" autoFocus style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 200 }} />
+                            <input value={altNameInput} onChange={e => setAltNameInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveAltName(stu); if (e.key === "Escape") setEditingAltName(null); }} placeholder="Preferred name (blank to clear)" autoFocus style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: text, borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 200 }} />
                             <button onClick={() => saveAltName(stu)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
                             <button onClick={() => setEditingAltName(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                           </div>
@@ -1570,20 +1623,20 @@ export default function App() {
                         <td style={{ padding: "12px 16px", color: MUTED, fontFamily: "monospace", fontSize: 13 }}>{stu.studentId}</td>
                         <td style={{ padding: "12px 16px" }}>{editingEmail === stu.studentId ? (
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveEmail(stu); if (e.key === "Escape") setEditingEmail(null); }} placeholder="student@example.com" autoFocus style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 220 }} />
+                            <input type="email" value={emailInput} onChange={e => setEmailInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") saveEmail(stu); if (e.key === "Escape") setEditingEmail(null); }} placeholder="student@example.com" autoFocus style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: text, borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 220 }} />
                             <button onClick={() => saveEmail(stu)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
                             <button onClick={() => setEditingEmail(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                           </div>
                         ) : (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: stu.email ? MUTED : "rgba(255,255,255,0.2)", fontSize: 13 }}>{stu.email || "—"}</span>
+                            <span style={{ color: stu.email ? MUTED : isLight ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.2)", fontSize: 13 }}>{stu.email || "—"}</span>
                             <button onClick={() => { setEditingEmail(stu.studentId); setEmailInput(stu.email || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Edit email">✎</button>
                           </div>
                         )}</td>
                         <td style={{ padding: "12px 16px" }}><span style={studentPws[stu.studentId] ? s.badge(TEAL) : s.badge(MUTED)}>{studentPws[stu.studentId] ? "Hashed password" : "Using Student ID"}</span></td>
                         <td style={{ padding: "8px 16px", textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                          <button onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; const np = { ...studentPws }; delete np[stu.studentId]; await saveStudentPws(np); }} style={{ background: "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.4)", color: "#fde047", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Reset PW</button>
-                          <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: "rgba(127,29,29,0.3)", border: "1px solid rgba(127,29,29,0.5)", color: "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Remove</button>
+                          <button onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; const np = { ...studentPws }; delete np[stu.studentId]; await saveStudentPws(np); }} style={{ background: isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.5)", color: isLight ? "#92640a" : "#fde047", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Reset PW</button>
+                          <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Remove</button>
                         </td>
                       </tr>
                     ))}</tbody>
@@ -1733,7 +1786,7 @@ export default function App() {
         {instructorSection === "settings" && (
           <div>
             <div style={{ marginBottom: 32 }}>
-              <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 16px" }}>Classes</p>
+              <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 16px" }}>Classes</p>
               <div style={{ ...s.card, padding: 16, marginBottom: 16 }}>
                 <p style={{ ...s.muted, fontSize: 13, margin: "0 0 12px" }}>Create a new class</p>
                 <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
@@ -1743,8 +1796,8 @@ export default function App() {
                   </div>
                   <div>
                     <label style={s.label}>Course</label>
-                    <select style={{ ...s.input, width: "auto", paddingRight: 32 }} value={newClassCourse} onChange={e => setNewClassCourse(e.target.value)}>
-                      {COURSE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                    <select style={{ ...s.input, width: "auto", paddingRight: 32, colorScheme: isLight ? "light" : "dark" }} value={newClassCourse} onChange={e => setNewClassCourse(e.target.value)}>
+                      {COURSE_OPTIONS.map(o => <option key={o.value} value={o.value} style={{ background: bg, color: text }}>{o.label}</option>)}
                     </select>
                   </div>
                   <button onClick={async () => {
@@ -1769,9 +1822,9 @@ export default function App() {
                           const isCurrent = currentClassId === cid;
                           return (
                             <tr key={cid} style={{ borderBottom: i < arr.length - 1 ? `1px solid ${BORDER}` : "none", background: isCurrent ? "rgba(0,130,140,0.08)" : "transparent" }}>
-                              <td style={{ padding: "12px 16px", color: "#fff", fontWeight: 500 }}>{editingClassId === cid ? (
+                              <td style={{ padding: "12px 16px", color: text, fontWeight: 500 }}>{editingClassId === cid ? (
                                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <input value={editingClassNameInput} onChange={e => setEditingClassNameInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") renameClass(cid, editingClassNameInput); if (e.key === "Escape") setEditingClassId(null); }} autoFocus style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 240 }} />
+                                  <input value={editingClassNameInput} onChange={e => setEditingClassNameInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") renameClass(cid, editingClassNameInput); if (e.key === "Escape") setEditingClassId(null); }} autoFocus style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: text, borderRadius: 6, padding: "4px 10px", fontSize: 13, outline: "none", width: 240 }} />
                                   <button onClick={() => renameClass(cid, editingClassNameInput)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
                                   <button onClick={() => setEditingClassId(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                                 </div>
@@ -1792,7 +1845,7 @@ export default function App() {
                               <td style={{ padding: "12px 16px", color: MUTED, fontFamily: "monospace", fontSize: 13 }}>{rosterCount}</td>
                               <td style={{ padding: "8px 16px", textAlign: "right", whiteSpace: "nowrap" }}>
                                 {!isCurrent && <button onClick={() => switchToClass(cid)} style={{ ...s.btnGhost, padding: "4px 12px", fontSize: 12, marginRight: 6, width: "auto" }}>Switch to</button>}
-                                <button onClick={() => confirmDanger(`delete class "${m.name || cid}" and all its data`, () => deleteClass(cid))} style={{ background: "rgba(127,29,29,0.3)", border: "1px solid rgba(127,29,29,0.5)", color: "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Delete</button>
+                                <button onClick={() => confirmDanger(`delete class "${m.name || cid}" and all its data`, () => deleteClass(cid))} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Delete</button>
                               </td>
                             </tr>
                           );
@@ -1816,7 +1869,7 @@ export default function App() {
                   {fbConnStatus === 'error' && <p style={{ color: "#f87171", fontSize: 11, margin: 0, fontFamily: "monospace", wordBreak: "break-all" }}>{fbConnError}</p>}
                 </div>
                 <div>
-                  <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>Backup & Restore</p>
+                  <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>Backup & Restore</p>
                   <p style={{ ...s.muted, fontSize: 12, margin: "0 0 12px" }}>{currentClassId && classMeta?.name ? <>Backs up <span style={{ color: TEAL }}>{classMeta.name}</span> plus instructor settings.</> : "Select a class to back up its data."}</p>
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button onClick={exportAllData} disabled={!currentClassId} style={{ ...s.btnPri, flex: 1, minWidth: 140, opacity: currentClassId ? 1 : 0.5, cursor: currentClassId ? "pointer" : "not-allowed" }}>Download Backup</button>
@@ -1826,7 +1879,7 @@ export default function App() {
                 </div>
               </div>
               <div>
-                <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 16px" }}>Change Instructor Password</p>
+                <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 16px" }}>Change Instructor Password</p>
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                   <input type="password" style={s.input} placeholder="New password" value={editPw} onChange={e => { setEditPw(e.target.value); setEditPwMsg(""); }} />
                   <input type="password" style={s.input} placeholder="Confirm new password" value={editPw2} onChange={e => { setEditPw2(e.target.value); setEditPwMsg(""); }} />
@@ -1843,7 +1896,7 @@ export default function App() {
             </div>
 
             <div style={{ marginBottom: 36 }}>
-              <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 16px" }}>Two-Factor Authentication</p>
+              <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 16px" }}>Two-Factor Authentication</p>
               {!settings.totpSecret ? (
                 <div>
                   <p style={{ ...s.muted, lineHeight: 1.5, margin: "0 0 14px" }}>2FA is not enabled. Protect your instructor login with a time-based one-time password.</p>
@@ -1884,7 +1937,7 @@ export default function App() {
             <hr style={{ border: "none", borderTop: `1px solid ${BORDER}`, margin: "0 0 32px" }} />
 
             <div>
-              <p style={{ color: "#fff", fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>Danger Zone {currentClassId && classMeta?.name ? <span style={{ ...s.muted, fontWeight: 400 }}>(applies to <span style={{ color: TEAL }}>{classMeta.name}</span>)</span> : null}</p>
+              <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>Danger Zone {currentClassId && classMeta?.name ? <span style={{ ...s.muted, fontWeight: 400 }}>(applies to <span style={{ color: TEAL }}>{classMeta.name}</span>)</span> : null}</p>
               <p style={{ ...s.muted, fontSize: 13, margin: "0 0 14px" }}>{currentClassId ? "These actions affect the currently selected class only." : "Select a class to manage its data."}</p>
               {currentClassId ? (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 8 }}>
@@ -1913,7 +1966,7 @@ export default function App() {
                         {!report.read && <button onClick={() => markBugRead(report.id)} style={{ ...s.btnGhost, padding: "4px 10px", fontSize: 12 }}>Mark read</button>}
                       </div>
                     </div>
-                    <p style={{ color: "#fff", fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{report.message}</p>
+                    <p style={{ color: text, fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{report.message}</p>
                   </div>
                 ))}
               </div>
@@ -1996,21 +2049,21 @@ export default function App() {
                         </div>
                       </div>
                       {ev.type === "quick" && (
-                        <p style={{ color: "#fff", fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ev.message}</p>
+                        <p style={{ color: text, fontSize: 14, margin: 0, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{ev.message}</p>
                       )}
                       {ev.type === "survey" && ev.responses && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {SURVEY_QUESTIONS.map(q => (
                             <div key={q.id} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
                               <span style={{ ...s.badge(TEAL), minWidth: 110, textAlign: "center", flexShrink: 0, fontSize: 11 }}>{LIKERT_LABELS[ev.responses[q.id]] || "—"}</span>
-                              <span style={{ color: "#fff", fontSize: 13, lineHeight: 1.5 }}>{q.text}</span>
+                              <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>{q.text}</span>
                             </div>
                           ))}
                           {ev.openEnded && (ev.openEnded.suggestions || ev.openEnded.assignment || ev.openEnded.best) && (
                             <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
-                              {ev.openEnded.suggestions && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Suggestions to improve:</p><p style={{ color: "#fff", fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.suggestions}</p></div>}
-                              {ev.openEnded.assignment && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Most helpful assignment:</p><p style={{ color: "#fff", fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.assignment}</p></div>}
-                              {ev.openEnded.best && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Liked best:</p><p style={{ color: "#fff", fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.best}</p></div>}
+                              {ev.openEnded.suggestions && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Suggestions to improve:</p><p style={{ color: text, fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.suggestions}</p></div>}
+                              {ev.openEnded.assignment && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Most helpful assignment:</p><p style={{ color: text, fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.assignment}</p></div>}
+                              {ev.openEnded.best && <div><p style={{ ...s.muted, fontSize: 11, margin: "0 0 2px" }}>Liked best:</p><p style={{ color: text, fontSize: 13, margin: 0, lineHeight: 1.5, whiteSpace: "pre-wrap" }}>{ev.openEnded.best}</p></div>}
                             </div>
                           )}
                         </div>
@@ -2023,6 +2076,7 @@ export default function App() {
           );
         })()}
       </Shell>
+      </ThemeContext.Provider>
     );
   }
 

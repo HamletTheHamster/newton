@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { dueToDate } from "../../utils.js";
 import { ModuleRow } from "./ModuleRow.jsx";
@@ -7,13 +7,25 @@ import { ModuleRow } from "./ModuleRow.jsx";
 // `modules`: course modules (already merged with per-class config — items carry _key/_hidden)
 // `resolveItem(item)`: returns the meta for an item (quiz lookup, completion, etc.)
 // `onItemClick(item, meta)`: passed through to ModuleRow → ModuleItem
-// `initiallyExpanded` defaults to all expanded.
+// `storageKey`: localStorage key to persist open/closed state per student+class
 // `filterHidden` (default true): drop items flagged `_hidden` before render. Instructor view passes false.
-export function ModuleList({ modules, resolveItem, onItemClick, initiallyExpanded = true, filterHidden = true }) {
+export function ModuleList({ modules, resolveItem, onItemClick, storageKey = null, filterHidden = true }) {
   const { s, muted } = useTheme();
-  const [openMap, setOpenMap] = useState(() =>
-    Object.fromEntries(modules.map(m => [m.id, !!initiallyExpanded]))
-  );
+  const [openMap, setOpenMap] = useState(() => {
+    if (storageKey) {
+      try {
+        const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+        return Object.fromEntries(modules.map(m => [m.id, stored[m.id] ?? false]));
+      } catch {}
+    }
+    return Object.fromEntries(modules.map(m => [m.id, false]));
+  });
+
+  useEffect(() => {
+    if (storageKey) {
+      try { localStorage.setItem(storageKey, JSON.stringify(openMap)); } catch {}
+    }
+  }, [openMap, storageKey]);
 
   const allOpen = modules.every(m => openMap[m.id]);
 

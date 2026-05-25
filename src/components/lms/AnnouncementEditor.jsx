@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { s, MUTED, BORDER } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 
 export function AnnouncementEditor({ initialTitle = "", initialBody = "", emailCount = 0, onSave, onCancel }) {
+  const { s, muted, border, text, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
   const [title, setTitle] = useState(initialTitle);
   const [body, setBody] = useState(initialBody);
   const [sendEmail, setSendEmail] = useState(true);
@@ -18,10 +20,10 @@ export function AnnouncementEditor({ initialTitle = "", initialBody = "", emailC
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}>
-      <div style={{ ...s.card, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${BORDER}`, gap: 12 }}>
-          <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>{initialTitle ? "Edit Announcement" : "New Announcement"}</h3>
-          <button onClick={onCancel} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+      <div style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${border}`, gap: 12 }}>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0 }}>{initialTitle ? "Edit Announcement" : "New Announcement"}</h3>
+          <button onClick={onCancel} style={{ background: "none", border: "none", color: muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
         </div>
         <div style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
           <div>
@@ -40,14 +42,14 @@ export function AnnouncementEditor({ initialTitle = "", initialBody = "", emailC
           {emailCount > 0 && (
             <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
               <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} />
-              <span style={{ color: MUTED, fontSize: 13 }}>
+              <span style={{ color: muted, fontSize: 13 }}>
                 Email students ({emailCount} address{emailCount !== 1 ? "es" : ""})
               </span>
             </label>
           )}
           {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
         </div>
-        <div style={{ display: "flex", gap: 10, padding: "14px 22px", borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ display: "flex", gap: 10, padding: "14px 22px", borderTop: `1px solid ${border}` }}>
           <button onClick={onCancel} style={{ ...s.btnSec, flex: 1 }}>Cancel</button>
           <button onClick={submit} disabled={saving} style={{ ...s.btnPri, flex: 1, opacity: saving ? 0.6 : 1 }}>{saving ? "Saving…" : "Save"}</button>
         </div>

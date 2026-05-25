@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, Fragment } from "react";
-import { s, TEAL, MUTED, BORDER, BG } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 import { fmtDueTime, dueToDate } from "../../utils.js";
 import { newId } from "../../courses/ids.js";
 
@@ -38,7 +38,11 @@ export function Modules({
   onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
   onOpenCustomQuizEditor, onDeleteCustomQuiz,
 }) {
-  const [openMap, setOpenMap] = useState({});
+  const { s, muted, border, text, teal, bg } = useTheme();
+  const lsKey = `newton_inst_modules_${classId}`;
+  const [openMap, setOpenMap] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(lsKey) || "{}"); } catch { return {}; }
+  });
   const [editingTitleFor, setEditingTitleFor] = useState(null);
   const [dragId, setDragId] = useState(null);
   const [dragOverId, setDragOverId] = useState(null);
@@ -68,6 +72,15 @@ export function Modules({
 
   const cfgOf = id => moduleConfig[id] || {};
   const toggleOne = id => setOpenMap(prev => ({ ...prev, [id]: !prev[id] }));
+
+  useEffect(() => {
+    try { localStorage.setItem(lsKey, JSON.stringify(openMap)); } catch {}
+  }, [openMap, lsKey]);
+
+  useEffect(() => {
+    try { setOpenMap(JSON.parse(localStorage.getItem(lsKey) || "{}")); } catch { setOpenMap({}); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [classId]);
 
   const resetAddState = () => {
     setAddingTo(null); setAddType(null);
@@ -279,8 +292,8 @@ export function Modules({
       />
 
       {list.length === 0 && !creatingModule && (
-        <div style={{ ...s.card, padding: 32, textAlign: "center", color: MUTED }}>
-          No modules yet. Click <span style={{ color: TEAL }}>+ New Module</span> above to add one.
+        <div style={{ ...s.card, padding: 32, textAlign: "center", color: muted }}>
+          No modules yet. Click <span style={{ color: teal }}>+ New Module</span> above to add one.
         </div>
       )}
 
@@ -313,7 +326,7 @@ export function Modules({
                 setDragId(null); setDragOverId(null);
               }}
               onDragEnd={() => { setDragId(null); setDragOverId(null); }}
-              style={{ ...s.card, overflow: "visible", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${TEAL}` : undefined, opacity: dragId === mod.id ? 0.5 : 1 }}
+              style={{ ...s.card, overflow: "visible", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${teal}` : undefined, opacity: dragId === mod.id ? 0.5 : 1 }}
             >
               {/* Module header — draggable for reordering */}
               <div
@@ -327,7 +340,7 @@ export function Modules({
                 style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 18px", flexWrap: "wrap", cursor: dragId === mod.id ? "grabbing" : "grab" }}
               >
                 {/* Expand indicator */}
-                <span style={{ fontSize: 13, color: MUTED, transform: isOpen ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.2s", flexShrink: 0, pointerEvents: "none" }}>▶</span>
+                <span style={{ fontSize: 13, color: muted, transform: isOpen ? "rotate(90deg)" : "none", display: "inline-block", transition: "transform 0.2s", flexShrink: 0, pointerEvents: "none" }}>▶</span>
                 <div style={{ flex: "1 1 240px", minWidth: 0 }}>
                   {editingTitleFor === mod.id ? (
                     <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
@@ -339,15 +352,15 @@ export function Modules({
                           if (e.key === "Enter") renameModule(mod.id, titleDraft);
                           if (e.key === "Escape") setEditingTitleFor(null);
                         }}
-                        style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${TEAL}`, color: "#fff", borderRadius: 6, padding: "4px 10px", fontSize: 14, outline: "none", width: "100%", maxWidth: 360 }}
+                        style={{ background: "rgba(255,255,255,0.06)", border: `1px solid ${teal}`, color: text, borderRadius: 6, padding: "4px 10px", fontSize: 14, outline: "none", width: "100%", maxWidth: 360 }}
                       />
-                      <button onClick={() => renameModule(mod.id, titleDraft)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${TEAL}`, color: TEAL, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
-                      <button onClick={() => setEditingTitleFor(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
+                      <button onClick={() => renameModule(mod.id, titleDraft)} style={{ background: "rgba(0,130,140,0.2)", border: `1px solid ${teal}`, color: teal, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>✓</button>
+                      <button onClick={() => setEditingTitleFor(null)} style={{ background: "none", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                     </div>
                   ) : (
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 500, fontSize: 14, color: "#fff" }}>{mod.title || "Untitled module"}</span>
-                      <button onClick={e => { e.stopPropagation(); setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Rename module">✎</button>
+                      <span style={{ fontWeight: 500, fontSize: 14, color: text }}>{mod.title || "Untitled module"}</span>
+                      <button onClick={e => { e.stopPropagation(); setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }} style={{ background: "none", border: "none", color: muted, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Rename module">✎</button>
                     </div>
                   )}
                 </div>
@@ -359,7 +372,7 @@ export function Modules({
                 >
                   <button
                     onClick={() => setModuleMenuFor(id => id === mod.id ? null : mod.id)}
-                    style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}
+                    style={{ background: "transparent", border: "none", color: muted, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}
                   >⋮</button>
                   {moduleMenuFor === mod.id && (
                     <ModuleMenu
@@ -385,7 +398,7 @@ export function Modules({
               </div>
 
             {isOpen && (
-              <div style={{ borderTop: `1px solid ${BORDER}` }}>
+              <div style={{ borderTop: `1px solid ${border}` }}>
                 {items.map((item, itemIdx) => {
                   const isHidden = !!hidden[item.id];
                   const upload = item.type === "file" ? uploads[item.uploadId] : null;
@@ -479,7 +492,7 @@ export function Modules({
                                 />
                                 {quizDueDate && (editingTimeFor === item.refId
                                   ? <input type="time" autoFocus style={{ ...s.input, width: "100%", padding: "6px 10px", fontSize: 12 }} value={quizTimeVal} onChange={async e => { if (!e.target.value) return; await onSaveDueDates({ ...(dueDates || {}), [item.refId]: quizDateVal + ' ' + e.target.value }); }} onBlur={() => setEditingTimeFor(null)} />
-                                  : <button onClick={() => setEditingTimeFor(item.refId)} style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, fontSize: 12, cursor: "pointer", padding: "6px 10px", borderRadius: 10, width: "100%", textAlign: "left" }}>{fmtDueTime(quizDueDate)}</button>
+                                  : <button onClick={() => setEditingTimeFor(item.refId)} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, fontSize: 12, cursor: "pointer", padding: "6px 10px", borderRadius: 10, width: "100%", textAlign: "left" }}>{fmtDueTime(quizDueDate)}</button>
                                 )}
                                 {quizDueDate && <span style={s.badge(quizLate ? "#f87171" : "#4ade80")}>{quizLate ? "Past due" : "Active"}</span>}
                               </div>
@@ -534,6 +547,7 @@ export function Modules({
 // ── Subcomponents ───────────────────────────────────────────────────────────
 
 function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate, onCancelCreate }) {
+  const { s } = useTheme();
   if (creating) {
     return (
       <div style={{ ...s.card, padding: "12px 18px", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -558,18 +572,19 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
 }
 
 function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu }) {
+  const { s, muted, border, text, teal } = useTheme();
   return (
-    <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${BORDER}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${TEAL}` : undefined }}>
-      <span style={{ color: MUTED, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
+    <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${border}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${teal}` : undefined }}>
+      <span style={{ color: muted, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
-        <div style={{ color: "#fff", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+        <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
         {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
       </div>
       {urlField && <div style={{ flex: "2 1 280px", minWidth: 0 }}>{urlField}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         {actions}
         <div style={{ position: "relative" }} ref={menuRef}>
-          <button onClick={onToggleMenu} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}>⋮</button>
+          <button onClick={onToggleMenu} style={{ background: "transparent", border: "none", color: muted, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}>⋮</button>
           {menuOpen && menu}
         </div>
       </div>
@@ -578,12 +593,13 @@ function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragP
 }
 
 function IconBtn({ children, onClick, title, disabled }) {
+  const { muted, border } = useTheme();
   return (
     <button
       onClick={onClick}
       title={title}
       disabled={disabled}
-      style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "5px 8px", cursor: disabled ? "not-allowed" : "pointer", fontSize: 12, lineHeight: 1, opacity: disabled ? 0.35 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 28 }}
+      style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "5px 8px", cursor: disabled ? "not-allowed" : "pointer", fontSize: 12, lineHeight: 1, opacity: disabled ? 0.35 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 28 }}
     >
       {children}
     </button>
@@ -591,6 +607,7 @@ function IconBtn({ children, onClick, title, disabled }) {
 }
 
 function UrlInput({ initial, onCommit, placeholder }) {
+  const { s } = useTheme();
   const [val, setVal] = useState(initial || "");
   const [dirty, setDirty] = useState(false);
   const commit = async () => { if (!dirty) return; setDirty(false); await onCommit(val); };
@@ -612,27 +629,28 @@ function AddItemBar({
   onCancel, onOpenPageEditor, onCreateNewQuiz, onDeleteCustomQuiz,
   onSubmitQuiz, onSubmitText, onSubmitLink, onSubmitFile,
 }) {
+  const { s, muted, border, text, teal } = useTheme();
   const wrap = (child) => (
-    <div style={{ borderTop: `1px solid ${BORDER}`, padding: "12px 18px", background: "rgba(255,255,255,0.02)" }}>{child}</div>
+    <div style={{ borderTop: `1px solid ${border}`, padding: "12px 18px", background: "rgba(255,255,255,0.02)" }}>{child}</div>
   );
 
   if (active === "quiz") {
     return wrap(
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+        <div style={{ border: `1px solid ${border}`, borderRadius: 8, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
           {(quizzes || []).length === 0 ? (
-            <div style={{ padding: "10px 14px", color: MUTED, fontSize: 13 }}>No quizzes available.</div>
+            <div style={{ padding: "10px 14px", color: muted, fontSize: 13 }}>No quizzes available.</div>
           ) : (quizzes || []).map(q => {
             const isCustom = !!(customQuizzes?.[q.id]);
             const selected = quizPick === q.id;
             return (
               <div
                 key={q.id}
-                style={{ display: "flex", alignItems: "center", background: selected ? "rgba(0,130,140,0.15)" : "transparent", borderBottom: `1px solid ${BORDER}` }}
+                style={{ display: "flex", alignItems: "center", background: selected ? "rgba(0,130,140,0.15)" : "transparent", borderBottom: `1px solid ${border}` }}
               >
                 <button
                   onClick={() => setQuizPick(q.id)}
-                  style={{ flex: 1, background: "transparent", border: "none", color: selected ? TEAL : "#fff", fontSize: 13, textAlign: "left", padding: "9px 14px", cursor: "pointer" }}
+                  style={{ flex: 1, background: "transparent", border: "none", color: selected ? teal : text, fontSize: 13, textAlign: "left", padding: "9px 14px", cursor: "pointer" }}
                 >
                   {q.title}
                 </button>
@@ -640,7 +658,7 @@ function AddItemBar({
                   <button
                     onClick={() => { if (window.confirm(`Delete "${q.title}"? This cannot be undone.`)) { if (quizPick === q.id) setQuizPick(""); onDeleteCustomQuiz?.(q.id); } }}
                     title="Delete quiz"
-                    style={{ background: "transparent", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", padding: "0 12px", lineHeight: 1, flexShrink: 0 }}
+                    style={{ background: "transparent", border: "none", color: muted, fontSize: 14, cursor: "pointer", padding: "0 12px", lineHeight: 1, flexShrink: 0 }}
                   >×</button>
                 )}
               </div>
@@ -686,7 +704,7 @@ function AddItemBar({
         </div>
         {busy && (
           <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden", height: 6 }}>
-            <div style={{ width: Math.round(progress * 100) + "%", height: "100%", background: TEAL, transition: "width 0.15s linear" }} />
+            <div style={{ width: Math.round(progress * 100) + "%", height: "100%", background: teal, transition: "width 0.15s linear" }} />
           </div>
         )}
         {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
@@ -705,6 +723,7 @@ function AddItemBar({
 
 // ── ModuleMenu ────────────────────────────────────────────────────────────────
 function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageEditor, onDelete }) {
+  const { s, muted, border, text, teal, bg } = useTheme();
   const ET = "America/New_York";
   const etParts = d => {
     const f = new Intl.DateTimeFormat("en-US", { timeZone: ET, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false });
@@ -748,21 +767,21 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
   const nextMonth = () => { if (calMonth === 12) { setCalMonth(1); setCalYear(y => y + 1); } else setCalMonth(m => m + 1); };
 
   return (
-    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px 14px 10px", minWidth: 260, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "14px 14px 10px", minWidth: 260, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
       {/* Section 1: Release date */}
       <div style={{ marginBottom: 10 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Release Date</span>
+          <span style={{ color: muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" }}>Release Date</span>
           {releaseDate && <span style={s.badge(locked ? "#facc15" : "#4ade80")}>{locked ? "Locked" : "Released"}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-          <button onClick={prevMonth} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>‹</button>
-          <span style={{ color: "#fff", fontSize: 12, fontWeight: 600 }}>{MONTHS[calMonth - 1]} {calYear}</span>
-          <button onClick={nextMonth} style={{ background: "transparent", border: "none", color: MUTED, cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>›</button>
+          <button onClick={prevMonth} style={{ background: "transparent", border: "none", color: muted, cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>‹</button>
+          <span style={{ color: text, fontSize: 12, fontWeight: 600 }}>{MONTHS[calMonth - 1]} {calYear}</span>
+          <button onClick={nextMonth} style={{ background: "transparent", border: "none", color: muted, cursor: "pointer", fontSize: 16, padding: "2px 6px" }}>›</button>
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2, marginBottom: 3 }}>
           {["Su","Mo","Tu","We","Th","Fr","Sa"].map(d => (
-            <div key={d} style={{ textAlign: "center", fontSize: 10, color: MUTED, padding: "2px 0" }}>{d}</div>
+            <div key={d} style={{ textAlign: "center", fontSize: 10, color: muted, padding: "2px 0" }}>{d}</div>
           ))}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 2 }}>
@@ -775,12 +794,12 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
             const isToday = dayStr === todayStr;
             const isPast = dayStr < todayStr;
             return (
-              <button key={day} onClick={() => selectDay(day)} style={{ background: isSelected ? TEAL : "transparent", border: isToday && !isSelected ? `1px solid ${MUTED}` : "none", borderRadius: 4, color: isSelected ? "#fff" : isPast ? "rgba(160,160,160,0.5)" : "#fff", cursor: "pointer", fontSize: 11, padding: "3px 2px", textAlign: "center" }}>{day}</button>
+              <button key={day} onClick={() => selectDay(day)} style={{ background: isSelected ? teal : "transparent", border: isToday && !isSelected ? `1px solid ${muted}` : "none", borderRadius: 4, color: isSelected ? "#fff" : isPast ? muted : text, cursor: "pointer", fontSize: 11, padding: "3px 2px", textAlign: "center" }}>{day}</button>
             );
           })}
         </div>
-        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, borderTop: `1px solid ${BORDER}`, paddingTop: 8 }}>
-          <span style={{ color: MUTED, fontSize: 11 }}>Time (ET)</span>
+        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, borderTop: `1px solid ${border}`, paddingTop: 8 }}>
+          <span style={{ color: muted, fontSize: 11 }}>Time (ET)</span>
           <input type="time" value={timeInput} onChange={e => { setTimeInput(e.target.value); if (currentDateStr && e.target.value) onSaveRelease(`${currentDateStr} ${e.target.value}`); }} style={{ ...s.input, width: "auto", padding: "4px 8px", fontSize: 12, flex: 1 }} />
         </div>
         {releaseDate && (
@@ -789,8 +808,8 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
       </div>
 
       {/* Section 2: Add item */}
-      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10, marginBottom: 10 }}>
-        <div style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Add Item</div>
+      <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
+        <div style={{ color: muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Add Item</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button onClick={() => onAddItem("quiz")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Quiz</button>
           <button onClick={onOpenPageEditor} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Page</button>
@@ -800,7 +819,7 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
       </div>
 
       {/* Section 3: Delete */}
-      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+      <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10 }}>
         <button onClick={onDelete} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>🗑 Delete module</button>
       </div>
     </div>
@@ -808,35 +827,36 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
 }
 
 function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, onEditQuiz }) {
+  const { s, muted, border, bg } = useTheme();
   const hasEditAction = onEditPage || onEditQuiz;
   return (
-    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
+    <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "14px", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
       {dueField && (
         <div style={{ marginBottom: 10 }}>
-          <div style={{ color: MUTED, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Due Date</div>
+          <div style={{ color: muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Due Date</div>
           {dueField}
         </div>
       )}
       {hasEditAction && (
-        <div style={{ borderTop: dueField ? `1px solid ${BORDER}` : "none", paddingTop: dueField ? 10 : 0, marginBottom: 10 }}>
+        <div style={{ borderTop: dueField ? `1px solid ${border}` : "none", paddingTop: dueField ? 10 : 0, marginBottom: 10 }}>
           {onEditPage && (
-            <button onClick={onEditPage} style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: 6 }}>✎ Edit page</button>
+            <button onClick={onEditPage} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: 6 }}>✎ Edit page</button>
           )}
           {onEditQuiz && (
-            <button onClick={onEditQuiz} style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Edit quiz</button>
+            <button onClick={onEditQuiz} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Edit quiz</button>
           )}
         </div>
       )}
-      <div style={{ borderTop: (dueField || hasEditAction) ? `1px solid ${BORDER}` : "none", paddingTop: (dueField || hasEditAction) ? 10 : 0, marginBottom: 10 }}>
+      <div style={{ borderTop: (dueField || hasEditAction) ? `1px solid ${border}` : "none", paddingTop: (dueField || hasEditAction) ? 10 : 0, marginBottom: 10 }}>
         <button
           onClick={onToggleHidden}
-          style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}
+          style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}
         >
           <EyeIcon hidden={isHidden} />
           {isHidden ? "Show to students" : "Hide from students"}
         </button>
       </div>
-      <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 10 }}>
+      <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10 }}>
         <button onClick={onDelete} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>🗑 Delete</button>
       </div>
     </div>
