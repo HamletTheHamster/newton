@@ -32,9 +32,9 @@ classes/
     uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt}}
     announcements/                 {[annId]: {id, title, body, createdAt}}
     announcementReads/             {[studentId]: {[annId]: true}}  — orphaned; no longer read or written (notification feature removed in 6.9)
-    customQuizzes/                 {[quizId]: {id, title, text, createdAt, updatedAt}}  — instructor-created text-prompt quizzes; merged into the quizzes array at runtime alongside hardcoded course quizzes; also auto-added to manualAssignments for gradebook column
+    customQuizzes/                 {[quizId]: {id, title, text, createdAt, updatedAt}}  — instructor-created text-prompt quizzes; merged into the quizzes array at runtime alongside hardcoded course quizzes; also auto-added to manualAssignments for gradebook column. Must be included in the startup class-cache restore (App.jsx startup block) and in the setClasses call at the end of loadClassData, otherwise students whose class matches currentClassId skip loadClassData and see "Not yet linked" for custom quiz items.
     gradeCategories/               {[catId]: {id, name, weight, dropLowest, order}}  — used by Gradebook; separate from syllabus.fields.gradingBreakdown (PDF-extracted). A mismatch warning appears on the instructor Syllabus page when they diverge.
-    gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}
+    gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}  — deleting the assignmentId key entirely restores the original submission score (undo excuse)
     manualAssignments/             {[id]: {id, title, catId, maxPts, order}}  — seeded on first load (Midterm, Final, Lab 1a–14b)
     assignmentNameOverrides/       {[assignmentId]: overrideTitle}
     assignmentOrderOverrides/      {[assignmentId]: number}  — column drag/drop order; overrides natural sort
