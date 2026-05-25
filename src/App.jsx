@@ -298,6 +298,7 @@ export default function App() {
           else setGradeCategories(DEFAULT_GRADE_CATEGORIES);
           if (c.gradeOverrides && typeof c.gradeOverrides === 'object') setGradeOverrides(c.gradeOverrides);
           if (c.assignmentCategories && typeof c.assignmentCategories === 'object') setAssignmentCategories(c.assignmentCategories);
+          if (c.customQuizzes && typeof c.customQuizzes === 'object') setCustomQuizzes(c.customQuizzes);
         } else if (storedId) {
           setCurrentClassId(null);
         }
@@ -397,7 +398,7 @@ export default function App() {
       setManualAssignments(manualAsgnObj);
       setAssignmentNameOverrides(nameOverrideObj);
       setAssignmentOrderOverrides(orderOverrideObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj } }));
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, customQuizzes: customQuizzesObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -782,7 +783,7 @@ export default function App() {
     setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
     setModules([]); setModuleConfig({}); setPages({}); setUploads({});
     setAnnouncements({});
-    setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
+    setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({}); setCustomQuizzes({});
     setScreen("student-search");
   };
   const enterInstructor = async () => {
