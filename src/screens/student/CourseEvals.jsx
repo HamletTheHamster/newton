@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { s, TEAL, MUTED, BORDER } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 import { fbSet } from "../../firebase.js";
 import { dueToDate } from "../../utils.js";
 
@@ -26,6 +26,7 @@ function surveyIsAvailable(mergedModules) {
 }
 
 export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEvals }) {
+  const { s, text, muted } = useTheme();
   const [quickMsg, setQuickMsg] = useState("");
   const [quickSubmitting, setQuickSubmitting] = useState(false);
   const [quickStatus, setQuickStatus] = useState("");
@@ -79,7 +80,7 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
       <div>
-        <h2 style={{ color: "#fff", fontWeight: 700, fontSize: 20, margin: "0 0 6px" }}>Course Evaluations</h2>
+        <h2 style={{ color: text, fontWeight: 700, fontSize: 20, margin: "0 0 6px" }}>Course Evaluations</h2>
         <p style={{ ...s.muted, margin: 0, fontSize: 13 }}>
           Your feedback helps improve this course. All submissions are completely anonymous — your name is never stored with your responses.
         </p>
@@ -88,8 +89,8 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
       {/* Quick Feedback */}
       <div style={{ ...s.card, padding: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <h3 style={{ color: "#fff", fontWeight: 600, fontSize: 16, margin: 0 }}>Quick Feedback</h3>
-          <span style={s.badge(TEAL)}>Always open</span>
+          <h3 style={{ color: text, fontWeight: 600, fontSize: 16, margin: 0 }}>Quick Feedback</h3>
+          <span style={s.badge("#00828c")}>Always open</span>
         </div>
         <p style={{ ...s.muted, fontSize: 13, margin: "0 0 16px" }}>
           Share anything — suggestions, concerns, or thoughts. You can submit as many times as you like throughout the semester.
@@ -122,8 +123,8 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
       {/* End-of-Course Survey */}
       <div style={{ ...s.card, padding: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <h3 style={{ color: "#fff", fontWeight: 600, fontSize: 16, margin: 0 }}>End-of-Course Survey</h3>
-          {!surveyAvailable && <span style={s.badge(MUTED)}>Available at semester's end</span>}
+          <h3 style={{ color: text, fontWeight: 600, fontSize: 16, margin: 0 }}>End-of-Course Survey</h3>
+          {!surveyAvailable && <span style={s.badge(muted)}>Available at semester's end</span>}
         </div>
 
         {!surveyAvailable ? (
@@ -186,17 +187,19 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
 }
 
 function SectionLabel({ children, style }) {
+  const { teal } = useTheme();
   return (
-    <p style={{ color: TEAL, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 12px", ...style }}>
+    <p style={{ color: teal, fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", margin: "0 0 12px", ...style }}>
       {children}
     </p>
   );
 }
 
 function LikertRow({ q, value, onChange }) {
+  const { text, muted, border, teal } = useTheme();
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${BORDER}` }}>
-      <p style={{ color: "#fff", fontSize: 14, flex: 1, margin: 0, lineHeight: 1.5 }}>{q.text}</p>
+    <div style={{ display: "flex", alignItems: "flex-start", gap: 16, marginBottom: 14, paddingBottom: 14, borderBottom: `1px solid ${border}` }}>
+      <p style={{ color: text, fontSize: 14, flex: 1, margin: 0, lineHeight: 1.5 }}>{q.text}</p>
       <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
         {LIKERT.map(opt => (
           <button
@@ -205,10 +208,10 @@ function LikertRow({ q, value, onChange }) {
             title={LIKERT_LABELS[opt]}
             style={{
               padding: "5px 14px",
-              border: `1px solid ${value === opt ? TEAL : BORDER}`,
+              border: `1px solid ${value === opt ? teal : border}`,
               borderRadius: 6,
               background: value === opt ? "rgba(0,130,140,0.2)" : "transparent",
-              color: value === opt ? TEAL : MUTED,
+              color: value === opt ? teal : muted,
               cursor: "pointer",
               fontSize: 12,
               fontWeight: value === opt ? 700 : 400,
@@ -226,6 +229,7 @@ function LikertRow({ q, value, onChange }) {
 }
 
 function OpenEndedField({ label, value, onChange }) {
+  const { s } = useTheme();
   return (
     <div>
       <label style={{ ...s.label, marginBottom: 6, display: "block", fontSize: 13 }}>{label}</label>

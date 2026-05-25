@@ -1,4 +1,4 @@
-import { s, TEAL, MUTED, BORDER } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 import { isLate, dueToDate } from "../../utils.js";
 
 // Icons (inline SVG, monochrome, currentColor).
@@ -18,6 +18,7 @@ const hostnameOf = url => { try { return new URL(url).hostname.replace(/^www\./,
 // `item`: merged item from buildModules — may carry url, pageId, pageContent, etc.
 // `meta`: { quiz?, completed?, late?, sub? } resolved data for quiz items
 export function ModuleItem({ item, meta, onClick }) {
+  const { s, text, muted, border, teal, hover } = useTheme();
   const t = item.type;
   const hasContent =
     (t === "quiz"    && !!meta?.quiz) ||
@@ -37,6 +38,9 @@ export function ModuleItem({ item, meta, onClick }) {
   const title = t === "quiz" ? meta?.quiz?.title : item.title;
   const icon = ICON[t] || ICON.page;
 
+  const completedBg = "rgba(0,130,140,0.06)";
+  const completedHoverBg = "rgba(0,130,140,0.12)";
+
   return (
     <div
       onClick={clickable ? onClick : undefined}
@@ -45,18 +49,18 @@ export function ModuleItem({ item, meta, onClick }) {
         alignItems: "center",
         gap: 12,
         padding: "12px 18px",
-        borderTop: `1px solid ${BORDER}`,
+        borderTop: `1px solid ${border}`,
         cursor: clickable ? "pointer" : "default",
         opacity: isComingSoon || isPending ? 0.55 : 1,
-        background: completed && clickable ? "rgba(0,130,140,0.06)" : "transparent",
+        background: completed && clickable ? completedBg : "transparent",
         transition: "background 0.12s",
       }}
-      onMouseEnter={e => { if (clickable) e.currentTarget.style.background = completed ? "rgba(0,130,140,0.12)" : "rgba(255,255,255,0.04)"; }}
-      onMouseLeave={e => { if (clickable) e.currentTarget.style.background = completed ? "rgba(0,130,140,0.06)" : "transparent"; }}
+      onMouseEnter={e => { if (clickable) e.currentTarget.style.background = completed ? completedHoverBg : hover; }}
+      onMouseLeave={e => { if (clickable) e.currentTarget.style.background = completed ? completedBg : "transparent"; }}
     >
-      <span style={{ color: completed ? TEAL : MUTED, display: "flex", alignItems: "center", flexShrink: 0 }}>{icon}</span>
+      <span style={{ color: completed ? teal : muted, display: "flex", alignItems: "center", flexShrink: 0 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ color: completed ? TEAL : "#fff", fontSize: 14, fontWeight: 500 }}>{title || "Untitled"}</div>
+        <div style={{ color: completed ? teal : text, fontSize: 14, fontWeight: 500 }}>{title || "Untitled"}</div>
         <div style={{ ...s.muted, fontSize: 12, marginTop: 2, display: "flex", flexWrap: "wrap", gap: 10 }}>
           {t === "quiz" && meta?.quiz && (
             <>
@@ -75,12 +79,12 @@ export function ModuleItem({ item, meta, onClick }) {
           )}
           {(t === "reading" || t === "notes") && item.url && <span>{hostnameOf(item.url)}</span>}
           {t === "link" && item.url && <span>{hostnameOf(item.url)}</span>}
-          {isPending && <span style={{ ...s.badge(MUTED), fontSize: 10 }}>Not yet linked</span>}
-          {isComingSoon && <span style={{ ...s.badge(MUTED), fontSize: 10 }}>Coming soon</span>}
+          {isPending && <span style={{ ...s.badge(muted), fontSize: 10 }}>Not yet linked</span>}
+          {isComingSoon && <span style={{ ...s.badge(muted), fontSize: 10 }}>Coming soon</span>}
         </div>
       </div>
       {t === "quiz" && meta?.quiz && (
-        <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: "50%", border: `2px solid ${completed ? TEAL : BORDER}`, background: completed ? TEAL : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", fontWeight: 700 }}>
+        <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: "50%", border: `2px solid ${completed ? teal : border}`, background: completed ? teal : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", fontWeight: 700 }}>
           {completed && "✓"}
         </div>
       )}

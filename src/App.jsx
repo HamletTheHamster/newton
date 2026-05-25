@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
 
-import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER } from "./theme.js";
+import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext } from "./theme.js";
 import { fbGet, fbSet, fbConnectTest, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage } from "./firebase.js";
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
@@ -144,6 +144,14 @@ export default function App() {
   const [editingEmail, setEditingEmail] = useState(null); const [emailInput, setEmailInput] = useState("");
   const [newPw1, setNewPw1] = useState(""); const [newPw2, setNewPw2] = useState(""); const [pwChangeMsg, setPwChangeMsg] = useState("");
   const [stuEmailDraft, setStuEmailDraft] = useState(""); const [stuEmailMsg, setStuEmailMsg] = useState("");
+  const [lightModeState, setLightModeStateRaw] = useState(() => {
+    try { return localStorage.getItem("newton_light_mode") === "1"; } catch { return false; }
+  });
+  const lightMode = lightModeState;
+  const setLightMode = v => {
+    setLightModeStateRaw(v);
+    try { localStorage.setItem("newton_light_mode", v ? "1" : "0"); } catch {}
+  };
 
   // ── Quiz state ──────────────────────────────────────────────────────────────
   const [activeQuiz, setActiveQuiz] = useState(null);
@@ -1104,30 +1112,47 @@ export default function App() {
 
   // ── Student Portal (LMS-style) ────────────────────────────────────────────
   if (screen === "student-portal" && loggedInStudent) {
+    const th = buildTheme(lightMode);
+
     if (showStudentSettings) return (
-      <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-        <div style={{ maxWidth: 420, width: "100%", ...s.card, padding: 36 }}>
-          <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }} style={{ ...s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: "#fff", margin: "0 0 4px" }}>Account Settings</h2>
-          <p style={{ ...s.muted, marginBottom: 28 }}>{loggedInStudent.fullName}</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <div><label style={s.label}>Email</label><input type="email" style={s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
-            {stuEmailMsg && <p style={{ color: "#4ade80", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
-            <button onClick={saveStudentEmail} style={s.btnPri}>Update Email</button>
-            <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, paddingTop: 16 }}>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div><label style={s.label}>New Password</label><input type="password" style={s.input} placeholder="New password" value={newPw1} onChange={e => setNewPw1(e.target.value)} /></div>
-                <div><label style={s.label}>Confirm New Password</label><input type="password" style={s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
-                {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
-                <button onClick={handleChangePassword} style={s.btnPri}>Update Password</button>
+      <ThemeContext.Provider value={th}>
+        <div style={{ ...th.s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
+          <div style={{ maxWidth: 420, width: "100%", ...th.s.card, padding: 36 }}>
+            <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }} style={{ ...th.s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
+            <h2 style={{ fontSize: 20, fontWeight: 700, color: th.text, margin: "0 0 4px" }}>Account Settings</h2>
+            <p style={{ ...th.s.muted, marginBottom: 28 }}>{loggedInStudent.fullName}</p>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div><label style={th.s.label}>Email</label><input type="email" style={th.s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
+              {stuEmailMsg && <p style={{ color: "#4ade80", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
+              <button onClick={saveStudentEmail} style={th.s.btnPri}>Update Email</button>
+              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div><label style={th.s.label}>New Password</label><input type="password" style={th.s.input} placeholder="New password" value={newPw1} onChange={e => setNewPw1(e.target.value)} /></div>
+                  <div><label style={th.s.label}>Confirm New Password</label><input type="password" style={th.s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
+                  {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
+                  <button onClick={handleChangePassword} style={th.s.btnPri}>Update Password</button>
+                </div>
               </div>
-            </div>
-            <div style={{ borderTop: `1px solid rgba(255,255,255,0.08)`, paddingTop: 16 }}>
-              <button onClick={handleStudentLogout} style={{ ...s.btnDanger, width: "100%" }}>Log Out</button>
+              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
+                <label style={th.s.label}>Appearance</label>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    onClick={() => setLightMode(false)}
+                    style={{ ...th.s.btnGhost, flex: 1, textAlign: "center", background: !lightMode ? TEAL : "transparent", color: !lightMode ? "#fff" : th.muted, border: `1px solid ${!lightMode ? TEAL : th.border}` }}
+                  >Dark</button>
+                  <button
+                    onClick={() => setLightMode(true)}
+                    style={{ ...th.s.btnGhost, flex: 1, textAlign: "center", background: lightMode ? TEAL : "transparent", color: lightMode ? "#fff" : th.muted, border: `1px solid ${lightMode ? TEAL : th.border}` }}
+                  >Light</button>
+                </div>
+              </div>
+              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
+                <button onClick={handleStudentLogout} style={{ ...th.s.btnDanger, width: "100%" }}>Log Out</button>
+              </div>
             </div>
           </div>
         </div>
-      </div>
+      </ThemeContext.Provider>
     );
 
     const STUB_COPY = {
@@ -1156,7 +1181,8 @@ export default function App() {
       item.id === "evals" ? { ...item, badge: evalNudge ? 1 : 0 } : item
     );
 
-    const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: "#fff", fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23a0a0a0' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E\")", backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
+    const arrowHex = th.muted.replace("#", "");
+    const classPickerStyle = { appearance: "none", WebkitAppearance: "none", MozAppearance: "none", background: "transparent", border: "none", color: th.text, fontSize: 14, fontWeight: 600, padding: "0 22px 0 0", cursor: "pointer", outline: "none", textAlign: "center", textAlignLast: "center", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath fill='%23${arrowHex}' d='M0 0l5 6 5-6z'/%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 6px center" };
 
     const header = (
       <>
@@ -1169,15 +1195,15 @@ export default function App() {
               style={classPickerStyle}
             >
               {studentAvailableClasses.map(({ classId, name }) => (
-                <option key={classId} value={classId} style={{ background: "#252627", color: "#fff" }}>{name}</option>
+                <option key={classId} value={classId} style={{ background: th.isLight ? "#ede9e3" : "#252627", color: th.text }}>{name}</option>
               ))}
             </select>
           ) : (
-            classMeta && <span style={{ ...s.muted, fontSize: 14 }}>· {classMeta.name}</span>
+            classMeta && <span style={{ ...th.s.muted, fontSize: 14 }}>· {classMeta.name}</span>
           )}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <button onClick={() => { setShowStudentSettings(true); setStuEmailDraft(loggedInStudent?.email || ""); setStuEmailMsg(""); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
+          <button onClick={() => { setShowStudentSettings(true); setStuEmailDraft(loggedInStudent?.email || ""); setStuEmailMsg(""); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...th.s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
         </div>
       </>
     );
@@ -1200,17 +1226,19 @@ export default function App() {
     }
 
     return (
-      <>
-        {bugModalJsx}
-        {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
-        <Shell
-          header={header}
-          sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}
-          rightRail={<TodoRail items={todoItems} />}
-        >
-          {mainContent}
-        </Shell>
-      </>
+      <ThemeContext.Provider value={th}>
+        <>
+          {bugModalJsx}
+          {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
+          <Shell
+            header={header}
+            sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}
+            rightRail={<TodoRail items={todoItems} />}
+          >
+            {mainContent}
+          </Shell>
+        </>
+      </ThemeContext.Provider>
     );
   }
 

@@ -13,10 +13,10 @@
 | File | Purpose |
 |------|---------|
 | `src/App.jsx` | Top-level component — all state and screens |
-| `src/firebase.js` · `auth.js` · `theme.js` · `utils.js` | Extracted helpers (REST, hashing/TOTP, theme + `s` object, dates/parsers/Claude API/`useIsMobile`) |
+| `src/firebase.js` · `auth.js` · `theme.js` · `utils.js` | Extracted helpers (REST, hashing/TOTP, theme + `s` object + `useTheme`/`buildTheme`/`ThemeContext`, dates/parsers/Claude API/`useIsMobile`) |
 | `src/courses/` | Per-course content (`physics1.js`, `physics2.js`) — quizzes + modules |
-| `src/components/lms/` | LMS layout building blocks (Shell, Sidebar, TodoRail, ModuleList) — Shell is fully responsive (hamburger drawer + horizontal todo strip on mobile ≤768px) |
-| `src/screens/student/` | Student section pages (Home, StudentCalendar, StudentGrades, CourseEvals, Stub) |
+| `src/components/lms/` | LMS layout building blocks (Shell, Sidebar, TodoRail, ModuleList) — Shell is fully responsive (hamburger drawer + horizontal todo strip on mobile ≤768px); all use `useTheme()` for dark/light support |
+| `src/screens/student/` | Student section pages (Home, StudentCalendar, StudentGrades, CourseEvals, Stub) — all use `useTheme()` for dark/light support |
 | `src/screens/student/StudentSyllabus.jsx` | Student syllabus display — renders `syllabus.fields` as cards; `showHeader` prop used by instructor view |
 | `src/screens/instructor/Modules.jsx` | Instructor module editor — add/reorder/hide items, custom quiz creation, three-dot menus for page/quiz edit |
 | `src/screens/instructor/Gradebook.jsx` | Instructor gradebook — weighted categories, per-student scores, CSV export, manual assignments, excuse/unexcuse (restores prior manual score via `previousScore`), per-student deadline extensions; clicking a grade cell opens a 220px right panel (`GradeDetailPanel`) with view-submission, excuse, and deadline-extension actions |

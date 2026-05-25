@@ -1,10 +1,11 @@
 import { useState, useEffect } from "react";
-import { s, BG, BORDER } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 import { useIsMobile } from "../../utils.js";
 
 // Three-pane LMS layout (desktop) / single-column with drawer (mobile).
 // Props: header, sidebar, children, rightRail (optional)
 export function Shell({ header, sidebar, rightRail, children }) {
+  const { s, bg, border, text } = useTheme();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
@@ -13,7 +14,7 @@ export function Shell({ header, sidebar, rightRail, children }) {
   const hamburger = isMobile && sidebar ? (
     <button
       onClick={() => setDrawerOpen(o => !o)}
-      style={{ background: "transparent", border: "none", color: "#fff",
+      style={{ background: "transparent", border: "none", color: text,
                cursor: "pointer", padding: "0 4px", fontSize: 22, lineHeight: 1,
                flexShrink: 0 }}
       aria-label="Toggle navigation"
@@ -24,7 +25,7 @@ export function Shell({ header, sidebar, rightRail, children }) {
     <div style={{ ...s.page, height: "100vh", display: "flex", flexDirection: "column" }}>
 
       {header && (
-        <div style={{ background: BG, padding: isMobile ? "10px 12px" : "12px 20px",
+        <div style={{ background: bg, padding: isMobile ? "10px 12px" : "12px 20px",
                       display: "flex", alignItems: "center",
                       justifyContent: "space-between", gap: 12, flexShrink: 0 }}>
           {hamburger}
@@ -35,7 +36,7 @@ export function Shell({ header, sidebar, rightRail, children }) {
       {/* Mobile: horizontal todo strip below header */}
       {isMobile && rightRail && (
         <div style={{ overflowX: "auto", overflowY: "hidden", flexShrink: 0,
-                      borderBottom: `1px solid ${BORDER}`,
+                      borderBottom: `1px solid ${border}`,
                       WebkitOverflowScrolling: "touch" }}>
           {rightRail}
         </div>
@@ -60,9 +61,9 @@ export function Shell({ header, sidebar, rightRail, children }) {
         {isMobile && (
           <div style={{ position: "absolute", top: 0, bottom: 0,
                         left: drawerOpen ? 0 : -240, width: 220,
-                        background: BG, zIndex: 20, overflowY: "auto",
+                        background: bg, zIndex: 20, overflowY: "auto",
                         transition: "left 0.22s ease",
-                        borderRight: `1px solid ${BORDER}`,
+                        borderRight: `1px solid ${border}`,
                         boxShadow: drawerOpen ? "4px 0 24px rgba(0,0,0,0.5)" : "none" }}>
             {/* click on any nav item bubbles up and closes the drawer */}
             <div onClick={() => setDrawerOpen(false)}>{sidebar}</div>

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { s } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 import { dueToDate } from "../../utils.js";
 import { ModuleRow } from "./ModuleRow.jsx";
 
@@ -10,6 +10,7 @@ import { ModuleRow } from "./ModuleRow.jsx";
 // `initiallyExpanded` defaults to all expanded.
 // `filterHidden` (default true): drop items flagged `_hidden` before render. Instructor view passes false.
 export function ModuleList({ modules, resolveItem, onItemClick, initiallyExpanded = true, filterHidden = true }) {
+  const { s, muted } = useTheme();
   const [openMap, setOpenMap] = useState(() =>
     Object.fromEntries(modules.map(m => [m.id, !!initiallyExpanded]))
   );
@@ -25,7 +26,7 @@ export function ModuleList({ modules, resolveItem, onItemClick, initiallyExpande
 
   if (!modules.length) {
     return (
-      <div style={{ ...s.card, padding: 40, textAlign: "center", color: "#a0a0a0" }}>
+      <div style={{ ...s.card, padding: 40, textAlign: "center", color: muted }}>
         No modules yet. Check back later.
       </div>
     );

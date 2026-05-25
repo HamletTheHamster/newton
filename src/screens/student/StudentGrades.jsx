@@ -1,4 +1,4 @@
-import { s, TEAL, MUTED, BORDER } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
 
 const CAT_COLORS = {
@@ -20,8 +20,8 @@ function overallLetter(pct) {
   return "F";
 }
 
-function scoreColor(score, excused, missing) {
-  if (excused || missing) return MUTED;
+function scoreColor(score, excused, missing, muted) {
+  if (excused || missing) return muted;
   if (score >= 8) return "#4ade80";
   if (score >= 6) return "#facc15";
   if (score >= 4) return "#fb923c";
@@ -29,6 +29,7 @@ function scoreColor(score, excused, missing) {
 }
 
 export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, assignmentNameOverrides }) {
+  const { s, text, muted, border, teal } = useTheme();
   const myId = loggedInStudent?.studentId;
 
   // Only show non-hidden items in the student view
@@ -67,7 +68,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
 
   if (assignments.length === 0) {
     return (
-      <div style={{ ...s.card, padding: 40, textAlign: "center", color: MUTED }}>
+      <div style={{ ...s.card, padding: 40, textAlign: "center", color: muted }}>
         No graded assignments yet.
       </div>
     );
@@ -77,7 +78,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
     <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
       {/* Overall grade banner */}
       <div style={{ ...s.card, padding: "28px 32px", textAlign: "center" }}>
-        <p style={{ color: MUTED, fontSize: 12, margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Overall Grade</p>
+        <p style={{ color: muted, fontSize: 12, margin: "0 0 10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Overall Grade</p>
         {overall != null ? (
           <>
             <div style={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 12 }}>
@@ -88,12 +89,12 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                 {overallLetter(overall)}
               </span>
             </div>
-            <p style={{ color: MUTED, fontSize: 13, margin: "12px 0 0" }}>
+            <p style={{ color: muted, fontSize: 13, margin: "12px 0 0" }}>
               {assignments.length} assignment{assignments.length !== 1 ? "s" : ""} across {activeCatCount} categor{activeCatCount !== 1 ? "ies" : "y"}
             </p>
           </>
         ) : (
-          <p style={{ color: MUTED, fontSize: 16, margin: 0 }}>No graded work yet</p>
+          <p style={{ color: muted, fontSize: 16, margin: 0 }}>No graded work yet</p>
         )}
       </div>
 
@@ -102,28 +103,28 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
         const data = byCategory[cat.id];
         if (!data || data.assignments.length === 0) return null;
         const catAssignments = assignments.filter(a => a.catId === cat.id);
-        const cc = CAT_COLORS[cat.id] || TEAL;
+        const cc = CAT_COLORS[cat.id] || teal;
 
         return (
           <div key={cat.id} style={{ ...s.card, overflow: "hidden" }}>
             {/* Category header row */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${BORDER}`, flexWrap: "wrap", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "14px 20px", borderBottom: `1px solid ${border}`, flexWrap: "wrap", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <div style={{ width: 10, height: 10, borderRadius: "50%", background: cc, flexShrink: 0 }} />
-                <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{cat.name}</span>
-                <span style={{ color: MUTED, fontSize: 12 }}>· {cat.weight}% of grade</span>
+                <span style={{ color: text, fontWeight: 700, fontSize: 15 }}>{cat.name}</span>
+                <span style={{ color: muted, fontSize: 12 }}>· {cat.weight}% of grade</span>
                 {cat.dropLowest > 0 && data.dropped.length > 0 && (
-                  <span style={{ ...s.badge(MUTED), fontSize: 11 }}>1 lowest dropped</span>
+                  <span style={{ ...s.badge(muted), fontSize: 11 }}>1 lowest dropped</span>
                 )}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
                 {data.possible > 0 && (
-                  <span style={{ color: MUTED, fontSize: 13 }}>
+                  <span style={{ color: muted, fontSize: 13 }}>
                     {data.earned % 1 === 0 ? data.earned : data.earned.toFixed(1)}/{data.possible} pts
                   </span>
                 )}
                 {data.pct != null && (
-                  <span style={{ color: "#fff", fontWeight: 700, fontSize: 15 }}>{data.pct.toFixed(1)}%</span>
+                  <span style={{ color: text, fontWeight: 700, fontSize: 15 }}>{data.pct.toFixed(1)}%</span>
                 )}
                 {data.weightedContrib > 0 && (
                   <span style={{ ...s.badge(cc), fontSize: 11 }}>+{data.weightedContrib.toFixed(1)}% overall</span>
@@ -135,20 +136,20 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
             {data.assignments.map((item, i) => {
               const a = catAssignments.find(x => x.id === item.id);
               const isDropped = data.dropped.includes(item.id);
-              const sc = scoreColor(item.score, item.excused, item.score == null && !item.excused);
+              const sc = scoreColor(item.score, item.excused, item.score == null && !item.excused, muted);
               return (
                 <div
                   key={item.id}
                   style={{
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                     padding: "10px 20px",
-                    borderTop: i > 0 ? `1px solid ${BORDER}` : "none",
+                    borderTop: i > 0 ? `1px solid ${border}` : "none",
                     opacity: isDropped ? 0.4 : 1,
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ color: isDropped ? MUTED : "#fff", fontSize: 14 }}>{a?.title || item.id}</span>
-                    {isDropped && <span style={{ ...s.badge(MUTED), fontSize: 10 }}>dropped</span>}
+                    <span style={{ color: isDropped ? muted : text, fontSize: 14 }}>{a?.title || item.id}</span>
+                    {isDropped && <span style={{ ...s.badge(muted), fontSize: 10 }}>dropped</span>}
                   </div>
                   <span style={{ fontFamily: "monospace", fontSize: 14, fontWeight: 600, color: sc }}>
                     {item.excused ? "EX" : item.score == null ? "–" : `${item.score}/10`}
