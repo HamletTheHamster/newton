@@ -36,7 +36,7 @@ export function Modules({
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
-  onOpenCustomQuizEditor,
+  onOpenCustomQuizEditor, onDeleteCustomQuiz,
 }) {
   const [openMap, setOpenMap] = useState({});
   const [editingTitleFor, setEditingTitleFor] = useState(null);
@@ -505,9 +505,11 @@ export function Modules({
                   file={addFile} setFile={setAddFile}
                   quizPick={addQuizPick} setQuizPick={setAddQuizPick}
                   quizzes={quizzes}
+                  customQuizzes={customQuizzes}
                   onCancel={resetAddState}
                   onOpenPageEditor={() => onOpenPageEditor(mod.id, null, null)}
                   onCreateNewQuiz={() => onOpenCustomQuizEditor?.(mod.id)}
+                  onDeleteCustomQuiz={onDeleteCustomQuiz}
                   onSubmitQuiz={() => submitAddQuiz(mod)}
                   onSubmitText={() => submitAddTextItem(mod, addType)}
                   onSubmitLink={() => submitAddLink(mod)}
@@ -606,8 +608,8 @@ function UrlInput({ initial, onCommit, placeholder }) {
 
 function AddItemBar({
   mod, active, busy, progress, err,
-  title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes,
-  onCancel, onOpenPageEditor, onCreateNewQuiz,
+  title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes, customQuizzes,
+  onCancel, onOpenPageEditor, onCreateNewQuiz, onDeleteCustomQuiz,
   onSubmitQuiz, onSubmitText, onSubmitLink, onSubmitFile,
 }) {
   const wrap = (child) => (
@@ -617,18 +619,38 @@ function AddItemBar({
   if (active === "quiz") {
     return wrap(
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <select autoFocus value={quizPick} onChange={e => setQuizPick(e.target.value)} style={{ ...s.input, flex: "1 1 280px", padding: "8px 12px", fontSize: 13, width: "auto" }}>
-            <option value="" style={{ background: "#252627" }}>— Choose a quiz —</option>
-            {(quizzes || []).map(q => (
-              <option key={q.id} value={q.id} style={{ background: "#252627" }}>{q.title}</option>
-            ))}
-          </select>
+        <div style={{ border: `1px solid ${BORDER}`, borderRadius: 8, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+          {(quizzes || []).length === 0 ? (
+            <div style={{ padding: "10px 14px", color: MUTED, fontSize: 13 }}>No quizzes available.</div>
+          ) : (quizzes || []).map(q => {
+            const isCustom = !!(customQuizzes?.[q.id]);
+            const selected = quizPick === q.id;
+            return (
+              <div
+                key={q.id}
+                style={{ display: "flex", alignItems: "center", background: selected ? "rgba(0,130,140,0.15)" : "transparent", borderBottom: `1px solid ${BORDER}` }}
+              >
+                <button
+                  onClick={() => setQuizPick(q.id)}
+                  style={{ flex: 1, background: "transparent", border: "none", color: selected ? TEAL : "#fff", fontSize: 13, textAlign: "left", padding: "9px 14px", cursor: "pointer" }}
+                >
+                  {q.title}
+                </button>
+                {isCustom && (
+                  <button
+                    onClick={() => { if (window.confirm(`Delete "${q.title}"? This cannot be undone.`)) { if (quizPick === q.id) setQuizPick(""); onDeleteCustomQuiz?.(q.id); } }}
+                    title="Delete quiz"
+                    style={{ background: "transparent", border: "none", color: MUTED, fontSize: 14, cursor: "pointer", padding: "0 12px", lineHeight: 1, flexShrink: 0 }}
+                  >×</button>
+                )}
+              </div>
+            );
+          })}
         </div>
         {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onSubmitQuiz} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13 }}>Add Quiz</button>
-          <button onClick={onCreateNewQuiz} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px", fontSize: 13 }}>+ New quiz</button>
+          <button onClick={() => { onCancel(); onCreateNewQuiz(); }} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px", fontSize: 13 }}>+ New quiz</button>
           <button onClick={onCancel} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
         </div>
       </div>

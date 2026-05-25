@@ -505,6 +505,15 @@ export default function App() {
     updateClassCache(cid, 'customQuizzes', updated);
     await fbSave(classPath(cid, `customQuizzes/${quizId}`), quiz);
   };
+  const deleteCustomQuiz = async quizId => {
+    const cid = requireClass();
+    const updatedCq = { ...customQuizzes }; delete updatedCq[quizId];
+    setCustomQuizzes(updatedCq);
+    updateClassCache(cid, 'customQuizzes', updatedCq);
+    await fbSave(classPath(cid, `customQuizzes/${quizId}`), null);
+    const updatedMa = { ...manualAssignments }; delete updatedMa[quizId];
+    await saveManualAssignments(updatedMa);
+  };
   const deletePage = async pageId => {
     const cid = requireClass();
     const updated = { ...pages }; delete updated[pageId];
@@ -1590,6 +1599,7 @@ export default function App() {
                 setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId });
               }
             }}
+            onDeleteCustomQuiz={deleteCustomQuiz}
           />
         )}
 
