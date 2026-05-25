@@ -1562,6 +1562,7 @@ export default function App() {
             pages={pages}
             uploads={uploads}
             quizzes={quizzes}
+            customQuizzes={customQuizzes}
             dueDates={dueDates}
             onSaveDueDates={saveDueDates}
             onSaveModules={saveModules}
@@ -1581,7 +1582,14 @@ export default function App() {
                 content: existing?.content || "",
               });
             }}
-            onOpenCustomQuizEditor={moduleId => setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId })}
+            onOpenCustomQuizEditor={(moduleId, quizId) => {
+              if (quizId) {
+                const cq = customQuizzes[quizId];
+                if (cq) setEditingCustomQuiz({ quizId, title: cq.title, text: cq.text, moduleId: null });
+              } else {
+                setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId });
+              }
+            }}
           />
         )}
 

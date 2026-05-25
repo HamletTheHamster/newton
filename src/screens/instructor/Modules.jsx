@@ -32,7 +32,7 @@ const EyeIcon = ({ hidden }) => hidden
   : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 
 export function Modules({
-  classId, modules, moduleConfig, pages, uploads, quizzes,
+  classId, modules, moduleConfig, pages, uploads, quizzes, customQuizzes,
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
@@ -451,9 +451,6 @@ export function Modules({
                         ) : null}
                         actions={
                           <>
-                            {item.type === "page" && (
-                              <IconBtn title="Edit page" onClick={() => onOpenPageEditor(mod.id, item.id, item.pageId)}>✎</IconBtn>
-                            )}
                             {item.type === "file" && upload?.downloadUrl && (
                               <IconBtn title="Open file" onClick={() => window.open(upload.downloadUrl, "_blank", "noopener,noreferrer")}>↗</IconBtn>
                             )}
@@ -464,6 +461,8 @@ export function Modules({
                         onToggleMenu={() => setItemMenuFor(k => k === itemKey ? null : itemKey)}
                         menu={
                           <ItemMenu
+                            onEditPage={item.type === "page" ? () => { setItemMenuFor(null); onOpenPageEditor(mod.id, item.id, item.pageId); } : undefined}
+                            onEditQuiz={item.type === "quiz" && customQuizzes?.[item.refId] ? () => { setItemMenuFor(null); onOpenCustomQuizEditor?.(mod.id, item.refId); } : undefined}
                             dueField={item.type === "quiz" ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <input
@@ -786,7 +785,8 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
   );
 }
 
-function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete }) {
+function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, onEditQuiz }) {
+  const hasEditAction = onEditPage || onEditQuiz;
   return (
     <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: BG, border: `1px solid ${BORDER}`, borderRadius: 10, padding: "14px", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
       {dueField && (
@@ -795,7 +795,17 @@ function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete }) {
           {dueField}
         </div>
       )}
-      <div style={{ borderTop: dueField ? `1px solid ${BORDER}` : "none", paddingTop: dueField ? 10 : 0, marginBottom: 10 }}>
+      {hasEditAction && (
+        <div style={{ borderTop: dueField ? `1px solid ${BORDER}` : "none", paddingTop: dueField ? 10 : 0, marginBottom: 10 }}>
+          {onEditPage && (
+            <button onClick={onEditPage} style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: 6 }}>✎ Edit page</button>
+          )}
+          {onEditQuiz && (
+            <button onClick={onEditQuiz} style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Edit quiz</button>
+          )}
+        </div>
+      )}
+      <div style={{ borderTop: (dueField || hasEditAction) ? `1px solid ${BORDER}` : "none", paddingTop: (dueField || hasEditAction) ? 10 : 0, marginBottom: 10 }}>
         <button
           onClick={onToggleHidden}
           style={{ background: "transparent", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", display: "flex", alignItems: "center", gap: 6 }}
