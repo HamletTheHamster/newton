@@ -1,5 +1,5 @@
 import { s, TEAL, MUTED, BORDER } from "../../theme.js";
-import { dueToDate } from "../../utils.js";
+import { dueToDate, useIsMobile } from "../../utils.js";
 
 // Right rail "To Do" widget.
 // `items`: [{ id, title, due (string), kind, onClick? }]
@@ -15,6 +15,47 @@ const KIND_COLOR = {
 };
 
 export function TodoRail({ items }) {
+  const isMobile = useIsMobile();
+
+  if (isMobile) {
+    // Horizontal chip strip — parent (Shell) provides the scroll container
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px", minWidth: "max-content" }}>
+        <span style={{ color: "#fff", fontWeight: 700, fontSize: 12,
+                       whiteSpace: "nowrap", marginRight: 4 }}>To Do</span>
+        {items.length === 0 ? (
+          <span style={{ ...s.muted, fontSize: 12 }}>Nothing due soon</span>
+        ) : (
+          items.map(it => (
+            <button
+              key={it.id}
+              onClick={it.onClick}
+              disabled={!it.onClick}
+              style={{ display: "inline-flex", alignItems: "center", gap: 6,
+                       background: "transparent", border: `1px solid ${BORDER}`,
+                       borderRadius: 999, padding: "4px 10px",
+                       cursor: it.onClick ? "pointer" : "default",
+                       color: "#fff", fontSize: 12, whiteSpace: "nowrap",
+                       flexShrink: 0 }}
+            >
+              <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 4,
+                             background: KIND_COLOR[it.kind] || TEAL, flexShrink: 0 }} />
+              <span style={{ fontWeight: 500 }}>{it.title}</span>
+              {it.due && (
+                <span style={{ color: MUTED, fontSize: 11 }}>
+                  {dueToDate(it.due).toLocaleDateString('en-US',
+                    { timeZone: 'America/New_York', month: 'short', day: 'numeric' })}
+                </span>
+              )}
+            </button>
+          ))
+        )}
+      </div>
+    );
+  }
+
+  // Desktop vertical aside (unchanged)
   return (
     <aside style={{ padding: "20px 16px 24px", minWidth: 220, flexShrink: 0, overflowY: "auto" }}>
       <p style={{ color: "#fff", fontWeight: 700, fontSize: 14, margin: "0 0 12px", letterSpacing: "0.02em" }}>To Do</p>
