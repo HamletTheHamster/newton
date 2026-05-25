@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Stem -->
+  <path d="M50 29 C50 22 55 15 63 11" stroke="#5D4037" stroke-width="4" stroke-linecap="round" fill="none"/>
+  <!-- Leaf -->
+  <path d="M56 21 C62 12 75 11 73 22 C67 24 60 25 56 21 Z" fill="#43A047"/>
+  <!-- Apple body - gentle two-lobe top, not heart-like -->
+  <path d="M50 32
+    C 47 25, 36 20, 26 23
+    C 14 27, 10 43, 12 57
+    C 14 72, 23 88, 38 93
+    C 44 95, 50 93, 50 93
+    C 50 93, 56 95, 62 93
+    C 77 88, 86 72, 88 57
+    C 90 43, 86 27, 74 23
+    C 64 20, 53 25, 50 32 Z" fill="#D32F2F"/>
+  <!-- Shine highlight -->
+  <ellipse cx="33" cy="50" rx="7" ry="10" fill="white" opacity="0.28" transform="rotate(-20 33 50)"/>
+</svg>

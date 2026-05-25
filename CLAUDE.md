@@ -33,6 +33,7 @@
 | `database.rules.json` | Firebase RTDB security rules |
 | `storage.rules` · `firebase.json` | Firebase Storage rules and CLI config (deploy with `firebase deploy --only storage` / `--only database`) |
 | `netlify.toml` | Netlify build config |
+| `public/favicon.svg` | Browser tab icon — hand-crafted SVG apple (red body, green leaf, brown stem) |
 
 ## Commands
 
