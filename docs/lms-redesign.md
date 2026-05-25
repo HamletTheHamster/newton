@@ -195,9 +195,10 @@ courseEvals/              — root-level (not per-class); anonymous submissions
   `classes/{classId}/uploads/{uploadId}/{filename}`. Rules live in
   `storage.rules` at the repo root and are deployed manually via
   `firebase deploy --only storage`. The bucket name is hardcoded as
-  `STORAGE_BUCKET` in `src/firebase.js`. Upload size cap is 25 MB,
+  `STORAGE_BUCKET` in `src/firebase.js`. Upload size cap is 50 MB,
   enforced both client-side (in `Modules.jsx`) and server-side (in the
-  rules). REST helpers: `fbUpload(storagePath, file, onProgress)` and
+  Storage rules). The syllabus PDF uploader (`InstructorSyllabus.jsx`)
+  retains a separate 25 MB cap. REST helpers: `fbUpload(storagePath, file, onProgress)` and
   `fbDeleteStorage(storagePath)`. Deletes cascade — removing a `file`
   custom item from a module deletes both the `uploads/{id}` RTDB node
   and the underlying storage object.

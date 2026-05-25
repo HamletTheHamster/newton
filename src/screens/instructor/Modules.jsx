@@ -254,7 +254,7 @@ export function Modules({
   const submitAddFile = async (mod) => {
     setAddErr("");
     if (!addFile) { setAddErr("Choose a file to upload."); return; }
-    if (addFile.size >= 25 * 1024 * 1024) { setAddErr("File is too large (25 MB max)."); return; }
+    if (addFile.size >= 50 * 1024 * 1024) { setAddErr("File is too large (50 MB max)."); return; }
     const title = addTitle.trim() || addFile.name;
     setAddBusy(true); setAddProgress(0);
     try {
