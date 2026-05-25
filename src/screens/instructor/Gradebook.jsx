@@ -38,7 +38,7 @@ function cellFg(score, isExcused, isMissing) {
 const CELL_BORDER = `1px solid ${BORDER}`;
 
 // ── EditCell ──────────────────────────────────────────────────────────────────
-function EditCell({ score, isExcused, hasSubmission, onScoreChange, onToggleExcused, onViewSub, onCommit, onCancel }) {
+function EditCell({ score, isExcused, hasSubmission, onScoreChange, onToggleExcused, onRemoveExcuse, onViewSub, onCommit, onCancel }) {
   const inputRef = useRef(null);
   useEffect(() => { inputRef.current?.select(); }, []);
 
@@ -66,6 +66,14 @@ function EditCell({ score, isExcused, hasSubmission, onScoreChange, onToggleExcu
       >
         EX
       </button>
+      {isExcused && (
+        <button
+          onMouseDown={e => e.preventDefault()}
+          onClick={onRemoveExcuse}
+          title="Restore original score"
+          style={{ background: "rgba(248,113,113,0.15)", border: "none", borderRadius: 3, color: "#f87171", fontSize: 9, fontWeight: 700, cursor: "pointer", padding: "2px 5px", lineHeight: 1.5, flexShrink: 0 }}
+        >×</button>
+      )}
       {hasSubmission && (
         <button
           onMouseDown={e => e.preventDefault()}
@@ -246,6 +254,8 @@ export function Gradebook({
   onSaveManualAssignments,
   onSaveAssignmentNameOverrides,
   onSaveAssignmentOrderOverrides,
+  customQuizzes,
+  onEditCustomQuiz,
 }) {
   const [editingCell, setEditingCell] = useState(null); // { studentId, assignmentId }
   const [editScore, setEditScore] = useState("");
@@ -338,6 +348,15 @@ export function Gradebook({
         delete current[assignmentId]; // clear override → revert to submission score
       }
     }
+    await onSaveOverrideForStudent(studentId, current);
+  };
+
+  const removeExcuse = async () => {
+    if (!editingCell) return;
+    const { studentId, assignmentId } = editingCell;
+    setEditingCell(null);
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    delete current[assignmentId];
     await onSaveOverrideForStudent(studentId, current);
   };
 
@@ -551,6 +570,15 @@ export function Gradebook({
                         {gradeCategories[a.catId]?.name || a.catId}
                       </span>
                     )}
+                    {customQuizzes?.[a.id] && (
+                      <button
+                        onClick={e => { e.stopPropagation(); onEditCustomQuiz?.(a.id); }}
+                        title="Edit quiz prompt"
+                        style={{ display: "block", margin: "3px auto 0", background: "rgba(255,255,255,0.08)", border: "none", borderRadius: 3, color: MUTED, fontSize: 9, cursor: "pointer", padding: "1px 6px", lineHeight: 1.5 }}
+                      >
+                        edit
+                      </button>
+                    )}
                   </th>
                 );
               })}
@@ -602,6 +630,7 @@ export function Gradebook({
                             hasSubmission={(submissions || []).some(s => s.studentId === stu.studentId && s.quizId === a.id)}
                             onScoreChange={setEditScore}
                             onToggleExcused={() => setEditExcused(ex => !ex)}
+                            onRemoveExcuse={removeExcuse}
                             onViewSub={() => {
                               const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
                               if (sub) setViewSubModal({ submission: sub, studentName: stu.altName || stu.fullName, assignmentTitle: a.title });

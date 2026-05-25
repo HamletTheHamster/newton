@@ -32,6 +32,7 @@ classes/
     uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt}}
     announcements/                 {[annId]: {id, title, body, createdAt}}
     announcementReads/             {[studentId]: {[annId]: true}}  — orphaned; no longer read or written (notification feature removed in 6.9)
+    customQuizzes/                 {[quizId]: {id, title, text, createdAt, updatedAt}}  — instructor-created text-prompt quizzes; merged into the quizzes array at runtime alongside hardcoded course quizzes; also auto-added to manualAssignments for gradebook column
     gradeCategories/               {[catId]: {id, name, weight, dropLowest, order}}  — used by Gradebook; separate from syllabus.fields.gradingBreakdown (PDF-extracted). A mismatch warning appears on the instructor Syllabus page when they diverge.
     gradeOverrides/                {[studentId]: {[assignmentId]: {score?, excused?}}}
     manualAssignments/             {[id]: {id, title, catId, maxPts, order}}  — seeded on first load (Midterm, Final, Lab 1a–14b)

@@ -36,6 +36,7 @@ export function Modules({
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
+  onOpenCustomQuizEditor,
 }) {
   const [openMap, setOpenMap] = useState({});
   const [editingTitleFor, setEditingTitleFor] = useState(null);
@@ -295,13 +296,6 @@ export function Modules({
 
         return (
           <div key={mod.id}>
-            {/* Drop gap — between cards; owns its own onDragOver so hovering it keeps dragOverId alive */}
-            {dragId && dragId !== mod.id && isDropTarget && (
-              <div
-                onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverId(mod.id); }}
-                style={{ height: 36, background: `${TEAL}22`, borderRadius: 8, border: `2px dashed ${TEAL}`, marginBottom: 10, transition: "height 0.15s" }}
-              />
-            )}
             <div
               onDragOver={e => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDragOverId(mod.id); }}
               onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget)) setDragOverId(null); }}
@@ -319,7 +313,7 @@ export function Modules({
                 setDragId(null); setDragOverId(null);
               }}
               onDragEnd={() => { setDragId(null); setDragOverId(null); }}
-              style={{ ...s.card, overflow: "visible" }}
+              style={{ ...s.card, overflow: "visible", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${TEAL}` : undefined, opacity: dragId === mod.id ? 0.5 : 1 }}
             >
               {/* Module header — draggable for reordering */}
               <div
@@ -415,17 +409,12 @@ export function Modules({
 
                   return (
                     <Fragment key={item.id}>
-                      {dragItemKey && dragItemKey !== itemKey && isItemDropTarget && (
-                        <div
-                          onDragOver={e => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = "move"; setDragItemOverKey(itemKey); }}
-                          style={{ height: 28, background: `${TEAL}22`, borderRadius: 6, border: `2px dashed ${TEAL}`, margin: "2px 18px", transition: "height 0.15s" }}
-                        />
-                      )}
                       <ItemRow
                         typeIcon={TYPE_ICON[item.type] || <FileIcon />}
                         title={displayTitle}
                         subtitle={subtitle}
                         isHidden={isHidden}
+                        isDropTarget={isItemDropTarget}
                         dragProps={{
                           draggable: true,
                           onDragStart: e => {
@@ -519,6 +508,7 @@ export function Modules({
                   quizzes={quizzes}
                   onCancel={resetAddState}
                   onOpenPageEditor={() => onOpenPageEditor(mod.id, null, null)}
+                  onCreateNewQuiz={() => onOpenCustomQuizEditor?.(mod.id)}
                   onSubmitQuiz={() => submitAddQuiz(mod)}
                   onSubmitText={() => submitAddTextItem(mod, addType)}
                   onSubmitLink={() => submitAddLink(mod)}
@@ -566,9 +556,9 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, menuOpen, menuRef, onToggleMenu, menu }) {
+function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu }) {
   return (
-    <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${BORDER}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default" }}>
+    <div {...(dragProps || {})} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${BORDER}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: dragProps?.draggable ? "grab" : "default", boxShadow: isDropTarget ? `inset 0 3px 0 0 ${TEAL}` : undefined }}>
       <span style={{ color: MUTED, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
       <div style={{ flex: "1 1 200px", minWidth: 0 }}>
         <div style={{ color: "#fff", fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
@@ -618,7 +608,7 @@ function UrlInput({ initial, onCommit, placeholder }) {
 function AddItemBar({
   mod, active, busy, progress, err,
   title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes,
-  onCancel, onOpenPageEditor,
+  onCancel, onOpenPageEditor, onCreateNewQuiz,
   onSubmitQuiz, onSubmitText, onSubmitLink, onSubmitFile,
 }) {
   const wrap = (child) => (
@@ -639,6 +629,7 @@ function AddItemBar({
         {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={onSubmitQuiz} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13 }}>Add Quiz</button>
+          <button onClick={onCreateNewQuiz} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px", fontSize: 13 }}>+ New quiz</button>
           <button onClick={onCancel} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
         </div>
       </div>

@@ -108,6 +108,7 @@ export default function App() {
   const [modules, setModules] = useState([]);
   const [moduleConfig, setModuleConfig] = useState({});
   const [pages, setPages] = useState({});
+  const [customQuizzes, setCustomQuizzes] = useState({});
   const [uploads, setUploads] = useState({});
   const [syllabus, setSyllabus] = useState(null);          // { pdf, fields } or null
   const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
@@ -178,6 +179,7 @@ export default function App() {
   const [evalFilter, setEvalFilter] = useState("all");
   const [viewingPage, setViewingPage] = useState(null);     // { title, content } for student PageViewer
   const [editingPage, setEditingPage] = useState(null);     // { moduleId, itemId?, pageId?, title, content }
+  const [editingCustomQuiz, setEditingCustomQuiz] = useState(null); // { quizId: null|string, title, text, moduleId: null|string }
   const [editingAnn, setEditingAnn] = useState(null);       // null | { annId?, title, body, createdAt? }
 
   const chatRef = useRef(null); const detailRef = useRef(null); const inputRef = useRef(null);
@@ -187,7 +189,14 @@ export default function App() {
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const courseQuizzes = quizzesForCourse(classMeta?.courseType);
-  const quizzes = courseQuizzes.map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
+  const quizzes = [
+    ...courseQuizzes,
+    ...Object.values(customQuizzes || {}).map(cq => ({
+      id: cq.id, title: cq.title,
+      questions: [{ id: `${cq.id}_q1`, text: cq.text }],
+      isCustom: true,
+    })),
+  ].map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
   const currentQ = activeQuiz?.questions[qIdx];
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
@@ -302,7 +311,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -320,6 +329,7 @@ export default function App() {
         fbGet(classPath(classId, 'assignmentNameOverrides')).catch(() => null),
         fbGet(classPath(classId, 'assignmentOrderOverrides')).catch(() => null),
         fbGet(classPath(classId, 'syllabus')).catch(() => null),
+        fbGet(classPath(classId, 'customQuizzes')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -376,6 +386,8 @@ export default function App() {
       setModules(modulesArr);
       setModuleConfig(moduleConfigObj);
       setPages(pagesObj);
+      const customQuizzesObj = (customQuizzesData && typeof customQuizzesData === 'object') ? customQuizzesData : {};
+      setCustomQuizzes(customQuizzesObj);
       setUploads(uploadsObj);
       setSyllabus(syllabusObj);
       setAnnouncements(annsObj);
@@ -485,6 +497,13 @@ export default function App() {
     setPages(updated);
     updateClassCache(cid, 'pages', updated);
     await fbSave(classPath(cid, `pages/${pageId}`), page);
+  };
+  const saveCustomQuiz = async (quizId, quiz) => {
+    const cid = requireClass();
+    const updated = { ...customQuizzes, [quizId]: quiz };
+    setCustomQuizzes(updated);
+    updateClassCache(cid, 'customQuizzes', updated);
+    await fbSave(classPath(cid, `customQuizzes/${quizId}`), quiz);
   };
   const deletePage = async pageId => {
     const cid = requireClass();
@@ -611,6 +630,7 @@ export default function App() {
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery("");
     setOpenQuizzes({}); setViewingSub(null);
     setAnnouncements({});
+    setCustomQuizzes({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     await loadClassData(classId);
   };
@@ -657,7 +677,7 @@ export default function App() {
     if (currentClassId === classId) {
       setCurrentClassId(null);
       setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
-      setModules([]); setModuleConfig({}); setPages({}); setUploads({});
+      setModules([]); setModuleConfig({}); setPages({}); setCustomQuizzes({}); setUploads({});
       setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     }
   };
@@ -1446,6 +1466,11 @@ export default function App() {
             onSaveManualAssignments={saveManualAssignments}
             onSaveAssignmentNameOverrides={saveAssignmentNameOverrides}
             onSaveAssignmentOrderOverrides={saveAssignmentOrderOverrides}
+            customQuizzes={customQuizzes}
+            onEditCustomQuiz={quizId => {
+              const cq = customQuizzes[quizId];
+              if (cq) setEditingCustomQuiz({ quizId, title: cq.title, text: cq.text, moduleId: null });
+            }}
           />
         )}
 
@@ -1556,6 +1581,7 @@ export default function App() {
                 content: existing?.content || "",
               });
             }}
+            onOpenCustomQuizEditor={moduleId => setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId })}
           />
         )}
 
@@ -1582,6 +1608,36 @@ export default function App() {
               });
               await saveModules(next);
               setEditingPage(null);
+            }}
+          />
+        )}
+
+        {editingCustomQuiz && (
+          <PageEditor
+            editorLabel={editingCustomQuiz.quizId ? "Edit Quiz" : "New Quiz"}
+            contentLabel="Question prompt"
+            initialTitle={editingCustomQuiz.title}
+            initialContent={editingCustomQuiz.text}
+            onCancel={() => setEditingCustomQuiz(null)}
+            onSave={async ({ title, content }) => {
+              const now = new Date().toISOString();
+              const isNew = !editingCustomQuiz.quizId;
+              const quizId = editingCustomQuiz.quizId || newId("cq");
+              const existing = customQuizzes[quizId] || {};
+              await saveCustomQuiz(quizId, { id: quizId, title, text: content, createdAt: existing.createdAt || now, updatedAt: now });
+              if (isNew) {
+                await saveManualAssignments({ ...(manualAssignments || {}), [quizId]: { id: quizId, title, catId: "cat_quiz", maxPts: 10 } });
+                if (editingCustomQuiz.moduleId) {
+                  const next = modules.map(mod =>
+                    mod.id !== editingCustomQuiz.moduleId ? mod
+                    : { ...mod, items: [...(mod.items || []), { id: newId("it"), type: "quiz", refId: quizId }] }
+                  );
+                  await saveModules(next);
+                }
+              } else if (manualAssignments[quizId]) {
+                await saveManualAssignments({ ...(manualAssignments || {}), [quizId]: { ...manualAssignments[quizId], title } });
+              }
+              setEditingCustomQuiz(null);
             }}
           />
         )}

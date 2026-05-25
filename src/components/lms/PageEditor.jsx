@@ -2,7 +2,7 @@ import { useState } from "react";
 import { s, MUTED, BORDER } from "../../theme.js";
 
 // Instructor-side modal for creating / editing a page.
-export function PageEditor({ initialTitle = "", initialContent = "", onSave, onCancel }) {
+export function PageEditor({ initialTitle = "", initialContent = "", editorLabel, contentLabel = "Content", onSave, onCancel }) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState(initialContent);
   const [err, setErr] = useState("");
@@ -22,7 +22,7 @@ export function PageEditor({ initialTitle = "", initialContent = "", onSave, onC
     >
       <div style={{ ...s.card, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${BORDER}`, gap: 12 }}>
-          <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>{initialTitle ? "Edit Page" : "New Page"}</h3>
+          <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>{editorLabel ?? (initialTitle ? "Edit Page" : "New Page")}</h3>
           <button onClick={onCancel} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
         </div>
         <div style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
@@ -31,7 +31,7 @@ export function PageEditor({ initialTitle = "", initialContent = "", onSave, onC
             <input style={s.input} placeholder="Page title" value={title} onChange={e => setTitle(e.target.value)} autoFocus />
           </div>
           <div>
-            <label style={s.label}>Content</label>
+            <label style={s.label}>{contentLabel}</label>
             <textarea
               style={{ ...s.input, height: 320, resize: "vertical", lineHeight: 1.5, fontFamily: "inherit" }}
               placeholder="Page content — plain text with line breaks. Markdown is not rendered."
