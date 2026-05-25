@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import QRCode from "qrcode";
 
 import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext } from "./theme.js";
-import { fbGet, fbSet, fbConnectTest, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage } from "./firebase.js";
+import { fbGet, fbSet, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage } from "./firebase.js";
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
   ACCEPTED_IMG,
@@ -121,7 +121,8 @@ export default function App() {
   const [assignmentOrderOverrides, setAssignmentOrderOverrides] = useState({}); // { [assignmentId]: number }
   const [studentAvailableClasses, setStudentAvailableClasses] = useState([]);
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
-  const [ready, setReady] = useState(false);
+  const [dataReady, setDataReady] = useState(false);
+  const [showNoClasses, setShowNoClasses] = useState(false);
   const [classDataLoading, setClassDataLoading] = useState(false);
   const [syncStatus, setSyncStatus] = useState('idle');
   const [syncLabel, setSyncLabel] = useState('');
@@ -266,21 +267,13 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        await fbConnectTest();
-        setFbConnStatus('ok');
-      } catch (e) {
-        setFbConnStatus('error');
-        setFbConnError(e.message || String(e));
-        setReady(true);
-        return;
-      }
-      try {
         const [classesData, settingsData, bugsData, evalsData] = await Promise.all([
           fbGet('classes').catch(() => null),
           fbGet('settings').catch(() => null),
           fbGet('bugReports').catch(() => null),
           fbGet('courseEvals').catch(() => null),
         ]);
+        setFbConnStatus('ok');
         const loadedClasses = (classesData && typeof classesData === 'object') ? classesData : {};
         setClasses(loadedClasses);
         if (settingsData?.passwordHash) {
@@ -318,10 +311,20 @@ export default function App() {
         } else if (storedId) {
           setCurrentClassId(null);
         }
-      } catch (e) { console.error("Startup load error:", e); }
-      setReady(true);
+      } catch (e) {
+        setFbConnStatus('error');
+        setFbConnError(e.message || String(e));
+        console.error("Startup load error:", e);
+      }
+      setDataReady(true);
     })();
   }, []);
+
+  useEffect(() => {
+    if (!dataReady) return;
+    const t = setTimeout(() => setShowNoClasses(true), 500);
+    return () => clearTimeout(t);
+  }, [dataReady]);
 
   // ── Load a class's full per-class data into state ──────────────────────────
   const loadClassData = async classId => {
@@ -1015,8 +1018,6 @@ export default function App() {
   };
 
   // ── Render ─────────────────────────────────────────────────────────────────
-  if (!ready) return <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}><span style={{ color: TEAL, fontSize: 18 }}>Loading…</span><span style={{ color: MUTED, fontSize: 13 }}>Testing Firebase connection</span></div>;
-
   if (fbConnStatus === 'error') return (
     <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", padding: 24 }}>
       <div style={{ maxWidth: 520, width: "100%", ...s.card, padding: 32, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -1063,7 +1064,7 @@ export default function App() {
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <h1 style={{ fontSize: 72, fontWeight: 700, color: TEAL, margin: 0 }}>Newton</h1>
         </div>
-        {allActiveStudents.length === 0 && <div style={{ background: "rgba(202,138,4,0.1)", border: "1px solid rgba(202,138,4,0.3)", borderRadius: 8, padding: "10px 14px", color: "#fde047", fontSize: 13, marginBottom: 16 }}>No classes are currently available. Please contact your instructor.</div>}
+        {showNoClasses && allActiveStudents.length === 0 && <div style={{ background: "rgba(202,138,4,0.1)", border: "1px solid rgba(202,138,4,0.3)", borderRadius: 8, padding: "10px 14px", color: "#fde047", fontSize: 13, marginBottom: 16 }}>No classes are currently available. Please contact your instructor.</div>}
         <div style={{ position: "relative" }}>
           <input
             style={s.input}
