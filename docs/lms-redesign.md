@@ -73,7 +73,7 @@ src/
       PageViewer.jsx             — student modal: read-only page rendering (pre-wrap text)
   screens/student/
     Home.jsx                     — student Home landing (module list, dispatches by type)
-    StudentCalendar.jsx          — month grid calendar; events from quizzes+dueDates
+    StudentCalendar.jsx          — calendar; month grid on desktop, agenda list on mobile (≤768px); events from quizzes+dueDates
     StudentGrades.jsx            — student Grades view: overall grade banner + category breakdown
     CourseEvals.jsx              — student Course Evals: quick feedback (always open) + end-of-course survey (gated on last module release)
     Stub.jsx                     — generic "Coming Soon" placeholder (Syllabus only; Evals now has a real screen)
