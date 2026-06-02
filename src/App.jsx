@@ -1242,7 +1242,6 @@ export default function App() {
       <ThemeContext.Provider value={th}>
         <>
           {bugModalJsx}
-          <Footer onBugClick={() => setBugReportOpen(true)} />
           {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
           <Shell
             header={header}
@@ -1250,6 +1249,7 @@ export default function App() {
             rightRail={<TodoRail items={todoItems} />}
           >
             {mainContent}
+            <Footer inline onBugClick={() => setBugReportOpen(true)} />
           </Shell>
         </>
       </ThemeContext.Provider>
