@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { s, MUTED, BORDER } from "../../theme.js";
+import { useTheme } from "../../theme.js";
 
 // Instructor-side modal for creating / editing a page.
 export function PageEditor({ initialTitle = "", initialContent = "", editorLabel, contentLabel = "Content", onSave, onCancel }) {
@@ -7,6 +7,8 @@ export function PageEditor({ initialTitle = "", initialContent = "", editorLabel
   const [content, setContent] = useState(initialContent);
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
+  const { s, text, muted, border, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
 
   const submit = async () => {
     const t = title.trim();
@@ -20,10 +22,10 @@ export function PageEditor({ initialTitle = "", initialContent = "", editorLabel
     <div
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}
     >
-      <div style={{ ...s.card, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${BORDER}`, gap: 12 }}>
-          <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: 0 }}>{editorLabel ?? (initialTitle ? "Edit Page" : "New Page")}</h3>
-          <button onClick={onCancel} style={{ background: "none", border: "none", color: MUTED, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+      <div style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${border}`, gap: 12 }}>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0 }}>{editorLabel ?? (initialTitle ? "Edit Page" : "New Page")}</h3>
+          <button onClick={onCancel} style={{ background: "none", border: "none", color: muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
         </div>
         <div style={{ padding: "16px 22px", display: "flex", flexDirection: "column", gap: 12, overflowY: "auto" }}>
           <div>
@@ -39,9 +41,9 @@ export function PageEditor({ initialTitle = "", initialContent = "", editorLabel
               onChange={e => setContent(e.target.value)}
             />
           </div>
-          {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
+          {err && <p style={{ color: isLight ? "#dc2626" : "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
         </div>
-        <div style={{ display: "flex", gap: 10, padding: "14px 22px", borderTop: `1px solid ${BORDER}` }}>
+        <div style={{ display: "flex", gap: 10, padding: "14px 22px", borderTop: `1px solid ${border}` }}>
           <button onClick={onCancel} style={{ ...s.btnSec, flex: 1 }}>Cancel</button>
           <button onClick={submit} disabled={saving} style={{ ...s.btnPri, flex: 1, opacity: saving ? 0.6 : 1 }}>{saving ? "Saving…" : "Save"}</button>
         </div>

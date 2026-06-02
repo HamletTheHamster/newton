@@ -3,7 +3,8 @@ import { useTheme } from "../../theme.js";
 // Student-side modal for viewing instructor-authored pages.
 // Plain text with line breaks preserved (no markdown).
 export function PageViewer({ title, content, onClose }) {
-  const { s, text, muted, border } = useTheme();
+  const { s, text, muted, border, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
   return (
     <div
       onClick={onClose}
@@ -11,7 +12,7 @@ export function PageViewer({ title, content, onClose }) {
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ ...s.card, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+        style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${border}`, gap: 12 }}>
           <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title || "Untitled"}</h3>
