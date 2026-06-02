@@ -71,7 +71,9 @@ export function Shell({ header, sidebar, rightRail, children }) {
         )}
 
         <main style={{ flex: 1, overflowY: "auto",
-                       padding: isMobile ? "12px 14px" : "24px 28px", minWidth: 0 }}>
+                       padding: isMobile ? "12px 14px" : "24px 28px", minWidth: 0,
+                       scrollbarWidth: "none", msOverflowStyle: "none" }}
+              className="hide-scrollbar">
           <div style={{ maxWidth: 960, margin: "0 auto" }}>
             {children}
           </div>
