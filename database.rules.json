@@ -22,7 +22,9 @@
         "gradeCategories": {},
         "gradeOverrides": {},
         "assignmentCategories": {},
-        "syllabus": {}
+        "syllabus": {},
+        "hwDrafts": {},
+        "hwAttempts": {}
       }
     },
     "settings": {},

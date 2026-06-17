@@ -189,7 +189,6 @@ export default function App() {
   const [dangerPw, setDangerPw] = useState(""); const [dangerErr, setDangerErr] = useState("");
   const [removeStudent, setRemoveStudent] = useState(null);
   const [removePw, setRemovePw] = useState(""); const [removeErr, setRemoveErr] = useState("");
-  const [viewingSub, setViewingSub] = useState(null);
   const [backupModal, setBackupModal] = useState(null);
   const [rosterMsg, setRosterMsg] = useState(""); const [backupMsg, setBackupMsg] = useState("");
   const [newClassName, setNewClassName] = useState(""); const [newClassCourse, setNewClassCourse] = useState(COURSE_OPTIONS[0]?.value || "physics1"); const [newClassMsg, setNewClassMsg] = useState("");
@@ -204,7 +203,7 @@ export default function App() {
   const [editingCustomQuiz, setEditingCustomQuiz] = useState(null); // { quizId: null|string, title, text, moduleId: null|string }
   const [editingAnn, setEditingAnn] = useState(null);       // null | { annId?, title, body, createdAt? }
 
-  const chatRef = useRef(null); const detailRef = useRef(null); const inputRef = useRef(null);
+  const chatRef = useRef(null); const inputRef = useRef(null);
   const fileInputRef = useRef(null); const rosterInputRef = useRef(null);
   const backupInputRef = useRef(null);
   const syncTimer = useRef(null);
@@ -451,7 +450,6 @@ export default function App() {
       if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go("student-portal") : setShowLeaveConfirm(true); }
       else if (screen === "homework") { go("student-portal"); }
       else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }
-      else if (screen === "inst-sub-detail") { history.pushState({ newton: "inst-sub-detail" }, "", ""); go("instructor"); setViewingSub(null); }
       else if (screen === "student-pw") { history.pushState({ newton: "student-pw" }, "", ""); setSelectedStudent(null); go("student-search"); }
       else if (screen === "inst-login") { history.pushState({ newton: "inst-login" }, "", ""); go("student-search"); }
     };
@@ -686,7 +684,7 @@ export default function App() {
     setCurrentClassId(classId);
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery("");
-    setOpenQuizzes({}); setViewingSub(null);
+    setOpenQuizzes({});
     setAnnouncements({});
     setCustomQuizzes({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
@@ -696,7 +694,7 @@ export default function App() {
     if (!classId || classId === currentClassId) return;
     setCurrentClassId(classId);
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
-    setOpenQuizzes({}); setViewingSub(null);
+    setOpenQuizzes({});
     setAnnouncements({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     await loadClassData(classId);
@@ -1302,6 +1300,7 @@ export default function App() {
         <HomeworkRunner
           homework={activeHomework}
           courseType={classMeta?.courseType || "physics1"}
+          classId={currentClassId}
           loggedInStudent={loggedInStudent}
           practice={practiceMode}
           onFinish={saveHomeworkSub}
@@ -1461,32 +1460,6 @@ export default function App() {
   }
 
   // ── Instructor Submission Detail ──────────────────────────────────────────
-  if (screen === "inst-sub-detail" && viewingSub) {
-    // eslint-disable-next-line no-shadow
-    const s = appTh.s; const MUTED = appTh.muted; const BORDER = appTh.border; const CARD = appTh.card; const text = appTh.text;
-    const scoreColor = viewingSub.score >= 8 ? "#4ade80" : viewingSub.score >= 6 ? "#facc15" : viewingSub.score >= 4 ? "#fb923c" : "#f87171";
-    return (
-      <ThemeContext.Provider value={appTh}>
-      <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
-        <div style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button onClick={() => { setScreen("instructor"); setViewingSub(null); }} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto" }}>← Back</button>
-            <div style={{ width: 1, height: 20, background: BORDER }} />
-            <div><div style={{ color: text, fontWeight: 700, fontSize: 14 }}>{viewingSub.quizTitle}</div><p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{viewingSub.studentName} · {fmtDate(viewingSub.timestamp)}</p></div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            {viewingSub.late && <span style={s.badge("#facc15")}>LATE</span>}
-            <div style={{ textAlign: "right" }}><span style={{ fontSize: 22, fontWeight: 700, color: scoreColor }}>{viewingSub.score}</span><span style={{ color: MUTED, fontSize: 16 }}>/10</span>{viewingSub.late && viewingSub.rawScore !== viewingSub.score && <div style={{ color: MUTED, fontSize: 11 }}>raw: {viewingSub.rawScore}</div>}</div>
-          </div>
-        </div>
-        <div ref={detailRef} style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-          {viewingSub.dialogue?.length > 0 ? <ChatMessages messages={viewingSub.dialogue} /> : <div style={{ ...s.card, padding: 32, textAlign: "center", color: MUTED }}>No dialogue saved for this submission.</div>}
-        </div>
-      </div>
-      </ThemeContext.Provider>
-    );
-  }
-
   // ── Instructor Portal (LMS-style) ─────────────────────────────────────────
   if (screen === "instructor") {
     const th = buildTheme(lightMode);

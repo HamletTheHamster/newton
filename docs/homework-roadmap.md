@@ -16,6 +16,24 @@ quiz pattern: `Home.jsx` passes `meta.completed`; `App.jsx` calls `setPracticeMo
 a "Practice" badge, and labels the result screen "Practice complete — not submitted for
 a grade". The to-do rail already excluded completed items.
 
+### ~~⚠️ Draft / resume state for unsubmitted homework~~ ✅ Done
+`HomeworkRunner` saves in-progress work to **two** RTDB nodes (non-practice only):
+- `classes/{classId}/hwDrafts/{studentId}/{hwId}` — full UI snapshot (answers, status,
+  earned, feedback, revealed, history, idx). Auto-saved via a `useEffect` on `[attempts, status]`
+  (fires after **every** submit, not just on resolve, so open-item hints/answers survive),
+  saved again on confirmed leave, and cleared on successful final submission.
+- `classes/{classId}/hwAttempts/{studentId}/{hwId}` — authoritative per-item attempt counts,
+  written on **every** submit and cleared only on final submission. This is the anti-gaming
+  source of truth.
+
+**Anti-gaming:** on mount the runner seeds local `attempts` from `hwAttempts` **unconditionally**
+(not just when the resume modal shows), so a student who made wrong-but-unresolved attempts can't
+reset the counter by logging out — their next submit would otherwise overwrite the saved count.
+The resume modal appears whenever there is any saved progress (resolved items, in-progress
+attempts, or attempt counts). There is **no "Start fresh"** for graded homework: used attempts
+can't be reset and resolved items are locked, so a true do-over only exists via practice retakes.
+Practice mode never touches either node.
+
 ## Remaining buildout steps
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
    `src/courses/physics{1,2}.js` (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems,
@@ -33,9 +51,11 @@ a grade". The to-do rail already excluded completed items.
    `GradeDetailPanel` button relabeled "View / Edit Submission" with a "✎ Part scores
    overridden" indicator; `computeScoreFromPartOverrides` re-derives the /10 score in the
    `scoreMap` build loop (priority: `ov.score` > `ov.partScores` > submission score).
-4. **Instructor `inst-sub-detail` homework view** — the `inst-sub-detail` screen in
-   `App.jsx` shows "No dialogue saved" for homework (only `Gradebook.jsx`'s `SubViewModal`
-   renders the breakdown). Reuse `HomeworkItemRow` there.
+4. ~~**Instructor `inst-sub-detail` homework view**~~ ✅ N/A — the `inst-sub-detail` screen
+   was dead code (unreachable; there is no longer a submissions tab) and has been removed.
+   Instructors review all submissions — quizzes and homework alike — only from the Gradebook,
+   where `SubViewModal` renders the chat dialogue (quizzes) or the per-part `HomeworkItemRow`
+   breakdown (homework).
 5. **Image-answer problems** — homework supports `numeric` / `text` / `math`. Add an
    `image` `answerType` reusing `compressImage` / `checkImageReadability` (`utils.js`) and
    the quiz upload UI.

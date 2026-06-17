@@ -24,7 +24,7 @@ const FIELDS = [
   { key: "hintAfterAttempt", label: "Hint after attempt", help: "Hint shown on failure at this attempt number",                  isInt: true,  min: 1, max: null, step: 1 },
   { key: "hintCredit",       label: "Hint credit",        help: "Credit multiplier after free attempts (e.g. 0.8 = 80%)",        isInt: false, min: 0.01, max: 1, step: 0.01 },
   { key: "maxAttempts",      label: "Max attempts",       help: "Answer revealed when attempt count reaches this value",          isInt: true,  min: 1, max: null, step: 1 },
-  { key: "revealCredit",     label: "Reveal credit",      help: "Credit when answer is force-revealed (e.g. 0.5 = 50%)",         isInt: false, min: 0.01, max: 1, step: 0.01 },
+  { key: "revealCredit",     label: "Reveal credit",      help: "Credit when answer is force-revealed (e.g. 0 = 0%, 0.5 = 50%)", isInt: false, min: 0, max: 1, step: 0.01 },
   { key: "numericTolerance", label: "Numeric tolerance",  help: "±fractional tolerance (e.g. 0.02 = 2%); per-problem overrides this", isInt: false, min: 0, max: 1, step: 0.001 },
 ];
 
@@ -37,7 +37,7 @@ function validateDraft(d) {
   if (ha > ma) return "Hint after attempt must be ≤ max attempts.";
   if (fa > ma) return "Free attempts must be ≤ max attempts.";
   if (hc <= 0 || hc > 1) return "Hint credit must be between 0 (exclusive) and 1.";
-  if (rc <= 0 || rc > 1) return "Reveal credit must be between 0 (exclusive) and 1.";
+  if (rc < 0 || rc > 1) return "Reveal credit must be between 0 and 1.";
   if (nt < 0 || nt > 1) return "Numeric tolerance must be between 0 and 1.";
   return null;
 }

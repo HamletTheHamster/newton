@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
+import { fbGet, fbSet, classPath } from "../../firebase.js";
 import { MathField } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import {
@@ -12,20 +13,27 @@ import {
 } from "../../homework.js";
 
 // Flatten a problem into its gradable items (a single item, or one per multipart part).
-// Each item carries a `weight` = its fraction of the problem's 1 point, and `_problemId`.
+// Each item carries a `weight` = its fraction of the problem's 1 point, `_problemId`, and the
+// problem-level context the grader needs: `_figure` (image) and, for multipart parts,
+// `_problemPrompt` (the shared stem shown above the parts). These let evaluateHomeworkAnswer
+// give Claude the FULL problem + figure, not just an isolated part prompt.
 function itemsOf(p) {
   if (p.parts && p.parts.length) {
-    return p.parts.map(pt => ({ ...pt, weight: 1 / p.parts.length, _problemId: p.id }));
+    return p.parts.map(pt => ({
+      ...pt, weight: 1 / p.parts.length, _problemId: p.id,
+      _figure: p.figure || null, _problemPrompt: p.prompt || null,
+    }));
   }
   return [{
     id: p.id, prompt: p.prompt, answerType: p.answerType, answer: p.answer,
     unit: p.unit, sigFigs: p.sigFigs, tolerance: p.tolerance, weight: 1, _problemId: p.id,
+    _figure: p.figure || null, _problemPrompt: null,
   }];
 }
 
 // MasteringPhysics-style homework runner. Owns all per-item state; on finish, builds a
 // submission object and calls onFinish(submission) (which persists it and may throw).
-export function HomeworkRunner({ homework, courseType, loggedInStudent, practice = false, onFinish, onLeave }) {
+export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, onFinish, onLeave }) {
   const { s, text, muted, border, teal, card, isLight } = useTheme();
   const solidBg = isLight ? "#fff" : "#252627";
   const G = homework.grading || HW_GRADING_DEFAULTS;
@@ -47,6 +55,60 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [showLeave, setShowLeave] = useState(false);
+  const [showGrading, setShowGrading] = useState(true);  // grading-policy explainer, expanded by default
+
+  // Draft + attempt persistence (skipped in practice mode).
+  // hwAttempts is a separate node from the draft: it is written on every submission attempt
+  // and seeded into local state unconditionally on mount, so students cannot reset attempt
+  // counts by logging out or leaving without resuming.
+  const draftPath = !practice && classId
+    ? classPath(classId, `hwDrafts/${loggedInStudent.studentId}/${homework.id}`)
+    : null;
+  const attemptsPath = !practice && classId
+    ? classPath(classId, `hwAttempts/${loggedInStudent.studentId}/${homework.id}`)
+    : null;
+  const [draftLoading, setDraftLoading] = useState(!!draftPath);
+  const [pendingDraft, setPendingDraft] = useState(null);
+  const [savedAttempts, setSavedAttempts] = useState({});
+
+  useEffect(() => {
+    if (!draftPath) return;
+    Promise.all([
+      fbGet(draftPath).catch(() => null),
+      fbGet(attemptsPath).catch(() => null),
+    ]).then(([d, att]) => {
+      const sa = att && typeof att === "object" ? att : {};
+      setSavedAttempts(sa);
+      // Seed local attempts from the authoritative node ALWAYS — not just when a resume
+      // modal is shown. Otherwise a student who made wrong-but-unresolved attempts (which
+      // never set `status`, so no draft is written) would return with attempts reset to 0
+      // and overwrite the saved count on their next submit, defeating the anti-gaming guard.
+      setAttempts(sa);
+      // Offer to resume whenever there is any saved progress: a draft with resolved items,
+      // a draft with in-progress attempts, or attempt counts on the authoritative node.
+      const hasDraftProgress = d && (Object.keys(d.status || {}).length > 0 || Object.keys(d.attempts || {}).length > 0);
+      if (d && (hasDraftProgress || Object.keys(sa).length > 0)) setPendingDraft(d);
+    }).finally(() => setDraftLoading(false));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // applyDraft uses savedAttempts (authoritative) instead of the draft's copy.
+  const applyDraft = d => {
+    setAnswers(d.answers || {}); setAttempts(savedAttempts); setStatus(d.status || {});
+    setEarned(d.earned || {}); setFeedback(d.feedback || {}); setRevealed(d.revealed || {});
+    setHistory(d.history || {}); setIdx(d.idx || 0);
+  };
+
+  const clearDraft = () => { if (draftPath) fbSet(draftPath, null).catch(() => {}); };
+
+  // Auto-save the full draft after every submit (attempts increments on each one) and
+  // whenever an item is resolved. Both `attempts` and `status` are fresh object references
+  // per submit, and the effect fires after all of submitItem's state updates are committed,
+  // so feedback/hints/history for still-open items are persisted across sessions too.
+  useEffect(() => {
+    if (!draftPath || draftLoading || pendingDraft) return;
+    if (!Object.keys(attempts).length && !Object.keys(status).length) return;
+    fbSet(draftPath, { answers, attempts, status, earned, feedback, revealed, history, idx, savedAt: new Date().toISOString() }).catch(() => {});
+  }, [attempts, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const late = isLate(homework.dueDate);
   const runningScore = allItems.reduce((sum, it) => sum + (earned[it.id] || 0), 0);
@@ -71,6 +133,9 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
         setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));
       }
       setAttempts(a => ({ ...a, [item.id]: attemptNum }));
+      // Persist attempt count immediately — written even for wrong-but-still-open items so
+      // the count survives a logout or leaving without resuming.
+      if (attemptsPath) fbSet(attemptsPath, { ...attempts, [item.id]: attemptNum }).catch(() => {});
       if (result.correct) {
         setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum, G) * item.weight }));
         setStatus(st => ({ ...st, [item.id]: "correct" }));
@@ -126,6 +191,8 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
     setSaving(true);
     try {
       await onFinish(buildSubmission());
+      clearDraft();
+      if (attemptsPath) fbSet(attemptsPath, null).catch(() => {});
       setSaveError(false); setDone(true);
     } catch {
       setSaveError(true); setDone(true);
@@ -200,9 +267,17 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
         {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part ({partLabel})</div>}
         {item.prompt && <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{item.prompt}</MathText></div>}
         {renderInput(item)}
-        {st === "open" && used > 0 && (
-          <div style={{ color: muted, fontFamily: "monospace", fontSize: 12 }}>{left} attempt{left !== 1 ? "s" : ""} left{used >= G.hintAfterAttempt ? " · hint shown (max 80%)" : ""}</div>
-        )}
+        {st !== "correct" && st !== "revealed" && (() => {
+          const credit = creditForAttempt(used + 1, G);
+          const cColor = credit >= 1 ? FB_COLOR.correct : FB_COLOR.hint;
+          return (
+            <div style={{ color: muted, fontFamily: "monospace", fontSize: 12 }}>
+              Attempt {Math.min(used + 1, G.maxAttempts)} of {G.maxAttempts} · correct now earns <span style={{ color: cColor, fontWeight: 700 }}>{Math.round(credit * 100)}%</span>
+              {used > 0 ? ` · ${left} attempt${left !== 1 ? "s" : ""} left` : ""}
+              {used >= G.hintAfterAttempt ? " · hint shown" : ""}
+            </div>
+          );
+        })()}
         {fb && (
           <div style={{ background: (FB_COLOR[fb.kind] || muted) + "1f", border: `1px solid ${(FB_COLOR[fb.kind] || muted)}55`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: text, lineHeight: 1.5 }}>
             {fb.kind === "correct" && <span style={{ color: FB_COLOR.correct, fontWeight: 700 }}>✓ Correct! </span>}
@@ -266,10 +341,50 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
     );
   }
 
+  // ── Draft loading screen ──────────────────────────────────────────────────────
+  if (draftLoading) {
+    return (
+      <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ color: muted, fontSize: 14 }}>Loading…</div>
+      </div>
+    );
+  }
+
+  // ── Resume modal (shown before the runner renders) ────────────────────────────
+  if (pendingDraft) {
+    const savedAt = pendingDraft.savedAt ? new Date(pendingDraft.savedAt).toLocaleString() : "earlier";
+    const completedCount = Object.values(pendingDraft.status || {}).filter(v => v !== "open").length;
+    return (
+      <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ ...s.card, background: solidBg, padding: 28, width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 16 }}>
+          <div>
+            <div style={{ color: text, fontWeight: 700, fontSize: 18, marginBottom: 6 }}>{homework.title}</div>
+            <div style={{ color: muted, fontSize: 13 }}>You have unfinished work from {savedAt}.</div>
+            {completedCount > 0 && <div style={{ color: muted, fontSize: 13, marginTop: 4 }}>{completedCount} of {allItems.length} item{allItems.length !== 1 ? "s" : ""} completed.</div>}
+          </div>
+          {/* No "Start fresh" for graded homework: used attempts can't be reset (anti-gaming)
+              and resolved items are locked, so a do-over only exists via practice retakes. */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button onClick={() => { applyDraft(pendingDraft); setPendingDraft(null); }} style={{ ...s.btnPri }}>Resume where I left off</button>
+          </div>
+          <button onClick={onLeave} style={{ ...s.btnGhost, fontSize: 13, padding: "6px 0" }}>← Back to course</button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Active runner ─────────────────────────────────────────────────────────────
   const problem = problems[idx];
   const items = itemsOf(problem);
   const partLabels = problem.parts && problem.parts.length ? "abcdefgh".split("") : null;
+
+  const handleLeaveConfirm = async () => {
+    // Save progress (including current typed answers) before leaving
+    if (draftPath && (Object.keys(status).length > 0 || Object.keys(attempts).length > 0)) {
+      await fbSet(draftPath, { answers, attempts, status, earned, feedback, revealed, history, idx, savedAt: new Date().toISOString() }).catch(() => {});
+    }
+    onLeave();
+  };
 
   return (
     <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
@@ -277,10 +392,10 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
             <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave homework?</h3>
-            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "Your progress will be lost." : "Your progress will be lost and this attempt will not be saved."}</p>
+            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "Your progress will be lost." : "Your progress will be saved — you can resume later."}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeave(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
-              <button onClick={onLeave} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
+              <button onClick={handleLeaveConfirm} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
             </div>
           </div>
         </div>
@@ -306,6 +421,34 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, practice
 
       {/* Body */}
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Grading-policy explainer — transparent, upfront, collapsible */}
+        <div style={{ ...s.card, padding: "12px 16px" }}>
+          <button
+            onClick={() => setShowGrading(v => !v)}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", color: text, fontWeight: 700, fontSize: 14, padding: 0 }}
+          >
+            <span>ⓘ How this homework is graded</span>
+            <span style={{ color: muted, fontSize: 12 }}>{showGrading ? "▲ Hide" : "▼ Show"}</span>
+          </button>
+          {showGrading && (() => {
+            const pct = x => `${Math.round(x * 100)}%`;
+            const C = ({ color, children }) => <strong style={{ color }}>{children}</strong>;
+            return (
+              <>
+                <div style={{ margin: "8px 0 6px", color: muted, fontSize: 13 }}>Each part of a problem is graded separately on this schedule:</div>
+                <ul style={{ margin: 0, paddingLeft: 18, color: muted, fontSize: 13, lineHeight: 1.7 }}>
+                  <li>Attempts <C color={FB_COLOR.correct}>1–{G.freeAttempts}</C>: <C color={FB_COLOR.correct}>full credit</C> if correct.</li>
+                  {G.maxAttempts > G.freeAttempts && (
+                    <li>A hint appears after attempt {G.hintAfterAttempt}. A correct answer on attempts <C color={FB_COLOR.hint}>{G.freeAttempts + 1}–{G.maxAttempts}</C> earns <C color={FB_COLOR.hint}>{pct(G.hintCredit)}</C>.</li>
+                  )}
+                  <li>After <C color={FB_COLOR.wrong}>{G.maxAttempts}</C> incorrect attempts the answer is shown and that part earns <C color={FB_COLOR.wrong}>{pct(G.revealCredit)}</C>.</li>
+                  <li>Numeric answers count as correct within <C color={FB_COLOR.revealed}>±{+(G.numericTolerance * 100).toFixed(2)}%</C> of the exact value.</li>
+                </ul>
+              </>
+            );
+          })()}
+        </div>
+
         <div style={{ ...s.card, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           {problem.figure && (
             <img src={problem.figure} alt="Problem figure" style={{ maxWidth: "100%", borderRadius: 10, border: `1px solid ${border}`, alignSelf: "center" }} />
