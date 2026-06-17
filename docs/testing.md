@@ -51,6 +51,17 @@ Pull the production key with `netlify env:get ANTHROPIC_API_KEY` after `netlify 
 
 To debug what the function actually sees, add a temporary `x-debug` branch that returns `{hasAnthropic, anthropicPrefix, ...}` and probe with `curl -X POST -H "x-debug: 1" http://localhost:8888/.netlify/functions/claude`.
 
+## App Check blocks local dev entirely
+
+If `VITE_FIREBASE_DEBUG_TOKEN` is missing from `.env.local` **or** is not registered in the Firebase console, the app shows "Cannot Reach Database / App attestation failed" immediately on load and is completely unusable locally.
+
+Fix:
+1. Go to the Firebase console → **newton-93d05** project → **App Check** → **Apps** → your web app → **Manage debug tokens**
+2. Either add the UUID already in your `.env.local` as a registered token, or generate a new one there and paste it into `.env.local` as `VITE_FIREBASE_DEBUG_TOKEN`
+3. Restart `npm run dev`
+
+This token is for local dev only — do not set it in Netlify environment variables. The production build uses reCAPTCHA v3 instead.
+
 ## Firebase startup flake
 
 `fbConnectTest` (in `src/firebase.js`) writes to `_test` and reads it back. Occasionally fails with *"Write succeeded but read-back mismatch"* — passes on a page reload. Two browser tabs or back-to-back test runs can race on the same `_test` node. If you see the "Cannot Reach Database" screen on first load during a test, retry before treating it as a real failure.
