@@ -18,5 +18,13 @@ service firebase.storage {
                    && request.resource.size < 25 * 1024 * 1024;
       allow delete: if request.auth != null;
     }
+    // Student homework written-work uploads (proof of original effort), saved
+    // alongside the submission. Read by the instructor (any authed user is fine).
+    match /classes/{classId}/hwWork/{studentId}/{fileName} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null
+                   && request.resource.size < 25 * 1024 * 1024;
+      allow delete: if request.auth != null;
+    }
   }
 }

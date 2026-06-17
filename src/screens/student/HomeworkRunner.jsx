@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
-import { fbGet, fbSet, classPath } from "../../firebase.js";
+import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
 import { MathField } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import {
@@ -10,7 +10,11 @@ import {
   phaseForAttempt,
   evaluateHomeworkAnswer,
   revealAnswerFor,
+  checkWorkIntegrity,
 } from "../../homework.js";
+
+const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
+const HW_INTEGRITY_MODEL = "claude-opus-4-8";
 
 // Flatten a problem into its gradable items (a single item, or one per multipart part).
 // Each item carries a `weight` = its fraction of the problem's 1 point, `_problemId`, and the
@@ -56,6 +60,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [saveError, setSaveError] = useState(false);
   const [showLeave, setShowLeave] = useState(false);
   const [showGrading, setShowGrading] = useState(true);  // grading-policy explainer, expanded by default
+
+  // Written-work integrity step (skipped in practice mode).
+  const [submitStep, setSubmitStep] = useState(false);   // showing the upload-your-work step
+  const [workFiles, setWorkFiles] = useState([]);        // [{ file, name, mime, previewUrl|null }]
+  const [uploadedWork, setUploadedWork] = useState(null);// cached Storage results so retry doesn't re-upload
+  const [integrityResult, setIntegrityResult] = useState(null); // cached Claude verdict so retry doesn't re-check
 
   // Draft + attempt persistence (skipped in practice mode).
   // hwAttempts is a separate node from the draft: it is written on every submission attempt
@@ -155,7 +165,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setBusy(null);
   };
 
-  const buildSubmission = () => {
+  const buildSubmission = (workFilesMeta = [], integrity = null) => {
     const rawScore = parseFloat(runningScore.toFixed(2));
     const pct = total > 0 ? rawScore / total : 0;
     const score = parseFloat((pct * 10 * (late ? 0.5 : 1)).toFixed(2));
@@ -183,28 +193,70 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       rawScore, nativeTotal: total, score, late,
       timestamp: new Date().toISOString(),
       problems: problemsBreakdown,
+      workFiles: workFilesMeta || [],
+      integrity: integrity || null,
     };
   };
 
-  const finish = async () => {
-    if (practice) { setDone(true); return; }
+  // Practice has no submission/proof step; graded homework goes through the work-upload step.
+  const finish = () => { if (practice) { setDone(true); return; } setSubmitStep(true); };
+
+  // ── Work-file handling (graded submit step) ───────────────────────────────────
+  const addWorkFiles = e => {
+    const files = Array.from(e.target.files || []);
+    e.target.value = "";
+    // New files invalidate any cached upload/integrity result from a prior attempt.
+    setUploadedWork(null); setIntegrityResult(null);
+    files.forEach(file => {
+      if (!ACCEPTED_WORK_TYPES.includes(file.type)) return;
+      if (file.type.startsWith("image/")) {
+        const reader = new FileReader();
+        reader.onload = ev => setWorkFiles(w => [...w, { file, name: file.name, mime: file.type, previewUrl: ev.target.result }]);
+        reader.readAsDataURL(file);
+      } else {
+        setWorkFiles(w => [...w, { file, name: file.name, mime: file.type, previewUrl: null }]);
+      }
+    });
+  };
+  const removeWorkFile = i => { setWorkFiles(w => w.filter((_, j) => j !== i)); setUploadedWork(null); setIntegrityResult(null); };
+
+  // Upload the work files (once, cached), run the integrity sniff-check (once, cached), then
+  // build + persist the submission. On a save failure, retrySave reuses the cached results.
+  const submitWork = async () => {
     setSaving(true);
     try {
-      await onFinish(buildSubmission());
+      let uploaded = uploadedWork;
+      if (!uploaded) {
+        uploaded = [];
+        for (const wf of workFiles) {
+          const safeName = (wf.name || "work").replace(/[^a-zA-Z0-9._-]/g, "_");
+          const path = classPath(classId, `hwWork/${loggedInStudent.studentId}/${homework.id}/${Date.now()}_${safeName}`);
+          const res = await fbUpload(path, wf.file);
+          uploaded.push({ storagePath: res.storagePath, downloadUrl: res.downloadUrl, mime: res.mime, size: res.size, name: wf.name });
+        }
+        setUploadedWork(uploaded);
+      }
+      let integ = integrityResult;
+      if (!integ) {
+        const verdict = await checkWorkIntegrity({ problems, answers, files: workFiles.map(w => w.file), courseType });
+        integ = { ...verdict, checkedAt: new Date().toISOString(), model: HW_INTEGRITY_MODEL };
+        setIntegrityResult(integ);
+      }
+      await onFinish(buildSubmission(uploaded, integ));
       clearDraft();
       if (attemptsPath) fbSet(attemptsPath, null).catch(() => {});
-      setSaveError(false); setDone(true);
+      setSaveError(false); setSubmitStep(false); setDone(true);
     } catch {
-      setSaveError(true); setDone(true);
+      setSaveError(true); setSubmitStep(false); setDone(true);
     }
     setSaving(false);
   };
 
+  // Retry from the result screen reruns the whole pipeline (workFiles state is still held;
+  // uploads/integrity are reused from cache, so only the failed step is re-attempted).
   const retrySave = async () => {
-    setSaving(true);
-    try { await onFinish(buildSubmission()); setSaveError(false); }
-    catch { setSaveError(true); }
-    setSaving(false);
+    setSaveError(false);
+    await submitWork();
   };
 
   // ── Render an answer input for an item ────────────────────────────────────────
@@ -314,9 +366,19 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
-            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete — not submitted for a grade" : "Homework complete"}</div>
-            <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
-            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
+            {!practice && integrityResult?.flagged ? (
+              <>
+                <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>Homework submitted</div>
+                <div style={{ color: "#fbbf24", fontWeight: 800, fontSize: 22 }}>Pending instructor review</div>
+                <div style={{ color: muted, fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>Your written work has been submitted for review. Your grade will appear once your instructor has reviewed it.</div>
+              </>
+            ) : (
+              <>
+                <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete — not submitted for a grade" : "Homework complete"}</div>
+                <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
+                {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
+              </>
+            )}
           </div>
           {problems.map((p, i) => {
             const its = itemsOf(p);
@@ -368,6 +430,62 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             <button onClick={() => { applyDraft(pendingDraft); setPendingDraft(null); }} style={{ ...s.btnPri }}>Resume where I left off</button>
           </div>
           <button onClick={onLeave} style={{ ...s.btnGhost, fontSize: 13, padding: "6px 0" }}>← Back to course</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Submit step: upload your written work ─────────────────────────────────────
+  if (submitStep) {
+    return (
+      <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
+        <div style={{ background: card, borderBottom: `1px solid ${border}`, padding: "14px 24px", display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
+          <button onClick={() => { if (!saving) setSubmitStep(false); }} disabled={saving} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto", opacity: saving ? 0.4 : 1 }}>← Back</button>
+          <div style={{ width: 1, height: 20, background: border }} />
+          <div>
+            <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>{homework.title}</div>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>Submit your written work</p>
+          </div>
+        </div>
+
+        <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ ...s.card, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div style={{ color: text, fontWeight: 700, fontSize: 16 }}>Upload your handwritten work</div>
+            <div style={{ color: muted, fontSize: 14, lineHeight: 1.6 }}>
+              Attach photos or a PDF of your scratch work and calculations for this assignment. It doesn't need to be neat — messy scratch paper is fine. This is your proof that you solved these problems yourself, and your instructor can review it at any time.
+            </div>
+
+            <label style={{ ...s.btnSec, width: "auto", alignSelf: "flex-start", padding: "8px 18px", cursor: saving ? "default" : "pointer", opacity: saving ? 0.4 : 1 }}>
+              + Add photos / PDF
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple disabled={saving} onChange={addWorkFiles} style={{ display: "none" }} />
+            </label>
+
+            {workFiles.length > 0 && (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {workFiles.map((wf, i) => (
+                  <div key={i} style={{ position: "relative", width: 110 }}>
+                    {wf.previewUrl
+                      ? <img src={wf.previewUrl} alt={wf.name} style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 8, border: `1px solid ${border}` }} />
+                      : <div style={{ width: 110, height: 110, borderRadius: 8, border: `1px solid ${border}`, background: solidBg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, color: muted, fontSize: 12 }}><span style={{ fontSize: 28 }}>📄</span>PDF</div>}
+                    {!saving && (
+                      <button onClick={() => removeWorkFile(i)} title="Remove" style={{ position: "absolute", top: -8, right: -8, width: 22, height: 22, borderRadius: "50%", background: "#b91c1c", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
+                    )}
+                    <div style={{ color: muted, fontSize: 11, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{wf.name}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={submitWork}
+            disabled={saving || workFiles.length === 0}
+            title={workFiles.length === 0 ? "Attach at least one file" : ""}
+            style={{ ...s.btnPri, opacity: saving || workFiles.length === 0 ? 0.4 : 1 }}
+          >
+            {saving ? "Submitting & checking your work…" : "Submit homework"}
+          </button>
+          {workFiles.length === 0 && <div style={{ color: muted, fontSize: 12, textAlign: "center" }}>Attach at least one photo or PDF of your work to submit.</div>}
         </div>
       </div>
     );
@@ -444,6 +562,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
                   <li>After <C color={FB_COLOR.wrong}>{G.maxAttempts}</C> incorrect attempts the answer is shown and that part earns <C color={FB_COLOR.wrong}>{pct(G.revealCredit)}</C>.</li>
                   <li>Numeric answers count as correct within <C color={FB_COLOR.revealed}>±{+(G.numericTolerance * 100).toFixed(2)}%</C> of the exact value.</li>
                 </ul>
+                {!practice && (
+                  <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, color: muted, fontSize: 13, lineHeight: 1.6 }}>
+                    <strong style={{ color: text }}>Before you submit</strong>, you'll upload a photo or PDF of your handwritten work for these problems — your proof that you solved them yourself.
+                  </div>
+                )}
               </>
             );
           })()}

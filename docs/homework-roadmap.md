@@ -34,6 +34,17 @@ attempts, or attempt counts). There is **no "Start fresh"** for graded homework:
 can't be reset and resolved items are locked, so a true do-over only exists via practice retakes.
 Practice mode never touches either node.
 
+### ~~⚠️ Written-work integrity check~~ ✅ Done
+Before submitting a (non-practice) homework, students must upload images/PDFs of their
+handwritten work. `checkWorkIntegrity` (`homework.js`) runs a lenient Claude sniff-check;
+flagged submissions show the student **no score — "Pending review"** and are omitted from
+the overall until the instructor reviews the uploaded work in the Gradebook's `SubViewModal`
+and **clears** (full credit) or **upholds** (50% penalty) the flag. Work files ride on the
+submission (`workFiles[]`, Storage path `hwWork/{studentId}/{hwId}/...`); the verdict is
+`submission.integrity`; the instructor's decision is `gradeOverrides[...].integrityReview`.
+Shared logic: `integrityState` / `integrityAdjustedScore` (homework.js), used by both
+`Gradebook.jsx` and `StudentGrades.jsx`.
+
 ## Remaining buildout steps
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
    `src/courses/physics{1,2}.js` (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems,

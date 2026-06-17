@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
+import { integrityState, integrityAdjustedScore } from "../../homework.js";
 import { ChatMessages } from "../../components/ChatMessages.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import { newId } from "../../courses/ids.js";
@@ -83,7 +84,7 @@ function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
 
 // ── GradeDetailPanel ──────────────────────────────────────────────────────────
 function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissions, gradeOverrides,
-    excusedMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, setEditingCell }) {
+    excusedMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, onClearSubmission, setEditingCell }) {
   const { s, muted, border, text, teal, card, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const { studentId, assignmentId } = editingCell;
@@ -92,6 +93,7 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
   const ov = (gradeOverrides[studentId] || {})[assignmentId] || {};
   const isExcused = !!excusedMap[studentId]?.[assignmentId];
   const sub = (submissions || []).find(s => s.studentId === studentId && s.quizId === assignmentId);
+  const ist = integrityState(sub, ov);
   const [showExtendPicker, setShowExtendPicker] = useState(false);
   const [localDate, setLocalDate] = useState("");
   const [localHour, setLocalHour] = useState("");
@@ -148,6 +150,17 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
           {sub.type === "homework" && ov.partScores && Object.keys(ov.partScores).length > 0 && (
             <div style={{ fontSize: 11, color: "#60a5fa" }}>✎ Part scores overridden</div>
           )}
+        </div>
+      )}
+
+      {/* Integrity flag status (homework written-work check) */}
+      {ist.flagged && (
+        <div style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 6, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#fbbf24" }}>
+            {ist.pending ? "Work flagged — pending review" : ist.review === "upheld" ? "Flag upheld — 50% penalty" : "Flag cleared — full credit"}
+          </div>
+          {sub?.integrity?.reason && <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>{sub.integrity.reason}</div>}
+          <div style={{ fontSize: 10, color: muted }}>Open the submission to review the work and clear or uphold the flag.</div>
         </div>
       )}
 
@@ -249,6 +262,24 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
           </div>
         )}
       </div>
+
+      {/* Clear Submission — destructive, password-gated via confirmDanger in App.jsx */}
+      {sub && onClearSubmission && (
+        <div style={{ borderTop: cellBorder, paddingTop: 12 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: muted, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Clear Submission</div>
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onClearSubmission(studentId, assignmentId)}
+            style={{ width: "100%", background: "rgba(185,28,28,0.12)", border: "1px solid rgba(185,28,28,0.4)",
+              borderRadius: 6, color: "#f87171", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "7px 12px" }}
+          >
+            Clear Submission
+          </button>
+          <div style={{ fontSize: 10, color: muted, marginTop: 6, lineHeight: 1.4 }}>
+            Permanently deletes this submission (lets the student retake). Requires your password.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -419,12 +450,20 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
   );
 }
 
-function SubViewModal({ submission, studentName, assignmentTitle, onClose, partOverrides = {}, onSavePartScores }) {
+function SubViewModal({ submission, studentName, assignmentTitle, onClose, partOverrides = {}, onSavePartScores, integrityReview = null, onSetIntegrityReview }) {
   const { s, muted, border, text, card, bg } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
   const canEdit = isHomework && !!onSavePartScores;
   const hasOverrides = Object.keys(partOverrides).length > 0;
+  const integrity = submission.integrity || null;
+  const workFiles = submission.workFiles || [];
+  const [reviewSaving, setReviewSaving] = useState(false);
+  const setReview = async decision => {
+    if (!onSetIntegrityReview) return;
+    setReviewSaving(true);
+    try { await onSetIntegrityReview(decision); } finally { setReviewSaving(false); }
+  };
 
   // Flat list of all gradable items (parts or whole problems)
   const allItems = isHomework ? (submission.problems || []).flatMap(p => p.parts || [p]) : [];
@@ -493,6 +532,57 @@ function SubViewModal({ submission, studentName, assignmentTitle, onClose, partO
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+        {/* Submitted written work + integrity review (homework only) */}
+        {isHomework && (
+          <div style={{ ...s.card, padding: 16, display: "flex", flexDirection: "column", gap: 12, border: integrity?.flagged ? "1px solid rgba(251,191,36,0.45)" : cellBorder }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ color: text, fontWeight: 700, fontSize: 14 }}>Submitted written work</span>
+              {integrity ? (
+                integrity.flagged
+                  ? <span style={{ ...s.badge("#fbbf24"), fontSize: 11 }}>Flagged{integrityReview === "cleared" ? " · cleared" : integrityReview === "upheld" ? " · upheld (50%)" : " · pending review"}</span>
+                  : integrity.error
+                    ? <span style={{ ...s.badge(muted), fontSize: 11 }}>Not checked</span>
+                    : <span style={{ ...s.badge("#4ade80"), fontSize: 11 }}>✓ Looks legitimate</span>
+              ) : <span style={{ color: muted, fontSize: 12 }}>No integrity check on record</span>}
+            </div>
+
+            {integrity?.flagged && integrity.reason && (
+              <div style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.3)", borderRadius: 8, padding: "8px 12px", color: text, fontSize: 13, lineHeight: 1.5 }}>
+                <strong style={{ color: "#fbbf24" }}>Why it was flagged: </strong>{integrity.reason}
+              </div>
+            )}
+            {integrity?.error && (
+              <div style={{ color: muted, fontSize: 12 }}>The automatic check could not run ({integrity.error}). Review the work manually.</div>
+            )}
+
+            {workFiles.length > 0 ? (
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                {workFiles.map((wf, i) => (
+                  <a key={i} href={wf.downloadUrl} target="_blank" rel="noopener noreferrer" title={wf.name} style={{ textDecoration: "none", width: 120 }}>
+                    {(wf.mime || "").startsWith("image/")
+                      ? <img src={wf.downloadUrl} alt={wf.name} style={{ width: 120, height: 120, objectFit: "cover", borderRadius: 8, border: cellBorder }} />
+                      : <div style={{ width: 120, height: 120, borderRadius: 8, border: cellBorder, background: bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, color: muted, fontSize: 12 }}><span style={{ fontSize: 30 }}>📄</span>Open PDF</div>}
+                    <div style={{ color: muted, fontSize: 11, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{wf.name}</div>
+                  </a>
+                ))}
+              </div>
+            ) : <div style={{ color: muted, fontSize: 13 }}>No work files were submitted with this homework.</div>}
+
+            {integrity?.flagged && onSetIntegrityReview && (
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: cellBorder, paddingTop: 10 }}>
+                <span style={{ color: muted, fontSize: 12, marginRight: 4 }}>After reviewing:</span>
+                <button onClick={() => setReview("cleared")} disabled={reviewSaving}
+                  style={{ ...s.btnPri, width: "auto", padding: "6px 14px", fontSize: 12, background: integrityReview === "cleared" ? "#15803d" : undefined }}>
+                  {integrityReview === "cleared" ? "✓ Cleared (full credit)" : "Clear flag (full credit)"}
+                </button>
+                <button onClick={() => setReview("upheld")} disabled={reviewSaving}
+                  style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 12, color: "#f87171", borderColor: "#f8717155", background: integrityReview === "upheld" ? "rgba(248,113,113,0.15)" : undefined }}>
+                  {integrityReview === "upheld" ? "✓ Upheld (50% penalty)" : "Uphold flag (50%)"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
         {isHomework ? (
           (submission.problems || []).map((p, i) => {
             const parts = p.parts || [p];
@@ -546,6 +636,7 @@ export function Gradebook({
   assignmentOrderOverrides,
   onSaveGradeCategories,
   onSaveOverrideForStudent,
+  onClearSubmission,
   onSaveAssignmentCategories,
   onSaveManualAssignments,
   onSaveAssignmentNameOverrides,
@@ -631,23 +722,38 @@ export function Gradebook({
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, []);
 
-  // Build per-student score and excused maps (override > submission > null)
+  // Build per-student score / excused / integrity maps (override > submission > null).
+  // pendingMap: homework flagged for integrity but not yet reviewed → show "Pending", omit
+  // from the overall (like an excused item). flaggedMap: any flagged homework (pending or
+  // resolved) → show a flag marker. penalized submissions get the 50% integrity penalty.
   const scoreMap = {};
   const excusedMap = {};
+  const pendingMap = {};
+  const flaggedMap = {};
   for (const stu of (roster || [])) {
     scoreMap[stu.studentId] = {};
     excusedMap[stu.studentId] = {};
+    pendingMap[stu.studentId] = {};
+    flaggedMap[stu.studentId] = {};
     for (const a of assignments) {
       const ov = (gradeOverrides[stu.studentId] || {})[a.id];
       const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
       if (ov?.excused) {
         excusedMap[stu.studentId][a.id] = true;
-      } else if (ov?.score != null) {
-        scoreMap[stu.studentId][a.id] = ov.score;
-      } else if (ov?.partScores && sub?.type === "homework") {
-        scoreMap[stu.studentId][a.id] = computeScoreFromPartOverrides(sub, ov.partScores);
+        continue;
+      }
+      let base;
+      if (ov?.score != null) base = ov.score;
+      else if (ov?.partScores && sub?.type === "homework") base = computeScoreFromPartOverrides(sub, ov.partScores);
+      else base = sub != null ? sub.score : null;
+
+      const ist = integrityState(sub, ov);
+      if (ist.flagged) flaggedMap[stu.studentId][a.id] = true;
+      if (ist.pending) {
+        pendingMap[stu.studentId][a.id] = true;
+        scoreMap[stu.studentId][a.id] = null;
       } else {
-        scoreMap[stu.studentId][a.id] = sub != null ? sub.score : null;
+        scoreMap[stu.studentId][a.id] = integrityAdjustedScore(base, ist.penalized);
       }
     }
   }
@@ -665,7 +771,8 @@ export function Gradebook({
       assignments: activeAssignments,
       categories: gradeCategories,
       scores: scoreMap[stu.studentId] || {},
-      excused: excusedMap[stu.studentId] || {},
+      // Pending integrity reviews are omitted from the overall (no score yet), like excused.
+      excused: { ...(excusedMap[stu.studentId] || {}), ...(pendingMap[stu.studentId] || {}) },
     });
   }
 
@@ -736,6 +843,22 @@ export function Gradebook({
     }
     await onSaveOverrideForStudent(studentId, current,
       Object.keys(partScores).length ? "✓ Part scores saved" : "✓ Part score overrides cleared");
+  };
+
+  // Record the instructor's review of a flagged homework: "cleared" (full credit) or
+  // "upheld" (50% penalty). Stored at gradeOverrides[studentId][assignmentId].integrityReview.
+  const saveIntegrityReview = async (studentId, assignmentId, decision) => {
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    const existing = current[assignmentId] || {};
+    if (decision) {
+      current[assignmentId] = { ...existing, integrityReview: decision };
+    } else {
+      const { integrityReview: _ir, ...rest } = existing;
+      if (Object.keys(rest).length) current[assignmentId] = rest;
+      else delete current[assignmentId];
+    }
+    await onSaveOverrideForStudent(studentId, current,
+      decision === "cleared" ? "✓ Integrity flag cleared — full credit" : "✓ Integrity flag upheld — 50% penalty");
   };
 
   const saveDueDate = async (studentId, assignmentId, dateStr) => {
@@ -1022,7 +1145,9 @@ export function Gradebook({
                   {displayedAssignments.map(a => {
                     const score = scoreMap[stu.studentId]?.[a.id];
                     const isExcused = !!excusedMap[stu.studentId]?.[a.id];
-                    const isMissing = score == null && !isExcused;
+                    const isPending = !!pendingMap[stu.studentId]?.[a.id];
+                    const isFlagged = !!flaggedMap[stu.studentId]?.[a.id];
+                    const isMissing = score == null && !isExcused && !isPending;
                     const isEditing = editingCell?.studentId === stu.studentId && editingCell?.assignmentId === a.id;
 
                     if (isEditing) {
@@ -1045,21 +1170,33 @@ export function Gradebook({
                       );
                     }
 
+                    const cellTitle = isPending ? "Flagged — pending integrity review. Click to review the submitted work."
+                      : isFlagged ? "Integrity flag reviewed. Click to view."
+                      : isExcused ? "Excused — click to edit"
+                      : isMissing ? "No submission — click to override"
+                      : `${score}/10 — click to edit`;
                     return (
                       <td
                         key={a.id}
                         onClick={() => handleCellClick(stu.studentId, a.id)}
-                        title={isExcused ? "Excused — click to edit" : isMissing ? "No submission — click to override" : `${score}/10 — click to edit`}
+                        title={cellTitle}
                         style={{
                           backgroundColor: stickyBg,
-                          backgroundImage: `linear-gradient(${cellBg(score, isExcused, isMissing)}, ${cellBg(score, isExcused, isMissing)})`,
-                          color: cellFg(score, isExcused, isMissing),
+                          backgroundImage: isPending
+                            ? "linear-gradient(rgba(251,191,36,0.14), rgba(251,191,36,0.14))"
+                            : `linear-gradient(${cellBg(score, isExcused, isMissing)}, ${cellBg(score, isExcused, isMissing)})`,
+                          color: isPending ? "#fbbf24" : cellFg(score, isExcused, isMissing),
                           borderRight: cellBorder, borderBottom: cellBorder,
                           textAlign: "center", padding: "8px 4px",
                           fontSize: 13, fontFamily: "monospace", cursor: "pointer",
                         }}
                       >
-                        {isExcused ? "EX" : isMissing ? "–" : score}
+                        {isPending ? <span style={{ fontSize: 11 }}>Pending</span> : (
+                          <>
+                            {isFlagged && <span title="Integrity flag" style={{ color: "#f87171" }}>* </span>}
+                            {isExcused ? "EX" : isMissing ? "–" : score}
+                          </>
+                        )}
                       </td>
                     );
                   })}
@@ -1114,6 +1251,7 @@ export function Gradebook({
             if (sub) setViewSubModal({ submission: sub, studentName: stu?.altName || stu?.fullName, assignmentTitle: asgn?.title, studentId, assignmentId });
           }}
           onSaveDueDate={saveDueDate}
+          onClearSubmission={onClearSubmission}
           setEditingCell={setEditingCell}
         />
       )}
@@ -1136,6 +1274,10 @@ export function Gradebook({
           partOverrides={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId]?.partScores || {}}
           onSavePartScores={viewSubModal.submission.type === "homework"
             ? ps => savePartScoresForCell(viewSubModal.studentId, viewSubModal.assignmentId, ps)
+            : undefined}
+          integrityReview={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId]?.integrityReview || null}
+          onSetIntegrityReview={viewSubModal.submission.type === "homework"
+            ? decision => saveIntegrityReview(viewSubModal.studentId, viewSubModal.assignmentId, decision)
             : undefined}
         />
       )}

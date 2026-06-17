@@ -8,8 +8,12 @@
 //   • After the 5th failed attempt: the answer is revealed → 0% credit (no more attempts).
 // Each problem is worth 1 point; multipart `parts` split that point equally.
 import { COURSE_LABELS } from "./courses/index.js";
+import { compressImage } from "./utils.js";
 
 const HW_MODEL = "claude-opus-4-8";
+
+// Penalty applied to a homework score when its written-work integrity flag is upheld.
+export const WORK_INTEGRITY_PENALTY = 0.5;
 
 // Shared rules for hint phrasing. The line a hint must not cross is the ANSWER, not numbers:
 // method numbers (factors, constants, exponents) are useful and allowed; revealing, stating,
@@ -77,6 +81,86 @@ export function formatNumericAnswer(item) {
 export function revealAnswerFor(item) {
   if (item.answerType === "numeric") return formatNumericAnswer(item);
   return String(item.answer);
+}
+
+// ── Written-work integrity ───────────────────────────────────────────────────────
+// Resolve the integrity state of a homework submission given the instructor's review
+// decision (stored at gradeOverrides[studentId][hwId].integrityReview). Single source of
+// truth shared by the gradebook and the student grades page.
+//   • not flagged                       → no penalty, not pending
+//   • flagged + no review               → PENDING (no score shown; omit from overall)
+//   • flagged + review === "cleared"    → no penalty (full credit)
+//   • flagged + review === "upheld"     → penalized (50%)
+export function integrityState(sub, ov) {
+  const flagged = !!(sub && sub.integrity && sub.integrity.flagged);
+  const review = (ov && ov.integrityReview) || null;
+  if (!flagged) return { flagged: false, review, pending: false, penalized: false };
+  if (review === "cleared") return { flagged: true, review, pending: false, penalized: false };
+  if (review === "upheld") return { flagged: true, review, pending: false, penalized: true };
+  return { flagged: true, review: null, pending: true, penalized: false };
+}
+
+// Apply the integrity penalty to a base /10 score (null passes through).
+export function integrityAdjustedScore(baseScore, penalized) {
+  if (baseScore == null) return baseScore;
+  return penalized ? parseFloat((baseScore * WORK_INTEGRITY_PENALTY).toFixed(2)) : baseScore;
+}
+
+// Turn a student-uploaded work File into a Claude content block: images are compressed and
+// sent as image blocks; PDFs are sent as document blocks. Returns null if unusable.
+export async function workFileToBlock(file) {
+  if (!file) return null;
+  try {
+    if ((file.type || "").startsWith("image/")) {
+      const img = await compressImage(file);
+      return { type: "image", source: { type: "base64", media_type: img.type, data: img.data } };
+    }
+    if (file.type === "application/pdf") {
+      const data = await new Promise((resolve, reject) => {
+        const r = new FileReader();
+        r.onloadend = () => resolve(String(r.result).split(",")[1]);
+        r.onerror = reject;
+        r.readAsDataURL(file);
+      });
+      return data ? { type: "document", source: { type: "base64", media_type: "application/pdf", data } } : null;
+    }
+  } catch { /* fall through */ }
+  return null;
+}
+
+// Lenient academic-integrity "sniff check" of a student's uploaded written work against the
+// homework problems and their submitted answers. Returns { flagged, reason } — and on any
+// grader error returns { flagged: false, error } so an outage never penalizes a student.
+export async function checkWorkIntegrity({ problems = [], answers = {}, files = [], courseType = "physics1" }) {
+  const courseLabel = COURSE_LABELS[courseType] || "Physics";
+  try {
+    const blocks = (await Promise.all(files.map(workFileToBlock))).filter(Boolean);
+    if (!blocks.length) return { flagged: false, error: "No readable work files were provided to the integrity check." };
+
+    // Summarize each problem + the student's submitted answer(s).
+    const lines = problems.map((p, i) => {
+      const its = (p.parts && p.parts.length)
+        ? p.parts.map((pt, j) => `  Part (${"abcdefgh"[j]}): ${pt.prompt || ""} → answered: ${answers[pt.id] || "—"}`)
+        : [`  → answered: ${answers[p.id] || "—"}`];
+      return `Problem ${i + 1}: ${p.prompt || ""}\n${its.join("\n")}`;
+    }).join("\n\n");
+
+    const system = `You are doing a LENIENT academic-integrity sniff check on a ${courseLabel} student's uploaded handwritten/scratch work. You are given the homework problems, the student's submitted final answers, and image/PDF scans of the work they claim to have done themselves.\n\nYour ONLY job is to decide whether the uploaded work shows plausible evidence the student personally worked these problems — calculations, diagrams, intermediate steps, attempts, crossed-out work, algebra, free-body diagrams, etc. Be GENEROUS: messy, partial, disorganized, or hard-to-read scratch work counts as sufficient. Handwriting need not be neat and work need not be complete or correct.\n\nOnly FLAG when there is clearly NO plausible evidence of personal work: blank or irrelevant images, photos of something unrelated, or only the final typed answers copied out with no supporting work at all.\n\nReply ONLY with valid JSON: {"sufficient":true} if the work is acceptable, or {"sufficient":false,"reason":"one short sentence describing what is missing"} if you must flag it.`;
+    const userText = `Homework problems and the student's submitted answers:\n\n${lines}\n\nThe student's uploaded written work is attached. Does it show reasonable evidence they did this work themselves?`;
+
+    const text = await callClaude({
+      system,
+      messages: [{ role: "user", content: [...blocks, { type: "text", text: userText }] }],
+      maxTokens: 300,
+    });
+    const parsed = parseJsonReply(text, { sufficient: true });
+    if (parsed.sufficient === false) {
+      return { flagged: true, reason: parsed.reason || "The uploaded work does not show enough evidence of original effort." };
+    }
+    return { flagged: false };
+  } catch (err) {
+    return { flagged: false, error: err?.message || "Integrity check could not be completed." };
+  }
 }
 
 // ── Claude calls ────────────────────────────────────────────────────────────────

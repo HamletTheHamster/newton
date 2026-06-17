@@ -1,5 +1,6 @@
 import { useTheme } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
+import { integrityState, integrityAdjustedScore } from "../../homework.js";
 
 const CAT_COLORS = {
   cat_lab: "#818cf8", cat_hw: "#60a5fa", cat_quiz: "#34d399",
@@ -49,19 +50,19 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
 
   const scores = {};
   const excused = {};
+  const pending = {};  // homework flagged for integrity, not yet reviewed → "Pending review"
   for (const a of assignments) {
     const ov = (gradeOverrides[myId] || {})[a.id];
-    if (ov?.excused) {
-      excused[a.id] = true;
-    } else if (ov?.score != null) {
-      scores[a.id] = ov.score;
-    } else {
-      const sub = (submissions || []).find(s => s.studentId === myId && s.quizId === a.id);
-      scores[a.id] = sub != null ? sub.score : null;
-    }
+    const sub = (submissions || []).find(s => s.studentId === myId && s.quizId === a.id);
+    if (ov?.excused) { excused[a.id] = true; continue; }
+    const base = ov?.score != null ? ov.score : (sub != null ? sub.score : null);
+    const ist = integrityState(sub, ov);
+    if (ist.pending) pending[a.id] = true;          // omitted from the overall (see calcExcused)
+    else scores[a.id] = integrityAdjustedScore(base, ist.penalized);
   }
 
-  const { overall, byCategory } = calcGrades({ assignments, categories: gradeCategories, scores, excused });
+  // Pending integrity reviews are omitted from the overall (no score yet), like excused items.
+  const { overall, byCategory } = calcGrades({ assignments, categories: gradeCategories, scores, excused: { ...excused, ...pending } });
 
   const sortedCats = Object.values(gradeCategories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const activeCatCount = sortedCats.filter(c => (byCategory[c.id]?.possible ?? 0) > 0).length;
@@ -138,7 +139,8 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
             {data.assignments.map((item, i) => {
               const a = catAssignments.find(x => x.id === item.id);
               const isDropped = data.dropped.includes(item.id);
-              const sc = scoreColor(item.score, item.excused, item.score == null && !item.excused, muted);
+              const isPending = !!pending[item.id];
+              const sc = isPending ? "#fbbf24" : scoreColor(item.score, item.excused, item.score == null && !item.excused, muted);
               return (
                 <div
                   key={item.id}
@@ -153,8 +155,8 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                     <span style={{ color: isDropped ? muted : text, fontSize: 14 }}>{a?.title || item.id}</span>
                     {isDropped && <span style={{ ...s.badge(muted), fontSize: 10 }}>dropped</span>}
                   </div>
-                  <span style={{ fontFamily: "monospace", fontSize: 14, fontWeight: 600, color: sc }}>
-                    {item.excused ? "EX" : item.score == null ? "–" : `${item.score}/10`}
+                  <span style={{ fontFamily: isPending ? "inherit" : "monospace", fontSize: isPending ? 12 : 14, fontWeight: 600, color: sc }}>
+                    {isPending ? "Pending review" : item.excused ? "EX" : item.score == null ? "–" : `${item.score}/10`}
                   </span>
                 </div>
               );

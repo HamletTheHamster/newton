@@ -678,6 +678,26 @@ export default function App() {
     }
   };
 
+  // Clear a single student's submission for one assignment (quiz or homework), gated behind
+  // the password "verification of intent" modal. Deleting the record lets the student retake
+  // (homework attempt counts are already cleared on submit) and removes its gradebook entry.
+  const clearSubmission = (studentId, assignmentId) => {
+    const removed = submissions.filter(s => s.studentId === studentId && s.quizId === assignmentId);
+    if (!removed.length) return;
+    const who = removed[0].studentName || studentId;
+    const what = removed[0].quizTitle || assignmentId;
+    confirmDanger(`clear ${who}'s submission for "${what}"`, async () => {
+      const newSubs = submissions.filter(s => !(s.studentId === studentId && s.quizId === assignmentId));
+      const removedIds = removed.map(s => s.id);
+      if (removedIds.some(id => checkedSubs[id])) {
+        const nc = { ...checkedSubs };
+        removedIds.forEach(id => { delete nc[id]; });
+        await saveChecked(nc);
+      }
+      await saveSubs(newSubs, studentId);
+    });
+  };
+
   // ── Class management ──────────────────────────────────────────────────────
   const switchToClass = async classId => {
     if (!classId || classId === currentClassId) return;
@@ -1533,9 +1553,9 @@ export default function App() {
       >
         {dangerAction && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
-            <div style={{ ...s.card, border: "1px solid rgba(127,29,29,0.6)", padding: 24, width: "100%", maxWidth: 360 }}>
-              <h3 style={{ color: "#fff", fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Confirm Action</h3>
-              <p style={{ ...s.muted, marginBottom: 16 }}>You are about to: <span style={{ color: "#fca5a5", fontWeight: 500 }}>{dangerAction.label}</span>. This cannot be undone.</p>
+            <div style={{ ...s.card, background: isLight ? "#fff" : "#252627", border: `1px solid ${isLight ? "rgba(185,28,28,0.45)" : "rgba(127,29,29,0.6)"}`, padding: 24, width: "100%", maxWidth: 360 }}>
+              <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Confirm Action</h3>
+              <p style={{ ...s.muted, marginBottom: 16 }}>You are about to: <span style={{ color: isLight ? "#b91c1c" : "#fca5a5", fontWeight: 600 }}>{dangerAction.label}</span>. This cannot be undone.</p>
               <input type="password" style={{ ...s.input, marginBottom: 8 }} placeholder="Instructor password" value={dangerPw} onChange={e => setDangerPw(e.target.value)} onKeyDown={e => e.key === "Enter" && executeDanger()} autoFocus />
               {dangerErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 8px" }}>{dangerErr}</p>}
               <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -1568,6 +1588,7 @@ export default function App() {
             assignmentOrderOverrides={assignmentOrderOverrides}
             onSaveGradeCategories={saveGradeCategories}
             onSaveOverrideForStudent={saveOverrideForStudent}
+            onClearSubmission={clearSubmission}
             onSaveAssignmentCategories={saveAssignmentCategories}
             onSaveManualAssignments={saveManualAssignments}
             onSaveAssignmentNameOverrides={saveAssignmentNameOverrides}
