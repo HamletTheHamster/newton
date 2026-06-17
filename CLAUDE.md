@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 ## Workflow Rules
 
 - **After completing any planned task:** update `CLAUDE.md` (Key Files table, Commands, etc.) and any relevant `docs/` files to reflect new files, components, or behavioral changes introduced by the task.
@@ -11,7 +13,33 @@
 - **Inline styles and theme constants:** see [docs/styling.md](docs/styling.md)
 - **End-to-end testing, local-dev gotchas:** see [docs/testing.md](docs/testing.md)
 - **LMS-style redesign (multi-session plan):** see [docs/lms-redesign.md](docs/lms-redesign.md)
-- **Homework — remaining buildout (incl. practice-only retakes):** see [docs/homework-roadmap.md](docs/homework-roadmap.md)
+- **Homework — remaining buildout:** see [docs/homework-roadmap.md](docs/homework-roadmap.md)
+
+## Key Patterns
+
+### Theme — `useTheme()` in every component
+All components must call `useTheme()` — never import the static `s`, `BG`, `CARD`, etc. constants directly in components (those are App.jsx-only legacy usage):
+```js
+const { s, text, muted, border, teal, card, bg, isLight } = useTheme();
+```
+Every screen branch in `App.jsx` is wrapped in `<ThemeContext.Provider value={appTh}>` so all descendants pick up the correct light/dark state.
+
+**Modal inner cards** must override `card`'s semi-transparent light-mode value with:
+```js
+const solidBg = isLight ? "#fff" : "#252627";
+// <div style={{ ...s.card, background: solidBg, ... }}>
+```
+
+### Navigation — `screen` state, no router
+The entire app is one component (`App.jsx`). Navigation is `setScreen("...")` state. There are no URL routes. Within portals, `studentSection` / `instructorSection` selects the active panel. Selectors in tests must use visible text, not URLs.
+
+### Adding new Firebase per-class state
+Every new Firebase node under `classes/{classId}/` requires changes in **three places** in `App.jsx`:
+1. **Startup cache restore** (~line 300): `if (c.newThing && ...) setNewThing(c.newThing);`
+2. **`loadClassData` Promise.all** (~line 344): add `fbGet(classPath(classId, 'newThing')).catch(() => null),` and destructure + normalize the result
+3. **`setClasses` cache call** (~line 436): add `newThing: newThingObj` to keep the in-memory class cache in sync for fast class-switching
+
+Also add the new node name to `database.rules.json` under `$classId`.
 
 ## Key Files
 
@@ -26,10 +54,10 @@
 | `src/screens/student/` | Student section pages (Home, StudentCalendar, StudentGrades, CourseEvals, Stub) — all use `useTheme()` for dark/light support |
 | `src/screens/student/StudentSyllabus.jsx` | Student syllabus display — renders `syllabus.fields` as cards; `showHeader` prop used by instructor view |
 | `src/screens/instructor/Modules.jsx` | Instructor module editor — add/reorder/hide items, custom quiz creation, three-dot menus for page/quiz edit; quiz **and homework** items (`type:"homework"`, `refId:"hwN"`) resolve titles and support due-date editing; uses `useTheme()` for dark/light support |
-| `src/screens/instructor/Assignments.jsx` | Instructor assignments hub — view/filter/sort all quizzes **and homeworks**, set due dates, create/edit/delete custom quizzes; filter bar matches Gradebook aesthetic (`s.badge`, color-coded type buttons incl. Homework, `{ numeric: true }` natural sort); baked-in quizzes and code-defined homeworks support due-date edits only |
+| `src/screens/instructor/Assignments.jsx` | Instructor assignments hub — view/filter/sort all quizzes **and homeworks**, set due dates, create/edit/delete custom quizzes; homework rows get a "⚙ Settings"/"⚙ Custom" button that opens `HwGradingModal` (6 grading fields stored at `classes/{classId}/homeworkSettings/{hwId}`); uses `useTheme()` for dark/light support |
 | `src/screens/instructor/Gradebook.jsx` | Instructor gradebook — weighted categories, per-student scores, CSV export, manual assignments, excuse/unexcuse (restores prior manual score via `previousScore`), per-student deadline extensions; clicking a grade cell opens a 220px right panel (`GradeDetailPanel`) with view-submission, excuse, and deadline-extension actions; `SubViewModal` renders the quiz chat dialogue OR (for `submission.type === "homework"`) a per-problem/per-part breakdown via `HomeworkItemRow`; custom horizontal scrollbar (hidden native, custom thumb scoped to assignment columns only, fades in/out); uses `useTheme()` for dark/light support |
-| `src/homework.js` | Homework grading engine — `HW_GRADING_DEFAULTS` (3 free attempts, hint+80% after 3rd wrong, reveal+50% after 5th wrong, ±2% numeric tolerance), `creditForAttempt`, `phaseForAttempt`, `numericMatch`/`parseNumber`/`formatNumericAnswer`, `evaluateHomeworkAnswer` (deterministic numeric + Claude word/math eval via `claude-opus-4-8` + targeted diagnostic hints; reuses the `netlify/functions/claude.js` proxy; throws on grader/empty-response errors so the runner surfaces them without consuming an attempt) |
-| `src/screens/student/HomeworkRunner.jsx` | MasteringPhysics-style homework runner (`screen === "homework"`) — figure + prompt (`MathText`) + typed input by `answerType` (numeric field, text area, `MathField` for math), attempts-left, hint/reveal, running score; builds a `{ type:"homework", quizId: hw.id, rawScore, nativeTotal, score(/10), problems:[…] }` submission and persists via `saveSubs` |
+| `src/homework.js` | Homework grading engine — `HW_GRADING_DEFAULTS` (3 free attempts, hint+80% after 3rd wrong, reveal+50% after 5th wrong, ±2% numeric tolerance), `creditForAttempt`, `phaseForAttempt`, `numericMatch`/`parseNumber`/`formatNumericAnswer`, `evaluateHomeworkAnswer` (deterministic numeric + Claude word/math eval via `claude-opus-4-8` + targeted diagnostic hints; reuses the `netlify/functions/claude.js` proxy; throws on grader/empty-response errors so the runner surfaces them without consuming an attempt); all engine functions accept a `grading` arg so per-assignment overrides flow through without touching the engine |
+| `src/screens/student/HomeworkRunner.jsx` | MasteringPhysics-style homework runner (`screen === "homework"`) — figure + prompt (`MathText`) + typed input by `answerType` (numeric field, text area, `MathField` for math), attempts-left, hint/reveal, running score; builds a `{ type:"homework", quizId: hw.id, rawScore, nativeTotal, score(/10), problems:[…] }` submission and persists via `saveSubs`; accepts `practice` prop — when true, skips `onFinish`/`saveSubs` and labels the session "Practice" |
 | `src/components/MathField.jsx` · `MathText.jsx` | `MathField` = controlled MathLive `<math-field>` LaTeX editor (lazy-loaded); `MathText` = KaTeX renderer for `$…$`/`\(…\)`/`\[…\]` in prompts and answer reveals |
 | `src/screens/instructor/InstructorSyllabus.jsx` | Instructor syllabus — upload/replace/remove PDF, mismatch warning, full content via `StudentSyllabus`; uses `useTheme()` for dark/light support |
 | `netlify/functions/claude.js` | Claude API proxy — reads `CLAUDE_API_KEY` (NOT `ANTHROPIC_API_KEY`, which the Netlify Anthropic extension overrides with a rotating gateway JWT); see [docs/environment.md](docs/environment.md) |

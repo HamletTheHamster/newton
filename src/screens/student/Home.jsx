@@ -35,7 +35,7 @@ export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submis
 
   const onItemClick = (item, meta) => {
     if (item.type === "quiz" && meta?.quiz) { onStartQuiz(meta.quiz); return; }
-    if (item.type === "homework" && meta?.homework) { onStartHomework(meta.homework); return; }
+    if (item.type === "homework" && meta?.homework) { onStartHomework(meta.homework, meta.completed); return; }
     if ((item.type === "reading" || item.type === "notes" || item.type === "link") && item.url) {
       window.open(item.url, "_blank", "noopener,noreferrer");
       return;

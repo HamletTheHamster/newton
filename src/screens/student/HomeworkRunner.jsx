@@ -4,7 +4,7 @@ import { isLate } from "../../utils.js";
 import { MathField } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import {
-  HW_GRADING_DEFAULTS as G,
+  HW_GRADING_DEFAULTS,
   creditForAttempt,
   phaseForAttempt,
   evaluateHomeworkAnswer,
@@ -25,9 +25,10 @@ function itemsOf(p) {
 
 // MasteringPhysics-style homework runner. Owns all per-item state; on finish, builds a
 // submission object and calls onFinish(submission) (which persists it and may throw).
-export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish, onLeave }) {
+export function HomeworkRunner({ homework, courseType, loggedInStudent, practice = false, onFinish, onLeave }) {
   const { s, text, muted, border, teal, card, isLight } = useTheme();
   const solidBg = isLight ? "#fff" : "#252627";
+  const G = homework.grading || HW_GRADING_DEFAULTS;
 
   const problems = homework.problems || [];
   const allItems = problems.flatMap(itemsOf);
@@ -59,18 +60,19 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
     if (!ans) return;
     setBusy(item.id);
     const attemptNum = (attempts[item.id] || 0) + 1;
-    const phase = phaseForAttempt(attemptNum);
+    const phase = phaseForAttempt(attemptNum, G);
     try {
       const result = await evaluateHomeworkAnswer({
         item, studentAnswer: ans, attemptNum, phase,
         history: history[item.id] || [], courseType,
+        grading: G,
       });
       if (result._historyUser) {
         setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));
       }
       setAttempts(a => ({ ...a, [item.id]: attemptNum }));
       if (result.correct) {
-        setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum) * item.weight }));
+        setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum, G) * item.weight }));
         setStatus(st => ({ ...st, [item.id]: "correct" }));
         setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "correct" } }));
       } else if (attemptNum >= G.maxAttempts) {
@@ -120,6 +122,7 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
   };
 
   const finish = async () => {
+    if (practice) { setDone(true); return; }
     setSaving(true);
     try {
       await onFinish(buildSubmission());
@@ -236,9 +239,9 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
-            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>Homework complete</div>
+            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete — not submitted for a grade" : "Homework complete"}</div>
             <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
-            {late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
+            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
           </div>
           {problems.map((p, i) => {
             const its = itemsOf(p);
@@ -250,14 +253,14 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
               </div>
             );
           })}
-          {saveError && (
+          {!practice && saveError && (
             <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
               <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission could not be saved</p>
               <p style={{ color: muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>Check your connection and tap Retry. If it keeps failing, contact your instructor and show them this screen.</p>
               <button onClick={retrySave} disabled={saving} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>{saving ? "Retrying…" : "Retry saving"}</button>
             </div>
           )}
-          {!saveError && <button onClick={onLeave} style={{ ...s.btnPri }}>Back to Course</button>}
+          {(practice || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>Back to Course</button>}
         </div>
       </div>
     );
@@ -274,7 +277,7 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
             <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave homework?</h3>
-            <p style={{ ...s.muted, marginBottom: 20 }}>Your progress will be lost and this attempt will not be saved.</p>
+            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "Your progress will be lost." : "Your progress will be lost and this attempt will not be saved."}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeave(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
               <button onClick={onLeave} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
@@ -289,8 +292,10 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
           <button onClick={() => setShowLeave(true)} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto" }}>← Back</button>
           <div style={{ width: 1, height: 20, background: border }} />
           <div>
-            <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>{homework.title}</div>
-            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{loggedInStudent?.fullName}{late ? " · ⚠️ past due (50% penalty)" : ""}</p>
+            <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
+              {homework.title}{practice && <span style={s.badge(teal)}>Practice</span>}
+            </div>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{loggedInStudent?.fullName}{!practice && late ? " · ⚠️ past due (50% penalty)" : ""}</p>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
@@ -319,7 +324,7 @@ export function HomeworkRunner({ homework, courseType, loggedInStudent, onFinish
           <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0} style={{ ...s.btnSec, width: "auto", padding: "8px 16px", opacity: idx === 0 ? 0.4 : 1 }}>← Previous</button>
           {idx < total - 1
             ? <button onClick={() => setIdx(i => Math.min(total - 1, i + 1))} style={{ ...s.btnSec, width: "auto", padding: "8px 16px" }}>Next →</button>
-            : <button onClick={finish} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1 }}>{saving ? "Submitting…" : "Finish & Submit"}</button>}
+            : <button onClick={finish} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1 }}>{saving ? "Submitting…" : practice ? "Finish" : "Finish & Submit"}</button>}
         </div>
       </div>
     </div>

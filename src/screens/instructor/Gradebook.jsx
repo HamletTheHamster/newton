@@ -36,6 +36,20 @@ function cellFg(score, isExcused, isMissing) {
   return "#f87171";
 }
 
+// Recompute a homework submission's /10 score using per-part earned overrides.
+// partScores: { [itemId]: earnedValue } — only overridden items need be present.
+function computeScoreFromPartOverrides(submission, partScores) {
+  const rawScore = (submission.problems || []).reduce((total, p) => {
+    const items = p.parts || [p];
+    return total + items.reduce((s, item) => {
+      const ov = partScores[item.id];
+      return s + (ov != null ? Number(ov) : (item.earned ?? 0));
+    }, 0);
+  }, 0);
+  const pct = (submission.nativeTotal || 1) > 0 ? rawScore / submission.nativeTotal : 0;
+  return parseFloat((pct * 10 * (submission.late ? 0.5 : 1)).toFixed(2));
+}
+
 // cellBorder is computed inside each component from useTheme().border
 
 // ── EditCell ──────────────────────────────────────────────────────────────────
@@ -120,16 +134,21 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
 
       {/* View Submission */}
       {sub && (
-        <button
-          onMouseDown={e => e.preventDefault()}
-          onClick={onViewSub}
-          style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`, borderRadius: 6,
-            color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px", textAlign: "left",
-            display: "flex", alignItems: "center", justifyContent: "space-between" }}
-        >
-          <span>View Submission</span>
-          <span style={{ color: muted }}>→</span>
-        </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={onViewSub}
+            style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`, borderRadius: 6,
+              color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px", textAlign: "left",
+              display: "flex", alignItems: "center", justifyContent: "space-between" }}
+          >
+            <span>{sub.type === "homework" ? "View / Edit Submission" : "View Submission"}</span>
+            <span style={{ color: muted }}>→</span>
+          </button>
+          {sub.type === "homework" && ov.partScores && Object.keys(ov.partScores).length > 0 && (
+            <div style={{ fontSize: 11, color: "#60a5fa" }}>✎ Part scores overridden</div>
+          )}
+        </div>
       )}
 
       {/* Excuse / Unexcuse */}
@@ -364,10 +383,12 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
 }
 
 // ── SubViewModal ──────────────────────────────────────────────────────────────
-function HomeworkItemRow({ row, label }) {
+function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
   const { s, muted, border, text } = useTheme();
   const correct = row.status === "correct";
   const color = correct ? "#4ade80" : row.status === "revealed" ? "#60a5fa" : "#f87171";
+  const parsedEdit = editEarned !== undefined ? parseFloat(editEarned) : NaN;
+  const isOverridden = !isNaN(parsedEdit) && Math.abs(parsedEdit - (row.earned ?? 0)) > 0.0001;
   return (
     <div style={{ paddingTop: label ? 10 : 0, borderTop: label ? `1px solid ${border}` : "none", marginTop: label ? 10 : 0 }}>
       {label && <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Part ({label})</div>}
@@ -376,17 +397,76 @@ function HomeworkItemRow({ row, label }) {
         <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>
         <span style={{ color }}>{correct ? "Correct" : row.status === "revealed" ? "Answer revealed" : "Open"}</span>
         <span>{row.attempts} attempt{row.attempts !== 1 ? "s" : ""}</span>
-        <span style={{ ...s.badge(color), fontSize: 11 }}>{(row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
+        {onEditChange ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <input
+              type="number"
+              value={editEarned !== undefined ? editEarned : String(row.earned ?? 0)}
+              onChange={e => onEditChange(e.target.value)}
+              min={0}
+              max={row.max ?? 1}
+              step={0.01}
+              style={{ width: 58, background: "transparent", border: `1px solid ${isOverridden ? "#60a5fa" : border}`, borderRadius: 4, color: isOverridden ? "#60a5fa" : text, fontSize: 13, fontFamily: "monospace", textAlign: "center", padding: "2px 4px" }}
+            />
+            <span style={{ color: muted, fontSize: 11 }}>/ {(row.max ?? 1).toFixed(2)} pt</span>
+          </div>
+        ) : (
+          <span style={{ ...s.badge(color), fontSize: 11 }}>{(row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
+        )}
         {!correct && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
       </div>
     </div>
   );
 }
 
-function SubViewModal({ submission, studentName, assignmentTitle, onClose }) {
+function SubViewModal({ submission, studentName, assignmentTitle, onClose, partOverrides = {}, onSavePartScores }) {
   const { s, muted, border, text, card, bg } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
+  const canEdit = isHomework && !!onSavePartScores;
+  const hasOverrides = Object.keys(partOverrides).length > 0;
+
+  // Flat list of all gradable items (parts or whole problems)
+  const allItems = isHomework ? (submission.problems || []).flatMap(p => p.parts || [p]) : [];
+
+  // draftParts: { [itemId]: string } — initialized from existing overrides; undefined means untouched
+  const [draftParts, setDraftParts] = useState(() => {
+    const init = {};
+    for (const [id, val] of Object.entries(partOverrides)) init[id] = String(val);
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const setItemDraft = (itemId, val) => setDraftParts(d => ({ ...d, [itemId]: val }));
+
+  // Build partScores from draft: only include items where value differs from submission's earned
+  const buildPartScores = () => {
+    const result = {};
+    for (const item of allItems) {
+      const raw = draftParts[item.id];
+      if (raw === undefined) continue;
+      const val = parseFloat(raw);
+      if (isNaN(val)) continue;
+      const clamped = parseFloat(Math.max(0, Math.min(item.max ?? 1, val)).toFixed(4));
+      if (Math.abs(clamped - (item.earned ?? 0)) > 0.0001) result[item.id] = clamped;
+    }
+    return result;
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try { await onSavePartScores(buildPartScores()); }
+    finally { setSaving(false); }
+  };
+
+  const handleReset = async () => {
+    setSaving(true);
+    try {
+      await onSavePartScores({});
+      setDraftParts({});
+    } finally { setSaving(false); }
+  };
+
   return (
     <div style={{ position: "fixed", inset: 0, background: bg, display: "flex", flexDirection: "column", zIndex: 60 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: card, borderBottom: cellBorder, padding: "14px 20px", flexShrink: 0 }}>
@@ -396,21 +476,51 @@ function SubViewModal({ submission, studentName, assignmentTitle, onClose }) {
             Score: {submission.score}/10{isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
           </div>
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 28, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {canEdit && hasOverrides && (
+            <button onClick={handleReset} disabled={saving}
+              style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 12, color: "#f87171", borderColor: "#f8717155" }}>
+              Reset scores
+            </button>
+          )}
+          {canEdit && (
+            <button onClick={handleSave} disabled={saving}
+              style={{ ...s.btnPri, width: "auto", padding: "6px 16px", fontSize: 12 }}>
+              {saving ? "Saving…" : "Save part scores"}
+            </button>
+          )}
+          <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 28, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+        </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
         {isHomework ? (
           (submission.problems || []).map((p, i) => {
             const parts = p.parts || [p];
             const labels = p.parts ? "abcdefgh".split("") : [null];
+            // Recompute displayed problem earned from drafts
+            const problemEarned = canEdit
+              ? parts.reduce((sum, row) => {
+                  const raw = draftParts[row.id];
+                  const val = raw !== undefined ? parseFloat(raw) : NaN;
+                  return sum + (!isNaN(val) ? Math.max(0, Math.min(row.max ?? 1, val)) : (row.earned ?? 0));
+                }, 0)
+              : (p.earned ?? 0);
             return (
               <div key={p.id || i} style={{ ...s.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <span style={{ color: text, fontWeight: 700, fontSize: 14 }}>Problem {i + 1}</span>
-                  <span style={{ color: muted, fontFamily: "monospace", fontSize: 13 }}>{(p.earned ?? 0).toFixed(2)} / {(p.max ?? 1).toFixed(2)}</span>
+                  <span style={{ color: muted, fontFamily: "monospace", fontSize: 13 }}>{problemEarned.toFixed(2)} / {(p.max ?? 1).toFixed(2)}</span>
                 </div>
                 {p.parts && p.prompt && <div style={{ color: text, fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}><MathText>{p.prompt}</MathText></div>}
-                {parts.map((row, j) => <HomeworkItemRow key={row.id || j} row={row} label={labels[j]} />)}
+                {parts.map((row, j) => (
+                  <HomeworkItemRow
+                    key={row.id || j}
+                    row={row}
+                    label={labels[j]}
+                    editEarned={canEdit ? (draftParts[row.id] !== undefined ? draftParts[row.id] : String(row.earned ?? 0)) : undefined}
+                    onEditChange={canEdit ? val => setItemDraft(row.id, val) : undefined}
+                  />
+                ))}
               </div>
             );
           })
@@ -529,12 +639,14 @@ export function Gradebook({
     excusedMap[stu.studentId] = {};
     for (const a of assignments) {
       const ov = (gradeOverrides[stu.studentId] || {})[a.id];
+      const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
       if (ov?.excused) {
         excusedMap[stu.studentId][a.id] = true;
       } else if (ov?.score != null) {
         scoreMap[stu.studentId][a.id] = ov.score;
+      } else if (ov?.partScores && sub?.type === "homework") {
+        scoreMap[stu.studentId][a.id] = computeScoreFromPartOverrides(sub, ov.partScores);
       } else {
-        const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
         scoreMap[stu.studentId][a.id] = sub != null ? sub.score : null;
       }
     }
@@ -608,6 +720,22 @@ export function Gradebook({
       delete current[assignmentId];
     }
     await onSaveOverrideForStudent(studentId, current);
+  };
+
+  const savePartScoresForCell = async (studentId, assignmentId, partScores) => {
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    const existing = current[assignmentId] || {};
+    // Part scores replace any whole-assignment score override; preserve excused and dueDate
+    const { score: _s, previousScore: _p, ...rest } = existing;
+    if (Object.keys(partScores).length > 0) {
+      current[assignmentId] = { ...rest, partScores };
+    } else {
+      const { partScores: _ps, ...restNoPs } = rest;
+      if (Object.keys(restNoPs).length) current[assignmentId] = restNoPs;
+      else delete current[assignmentId];
+    }
+    await onSaveOverrideForStudent(studentId, current,
+      Object.keys(partScores).length ? "✓ Part scores saved" : "✓ Part score overrides cleared");
   };
 
   const saveDueDate = async (studentId, assignmentId, dateStr) => {
@@ -983,7 +1111,7 @@ export function Gradebook({
             const stu = (roster || []).find(r => r.studentId === studentId);
             const asgn = (assignments || []).find(a => a.id === assignmentId);
             const sub = (submissions || []).find(s => s.studentId === studentId && s.quizId === assignmentId);
-            if (sub) setViewSubModal({ submission: sub, studentName: stu?.altName || stu?.fullName, assignmentTitle: asgn?.title });
+            if (sub) setViewSubModal({ submission: sub, studentName: stu?.altName || stu?.fullName, assignmentTitle: asgn?.title, studentId, assignmentId });
           }}
           onSaveDueDate={saveDueDate}
           setEditingCell={setEditingCell}
@@ -1005,6 +1133,10 @@ export function Gradebook({
           studentName={viewSubModal.studentName}
           assignmentTitle={viewSubModal.assignmentTitle}
           onClose={() => setViewSubModal(null)}
+          partOverrides={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId]?.partScores || {}}
+          onSavePartScores={viewSubModal.submission.type === "homework"
+            ? ps => savePartScoresForCell(viewSubModal.studentId, viewSubModal.assignmentId, ps)
+            : undefined}
         />
       )}
     </div>

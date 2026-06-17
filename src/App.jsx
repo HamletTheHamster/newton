@@ -11,6 +11,7 @@ import {
   parseRoster,
 } from "./utils.js";
 import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, defaultModulesForCourse } from "./courses/index.js";
+import { HW_GRADING_DEFAULTS } from "./homework.js";
 import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
@@ -122,6 +123,7 @@ export default function App() {
   const [manualAssignments, setManualAssignments] = useState({});         // { [id]: { id, title, catId, maxPts } }
   const [assignmentNameOverrides, setAssignmentNameOverrides] = useState({}); // { [assignmentId]: string }
   const [assignmentOrderOverrides, setAssignmentOrderOverrides] = useState({}); // { [assignmentId]: number }
+  const [homeworkSettings, setHomeworkSettings] = useState({});                 // { [hwId]: grading override obj }
   const [studentAvailableClasses, setStudentAvailableClasses] = useState([]);
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
   const [dataReady, setDataReady] = useState(false);
@@ -217,7 +219,7 @@ export default function App() {
       isCustom: true,
     })),
   ].map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
-  const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueDates[h.id] || null }));
+  const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueDates[h.id] || null, grading: { ...HW_GRADING_DEFAULTS, ...(homeworkSettings[h.id] || {}) } }));
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
   const currentQ = activeQuiz?.questions[qIdx];
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
@@ -318,6 +320,7 @@ export default function App() {
           if (c.gradeOverrides && typeof c.gradeOverrides === 'object') setGradeOverrides(c.gradeOverrides);
           if (c.assignmentCategories && typeof c.assignmentCategories === 'object') setAssignmentCategories(c.assignmentCategories);
           if (c.customQuizzes && typeof c.customQuizzes === 'object') setCustomQuizzes(c.customQuizzes);
+          if (c.homeworkSettings && typeof c.homeworkSettings === 'object') setHomeworkSettings(c.homeworkSettings);
         } else if (storedId) {
           setCurrentClassId(null);
         }
@@ -341,7 +344,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -360,6 +363,7 @@ export default function App() {
         fbGet(classPath(classId, 'assignmentOrderOverrides')).catch(() => null),
         fbGet(classPath(classId, 'syllabus')).catch(() => null),
         fbGet(classPath(classId, 'customQuizzes')).catch(() => null),
+        fbGet(classPath(classId, 'homeworkSettings')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -427,7 +431,9 @@ export default function App() {
       setManualAssignments(manualAsgnObj);
       setAssignmentNameOverrides(nameOverrideObj);
       setAssignmentOrderOverrides(orderOverrideObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, customQuizzes: customQuizzesObj } }));
+      const hwSettingsObj = (hwSettingsData && typeof hwSettingsData === 'object') ? hwSettingsData : {};
+      setHomeworkSettings(hwSettingsObj);
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -505,6 +511,15 @@ export default function App() {
   };
   const saveStudentPws = async p => { const cid = requireClass(); setStudentPws(p); updateClassCache(cid, 'studentPws', p); await fbSave(classPath(cid, 'studentPws'), p); };
   const saveDueDates = async d => { const cid = requireClass(); setDueDates(d); updateClassCache(cid, 'dueDates', d); await fbSave(classPath(cid, 'dueDates'), d); };
+  const saveHomeworkSettingFor = async (hwId, overrides) => {
+    const cid = requireClass();
+    const next = overrides
+      ? { ...homeworkSettings, [hwId]: overrides }
+      : (() => { const n = { ...homeworkSettings }; delete n[hwId]; return n; })();
+    setHomeworkSettings(next);
+    updateClassCache(cid, 'homeworkSettings', next);
+    await fbSave(classPath(cid, 'homeworkSettings'), Object.keys(next).length ? next : null, 'hw settings');
+  };
   const saveSettings = async ns => { setSettings(ns); await fbSave('settings', ns); };
   const saveChecked = async c => { const cid = requireClass(); setCheckedSubs(c); updateClassCache(cid, 'checkedSubs', c); await fbSave(classPath(cid, 'checkedSubs'), c); };
   const saveModules = async nextArr => {
@@ -913,7 +928,8 @@ export default function App() {
     setScreen("quiz");
     history.pushState({ newton: "quiz" }, "", "");
   };
-  const startHomework = hw => {
+  const startHomework = (hw, isPractice = false) => {
+    setPracticeMode(isPractice);
     setActiveHomework(hw);
     setScreen("homework");
     history.pushState({ newton: "homework" }, "", "");
@@ -1287,6 +1303,7 @@ export default function App() {
           homework={activeHomework}
           courseType={classMeta?.courseType || "physics1"}
           loggedInStudent={loggedInStudent}
+          practice={practiceMode}
           onFinish={saveHomeworkSub}
           onLeave={() => setScreen("student-portal")}
         />
@@ -1597,7 +1614,9 @@ export default function App() {
             homeworks={homeworks}
             customQuizzes={customQuizzes}
             dueDates={dueDates}
+            homeworkSettings={homeworkSettings}
             onSaveDueDates={saveDueDates}
+            onSaveHomeworkSettings={saveHomeworkSettingFor}
             onEditCustomQuiz={quizId => {
               const cq = customQuizzes[quizId];
               if (cq) setEditingCustomQuiz({ quizId, title: cq.title, text: cq.text, moduleId: null });

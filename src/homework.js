@@ -98,11 +98,11 @@ function parseJsonReply(text, fallback) {
 // Evaluate one item (a problem, or a single part of a multipart problem).
 // phase ∈ "normal" | "hint" | "reveal" — the intent IF the answer is wrong.
 // Returns { correct, message, revealedAnswer? }.
-export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, phase, history = [], courseType = "physics1" }) {
+export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, phase, history = [], courseType = "physics1", grading = HW_GRADING_DEFAULTS }) {
   const courseLabel = COURSE_LABELS[courseType] || "Physics";
 
   if (item.answerType === "numeric") {
-    const correct = numericMatch(studentAnswer, item.answer, item.tolerance);
+    const correct = numericMatch(studentAnswer, item.answer, item.tolerance ?? grading.numericTolerance);
     if (correct) return { correct: true, message: "✓ Correct." };
     if (phase === "reveal") {
       return { correct: false, revealedAnswer: revealAnswerFor(item), message: `Not quite. The correct answer is ${revealAnswerFor(item)}.` };
