@@ -43,7 +43,7 @@ function todayDateStr() {
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export function StudentCalendar({ quizzes, completedQuizIds }) {
+export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
   const { s, text, muted, border, teal, hover } = useTheme();
   const isMobile = useIsMobile();
   const [viewDate, setViewDate] = useState(() => {
@@ -56,14 +56,18 @@ export function StudentCalendar({ quizzes, completedQuizIds }) {
   const today = todayDateStr();
 
   const eventMap = {};
-  for (const q of quizzes) {
-    if (!q.dueDate) continue;
-    const key = q.dueDate.slice(0, 10);
-    if (!eventMap[key]) eventMap[key] = [];
-    eventMap[key].push({ id: q.id, title: q.title, kind: "quiz", done: completedQuizIds.has(q.id) });
-  }
+  const addEvents = (items, kind) => {
+    for (const it of items) {
+      if (!it.dueDate) continue;
+      const key = it.dueDate.slice(0, 10);
+      if (!eventMap[key]) eventMap[key] = [];
+      eventMap[key].push({ id: it.id, title: it.title, kind, done: completedQuizIds.has(it.id) });
+    }
+  };
+  addEvents(quizzes, "quiz");
+  addEvents(homeworks, "homework");
 
-  const hasAnyDueDates = quizzes.some(q => q.dueDate);
+  const hasAnyDueDates = quizzes.some(q => q.dueDate) || homeworks.some(h => h.dueDate);
   const grid = buildGrid(year, month);
   const kindsPresent = [...new Set(Object.values(eventMap).flat().map(e => e.kind))];
 

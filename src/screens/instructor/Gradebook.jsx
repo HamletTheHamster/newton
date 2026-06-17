@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
 import { ChatMessages } from "../../components/ChatMessages.jsx";
+import { MathText } from "../../components/MathText.jsx";
 import { newId } from "../../courses/ids.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -363,22 +364,57 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
 }
 
 // ── SubViewModal ──────────────────────────────────────────────────────────────
+function HomeworkItemRow({ row, label }) {
+  const { s, muted, border, text } = useTheme();
+  const correct = row.status === "correct";
+  const color = correct ? "#4ade80" : row.status === "revealed" ? "#60a5fa" : "#f87171";
+  return (
+    <div style={{ paddingTop: label ? 10 : 0, borderTop: label ? `1px solid ${border}` : "none", marginTop: label ? 10 : 0 }}>
+      {label && <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Part ({label})</div>}
+      {row.prompt && <div style={{ color: text, fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}><MathText>{row.prompt}</MathText></div>}
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: muted, alignItems: "center" }}>
+        <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>
+        <span style={{ color }}>{correct ? "Correct" : row.status === "revealed" ? "Answer revealed" : "Open"}</span>
+        <span>{row.attempts} attempt{row.attempts !== 1 ? "s" : ""}</span>
+        <span style={{ ...s.badge(color), fontSize: 11 }}>{(row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
+        {!correct && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
+      </div>
+    </div>
+  );
+}
+
 function SubViewModal({ submission, studentName, assignmentTitle, onClose }) {
   const { s, muted, border, text, card, bg } = useTheme();
   const cellBorder = `1px solid ${border}`;
+  const isHomework = submission.type === "homework";
   return (
     <div style={{ position: "fixed", inset: 0, background: bg, display: "flex", flexDirection: "column", zIndex: 60 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: card, borderBottom: cellBorder, padding: "14px 20px", flexShrink: 0 }}>
         <div>
           <div style={{ color: text, fontWeight: 700, fontSize: 15 }}>{studentName} — {assignmentTitle}</div>
           <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
-            Score: {submission.score}/10{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
+            Score: {submission.score}/10{isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
           </div>
         </div>
         <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 28, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-        {submission.dialogue?.length > 0
+        {isHomework ? (
+          (submission.problems || []).map((p, i) => {
+            const parts = p.parts || [p];
+            const labels = p.parts ? "abcdefgh".split("") : [null];
+            return (
+              <div key={p.id || i} style={{ ...s.card, padding: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <span style={{ color: text, fontWeight: 700, fontSize: 14 }}>Problem {i + 1}</span>
+                  <span style={{ color: muted, fontFamily: "monospace", fontSize: 13 }}>{(p.earned ?? 0).toFixed(2)} / {(p.max ?? 1).toFixed(2)}</span>
+                </div>
+                {p.parts && p.prompt && <div style={{ color: text, fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}><MathText>{p.prompt}</MathText></div>}
+                {parts.map((row, j) => <HomeworkItemRow key={row.id || j} row={row} label={labels[j]} />)}
+              </div>
+            );
+          })
+        ) : submission.dialogue?.length > 0
           ? <ChatMessages messages={submission.dialogue} />
           : <div style={{ ...s.card, padding: 32, textAlign: "center", color: muted }}>No dialogue saved for this submission.</div>}
       </div>

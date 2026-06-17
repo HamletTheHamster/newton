@@ -69,7 +69,7 @@ export async function checkImageReadability(imgData) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
       max_tokens: 200,
       system: "You are checking whether a student's uploaded photo of a hand-drawn physics graph is legible enough to evaluate. Reply ONLY with valid JSON: {\"readable\":true} if the drawing is clear enough to assess, or {\"readable\":false,\"reason\":\"one short sentence telling the student specifically what to fix\"} if not.",
       messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: imgData.type, data: imgData.data } }, { type: "text", text: "Is this image of a hand-drawn physics graph clear and legible enough to evaluate?" }] }],
@@ -100,12 +100,20 @@ export async function evaluateAnswer(question, answer, history, imageData, attem
   const res = await fetch("/.netlify/functions/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-opus-4-7", max_tokens: 1000, system, messages: [...history, { role: "user", content: userContent }] }),
+    body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 1000, system, messages: [...history, { role: "user", content: userContent }] }),
   });
-  const data = await res.json();
+  let data;
+  try { data = await res.json(); }
+  catch { throw new Error("The grader returned a non-JSON response. Run the app with `netlify dev` so the Claude proxy function is available."); }
+  if (!res.ok || data?.error) {
+    throw new Error("Grader error: " + (data?.error?.message || `HTTP ${res.status}`));
+  }
   const text = data.content?.map(b => b.text || "").join("") || "";
+  if (!text.trim()) {
+    throw new Error("The grader returned an empty response (check that ANTHROPIC_API_KEY is set in the Netlify dev environment).");
+  }
   try { return JSON.parse(text.replace(/```json\n?|```/g, "").trim()); }
-  catch { return { status: "incorrect", message: text || "Can you elaborate a bit more?" }; }
+  catch { return { status: "incorrect", message: text }; }
 }
 
 // ── Roster CSV parsing ───────────────────────────────────────────────────────
@@ -178,7 +186,7 @@ export function buildGradebookAssignments(mergedModules, quizzes, assignmentCate
       const id = item.refId || item.id;
       if (seen.has(id)) continue;
       seen.add(id);
-      const baseTitle = (item.type === "quiz" ? quizById[id]?.title : item.title) || id;
+      const baseTitle = ((item.type === "quiz" || item.type === "homework") ? quizById[id]?.title : item.title) || id;
       const title = (assignmentNameOverrides || {})[id] || baseTitle;
       const catId = (assignmentCategories || {})[id] || DEFAULT_GRADEBOOK_CAT_BY_TYPE[item.type] || "cat_quiz";
       const naturalOrder = modIdx * 100 + itemIdx;

@@ -4,13 +4,13 @@ The application is organized around a single top-level component in `src/App.jsx
 
 **Screens:** `student-search` → `student-pw` → `student-portal` → `quiz` | `inst-login` → `instructor` → `inst-sub-detail`
 
-Within `student-portal`, the active sidebar section is `studentSection` (one of `home`/`calendar`/`syllabus`/`announcements`/`grades`/`evals`). Within `instructor`, `instructorSection` selects the active panel (`modules`/`submissions`/`quizzes`/`roster`/`announcements`/`gradebook`/`settings`/`bugs`). The `modules` section is labeled "Home" in the UI. Module content for each course (titles, per-week items) is defined in `src/courses/{courseType}.js`. See [docs/lms-redesign.md](lms-redesign.md) for the multi-session redesign plan.
+Within `student-portal`, the active sidebar section is `studentSection` (one of `home`/`calendar`/`syllabus`/`announcements`/`grades`/`evals`). Within `instructor`, `instructorSection` selects the active panel (`modules`/`assignments`/`gradebook`/`calendar`/`roster`/`announcements`/`syllabus`/`evals`/`settings`). The `modules` section is labeled "Home" in the UI. Module content for each course (titles, per-week items) is defined in `src/courses/{courseType}.js`. See [docs/lms-redesign.md](lms-redesign.md) for the multi-session redesign plan.
 
 ## Firebase (no SDK — REST only)
 
 All Firebase access goes through hand-rolled REST helpers in `src/firebase.js`:
 
-- **App Check** (`getAppCheckToken`): exchanges a reCAPTCHA v3 token (prod) or a hardcoded debug UUID (dev) for a short-lived App Check token. Pre-warms at module load. The RTDB rules reject any request without a valid App Check token.
+- **App Check** (`getAppCheckToken`): exchanges a reCAPTCHA v3 token (prod) or the env var `VITE_FIREBASE_DEBUG_TOKEN` from `.env.local` (dev) for a short-lived App Check token. Pre-warms at module load. The RTDB rules reject any request without a valid App Check token.
 - **Anonymous Auth** (`getAuthToken`): signs in anonymously via the Identity Toolkit REST API and refreshes automatically. The `?auth=<idToken>` query param is required on every RTDB request.
 - **`fbGet` / `fbSet`**: thin wrappers that attach both tokens. Every data write goes through `fbSave` (inside `App.jsx`), which additionally manages the `syncStatus` state shown in the instructor header.
 
@@ -23,7 +23,7 @@ classes/
     metadata/                      {name, courseType, active, createdAt}
     roster/                        array of {studentId, firstName, lastName, fullName, email?, altName?}
     studentPws/                    {studentId: {hash, salt}}
-    submissions/                   {studentId: [submission, ...]}
+    submissions/                   {studentId: [submission, ...]}  — quiz submissions carry `dialogue`; homework submissions carry `type:"homework"`, `rawScore`/`nativeTotal`, and a `problems[]` per-problem/per-part breakdown. Both use `quizId` (= quiz or homework id) and a `score` out of 10.
     checkedSubs/                   {submissionId: true}
     dueDates/                      {quizId: "YYYY-MM-DD HH:mm"}
     modules/                       ordered array of {id, title, items: [...]}
@@ -60,10 +60,20 @@ Enable in Settings tab → generates TOTP secret in browser → shows QR code (v
 
 ## Claude API
 
-Two calls (defined in `src/utils.js`), both proxied through `netlify/functions/claude.js` (which forwards to `api.anthropic.com/v1/messages` with the server-side API key):
+Calls proxied through `netlify/functions/claude.js` (which forwards to `api.anthropic.com/v1/messages` with the server-side API key):
 
-1. **`checkImageReadability`** — validates that an uploaded drawing is legible before the student submits.
-2. **`evaluateAnswer`** — grades a free-text quiz answer, returns a score and feedback. Maintains a per-question dialogue history (`apiHist`) so the model has context for follow-up exchanges within the same question.
+1. **`checkImageReadability`** (`src/utils.js`) — validates that an uploaded drawing is legible before the student submits.
+2. **`evaluateAnswer`** (`src/utils.js`) — grades a free-text quiz answer, returns a score and feedback. Maintains a per-question dialogue history (`apiHist`) so the model has context for follow-up exchanges within the same question.
+3. **`evaluateHomeworkAnswer`** (`src/homework.js`) — grades a homework problem/part. Numeric answers are graded deterministically (±2%, sig-fig agnostic); word/math answers are graded by Claude (math judged for vector/algebraic equivalence). On a wrong answer at the hint stage, Claude diagnoses the likely mistake and returns a targeted hint; at the reveal stage it states the answer.
+
+## Homework
+
+Homework assignments are code-defined per course (`HOMEWORKS_PHYSICS1` in `src/courses/physics1.js`, read via `homeworksForCourse()`), and integrate through the same seams as quizzes:
+
+- **Due dates / calendar / to-do / assignments tab:** keyed by `hw.id` in `classes/{classId}/dueDates`; merged into the derived `homeworks` array in `App.jsx` (`homeworks = homeworksForCourse(...).map(h => ({...h, dueDate: dueDates[h.id]}))`). Modules reference them via `{ type:"homework", refId:"hwN" }`.
+- **Runner:** `HomeworkRunner.jsx` (screen `"homework"`, launched by `startHomework`). One problem per panel: figure + prompt + answer input by `answerType`. Grading defaults (`src/homework.js`): attempts 1–3 full credit, hint after the 3rd wrong attempt (correct on attempts 4–5 → 80%), answer revealed after the 5th wrong attempt (50%). Each problem = 1 point; multipart `parts` split it equally.
+- **Submission / gradebook:** reuses the quiz `submissions` array/paths with `quizId: hw.id`, `type:"homework"`, a `problems[]` per-problem/per-part breakdown, and a `score` scaled to /10 so it flows through `buildGradebookAssignments` (which already treats `homework` items at `maxPts:10`, default category `cat_hw`), weighted-category math, CSV export, and whole-assignment overrides unchanged. The instructor reviews the breakdown in `Gradebook.jsx`'s `SubViewModal`.
+- **Math input/rendering:** `MathField` (MathLive `<math-field>`, LaTeX out) for entry; `MathText` (KaTeX) for prompts and answer reveals.
 
 ## Email (Resend)
 

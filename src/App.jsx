@@ -10,7 +10,7 @@ import {
   compressImage, checkImageReadability, evaluateAnswer,
   parseRoster,
 } from "./utils.js";
-import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, defaultModulesForCourse } from "./courses/index.js";
+import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, defaultModulesForCourse } from "./courses/index.js";
 import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
@@ -26,6 +26,7 @@ import { Shell } from "./components/lms/Shell.jsx";
 import { Sidebar } from "./components/lms/Sidebar.jsx";
 import { TodoRail } from "./components/lms/TodoRail.jsx";
 import { Home } from "./screens/student/Home.jsx";
+import { HomeworkRunner } from "./screens/student/HomeworkRunner.jsx";
 import { Stub } from "./screens/student/Stub.jsx";
 import { StudentSyllabus } from "./screens/student/StudentSyllabus.jsx";
 import { InstructorSyllabus } from "./screens/instructor/InstructorSyllabus.jsx";
@@ -34,6 +35,7 @@ import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
 import { Gradebook } from "./screens/instructor/Gradebook.jsx";
+import { Assignments } from "./screens/instructor/Assignments.jsx";
 import { StudentGrades } from "./screens/student/StudentGrades.jsx";
 import { CourseEvals } from "./screens/student/CourseEvals.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
@@ -80,6 +82,7 @@ const STUDENT_SECTIONS = [
 
 const INSTRUCTOR_SECTIONS = [
   { id: "modules",       label: "Home" },
+  { id: "assignments",  label: "Assignments" },
   { id: "gradebook",    label: "Gradebook" },
   { id: "calendar",     label: "Calendar" },
   { id: "roster",       label: "Roster" },
@@ -162,6 +165,7 @@ export default function App() {
 
   // ── Quiz state ──────────────────────────────────────────────────────────────
   const [activeQuiz, setActiveQuiz] = useState(null);
+  const [activeHomework, setActiveHomework] = useState(null);
   const [practiceMode, setPracticeMode] = useState(false);
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [qIdx, setQIdx] = useState(0); const [apiHist, setApiHist] = useState([]);
@@ -213,6 +217,7 @@ export default function App() {
       isCustom: true,
     })),
   ].map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
+  const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueDates[h.id] || null }));
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
   const currentQ = activeQuiz?.questions[qIdx];
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
@@ -255,12 +260,17 @@ export default function App() {
     if (!loggedInStudent) return [];
     const now = new Date();
     const horizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    return quizzes
+    const quizTodos = quizzes
       .filter(q => q.dueDate && !completedQuizIds.has(q.id))
-      .map(q => ({ q, due: dueToDate(q.dueDate) }))
+      .map(q => ({ id: q.id, title: q.title, due: q.dueDate, kind: "quiz", onClick: () => startQuiz(q, false) }));
+    const hwTodos = homeworks
+      .filter(h => h.dueDate && !completedQuizIds.has(h.id))
+      .map(h => ({ id: h.id, title: h.title, due: h.dueDate, kind: "homework", onClick: () => startHomework(h) }));
+    return [...quizTodos, ...hwTodos]
+      .map(t => ({ t, due: dueToDate(t.due) }))
       .filter(({ due }) => due && due >= now && due <= horizon)
       .sort((a, b) => a.due - b.due)
-      .map(({ q }) => ({ id: q.id, title: q.title, due: q.dueDate, kind: "quiz", onClick: () => startQuiz(q, false) }));
+      .map(({ t }) => t);
   })();
 
   // ── Load from Firebase on startup ──────────────────────────────────────────
@@ -433,6 +443,7 @@ export default function App() {
     const onPop = () => {
       const { screen, quizDone, showStudentSettings } = navStateRef.current;
       if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go("student-portal") : setShowLeaveConfirm(true); }
+      else if (screen === "homework") { go("student-portal"); }
       else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }
       else if (screen === "inst-sub-detail") { history.pushState({ newton: "inst-sub-detail" }, "", ""); go("instructor"); setViewingSub(null); }
       else if (screen === "student-pw") { history.pushState({ newton: "student-pw" }, "", ""); setSelectedStudent(null); go("student-search"); }
@@ -902,6 +913,14 @@ export default function App() {
     setScreen("quiz");
     history.pushState({ newton: "quiz" }, "", "");
   };
+  const startHomework = hw => {
+    setActiveHomework(hw);
+    setScreen("homework");
+    history.pushState({ newton: "homework" }, "", "");
+  };
+  // Persist a completed-homework submission (reuses the quiz submissions array/paths).
+  // Throws on failure so HomeworkRunner can show a retry affordance.
+  const saveHomeworkSub = async sub => { await saveSubs([...submissions, sub], sub.studentId); };
   const handleLeaveQuiz = () => { if (quizDone && !subSaveError) { setScreen("student-portal"); return; } if (!quizDone) setShowLeaveConfirm(true); };
   const confirmLeave = () => { setShowLeaveConfirm(false); setScreen("student-portal"); };
   const onFileSelect = async e => {
@@ -978,7 +997,11 @@ export default function App() {
         const nScores = [...qScores]; nScores[qIdx] = qPts / 2; setQScores(nScores);
         await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }], qIdx + 1);
       } else { setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }]); }
-    } catch { setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: "⚠️ Error evaluating your answer. Please try again." }]); }
+    } catch (err) {
+      // Grader unreachable/errored — surface the reason and roll back the attempt so it isn't wasted.
+      setAttemptCount(attemptCount);
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: "⚠️ " + (err?.message || "Error evaluating your answer.") + " Your attempt was not counted — please try again." }]);
+    }
     setBusy(false);
   };
   const finishQuiz = async (quiz, scores, curMsgs) => {
@@ -1223,13 +1246,13 @@ export default function App() {
 
     let mainContent;
     if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
-      mainContent = <StudentCalendar quizzes={quizzes} completedQuizIds={completedQuizIds} />;
+      mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} completedQuizIds={completedQuizIds} />;
     } else if (studentSection === "grades") {
-      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
+      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
       mainContent = <StudentSyllabus syllabus={syllabus} />;
     } else if (studentSection === "evals") {
@@ -1257,6 +1280,20 @@ export default function App() {
   }
 
   // ── Quiz screen ───────────────────────────────────────────────────────────
+  if (screen === "homework" && activeHomework) {
+    return (
+      <ThemeContext.Provider value={appTh}>
+        <HomeworkRunner
+          homework={activeHomework}
+          courseType={classMeta?.courseType || "physics1"}
+          loggedInStudent={loggedInStudent}
+          onFinish={saveHomeworkSub}
+          onLeave={() => setScreen("student-portal")}
+        />
+      </ThemeContext.Provider>
+    );
+  }
+
   if (screen === "quiz") {
     // eslint-disable-next-line no-shadow
     const s = appTh.s; const MUTED = appTh.muted; const BORDER = appTh.border; const CARD = appTh.card; const text = appTh.text;
@@ -1531,7 +1568,7 @@ export default function App() {
           <Gradebook
             roster={roster}
             modules={mergedModules}
-            quizzes={quizzes}
+            quizzes={[...quizzes, ...homeworks]}
             submissions={submissions}
             gradeCategories={gradeCategories}
             gradeOverrides={gradeOverrides}
@@ -1553,6 +1590,22 @@ export default function App() {
           />
         )}
 
+
+        {currentClassId && instructorSection === "assignments" && (
+          <Assignments
+            quizzes={quizzes}
+            homeworks={homeworks}
+            customQuizzes={customQuizzes}
+            dueDates={dueDates}
+            onSaveDueDates={saveDueDates}
+            onEditCustomQuiz={quizId => {
+              const cq = customQuizzes[quizId];
+              if (cq) setEditingCustomQuiz({ quizId, title: cq.title, text: cq.text, moduleId: null });
+            }}
+            onCreateQuiz={() => setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId: null })}
+            onDeleteCustomQuiz={deleteCustomQuiz}
+          />
+        )}
 
         {currentClassId && instructorSection === "roster" && (
           <div>
@@ -1641,6 +1694,7 @@ export default function App() {
             pages={pages}
             uploads={uploads}
             quizzes={quizzes}
+            homeworks={homeworks}
             customQuizzes={customQuizzes}
             dueDates={dueDates}
             onSaveDueDates={saveDueDates}
@@ -1766,7 +1820,7 @@ export default function App() {
         )}
 
         {currentClassId && instructorSection === "calendar" && (
-          <StudentCalendar quizzes={quizzes} completedQuizIds={new Set()} />
+          <StudentCalendar quizzes={quizzes} homeworks={homeworks} completedQuizIds={new Set()} />
         )}
 
         {instructorSection === "settings" && (

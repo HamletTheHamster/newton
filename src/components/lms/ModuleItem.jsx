@@ -21,21 +21,22 @@ export function ModuleItem({ item, meta, onClick }) {
   const { s, text, muted, border, teal, hover } = useTheme();
   const t = item.type;
   const hasContent =
-    (t === "quiz"    && !!meta?.quiz) ||
-    (t === "reading" && !!item.url) ||
-    (t === "notes"   && !!item.url) ||
-    (t === "page"    && !!item.pageId) ||
-    (t === "link"    && !!item.url) ||
-    (t === "file"    && !!item.downloadUrl);
-  const isComingSoon = t === "homework";
+    (t === "quiz"     && !!meta?.quiz) ||
+    (t === "homework" && !!meta?.homework) ||
+    (t === "reading"  && !!item.url) ||
+    (t === "notes"    && !!item.url) ||
+    (t === "page"     && !!item.pageId) ||
+    (t === "link"     && !!item.url) ||
+    (t === "file"     && !!item.downloadUrl);
+  const isComingSoon = t === "homework" && !meta?.homework;
   const isPending = !hasContent && !isComingSoon;
 
   const completed = !!meta?.completed;
-  const dueDate = meta?.quiz?.dueDate;
+  const dueDate = meta?.quiz?.dueDate || meta?.homework?.dueDate;
   const late = dueDate && !completed && isLate(dueDate);
 
   const clickable = hasContent;
-  const title = t === "quiz" ? meta?.quiz?.title : item.title;
+  const title = t === "quiz" ? meta?.quiz?.title : t === "homework" ? meta?.homework?.title : item.title;
   const icon = ICON[t] || ICON.page;
 
   const completedBg = "rgba(0,130,140,0.06)";
@@ -77,13 +78,27 @@ export function ModuleItem({ item, meta, onClick }) {
                   )}
             </>
           )}
+          {t === "homework" && meta?.homework && (
+            <>
+              <span>{meta.homework.problems.length} problem{meta.homework.problems.length > 1 ? "s" : ""} · {meta.homework.problems.length} pts</span>
+              {completed && meta.sub
+                ? <span style={{ color: (meta.sub.score ?? 0) >= 8 ? "#4ade80" : (meta.sub.score ?? 0) >= 6 ? "#facc15" : (meta.sub.score ?? 0) >= 4 ? "#fb923c" : "#f87171", fontWeight: 600 }}>
+                    Score: {meta.sub.rawScore ?? 0}/{meta.sub.nativeTotal ?? meta.homework.problems.length}{meta.sub.late ? " · late" : ""}
+                  </span>
+                : dueDate && (
+                    <span style={{ color: late ? "#f87171" : "#4ade80" }}>
+                      {late ? "Past due! (½ credit)" : "Due " + dueToDate(dueDate).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })}
+                    </span>
+                  )}
+            </>
+          )}
           {(t === "reading" || t === "notes") && item.url && <span>{hostnameOf(item.url)}</span>}
           {t === "link" && item.url && <span>{hostnameOf(item.url)}</span>}
           {isPending && <span style={{ ...s.badge(muted), fontSize: 10 }}>Not yet linked</span>}
           {isComingSoon && <span style={{ ...s.badge(muted), fontSize: 10 }}>Coming soon</span>}
         </div>
       </div>
-      {t === "quiz" && meta?.quiz && (
+      {((t === "quiz" && meta?.quiz) || (t === "homework" && meta?.homework)) && (
         <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: "50%", border: `2px solid ${completed ? teal : border}`, background: completed ? teal : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", fontWeight: 700 }}>
           {completed && "✓"}
         </div>

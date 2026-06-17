@@ -57,5 +57,45 @@ export const MODULES_PHYSICS1 = [
   M(14, "Gravitation"),
 ];
 
-// Homework definitions land in Phase 3.
-export const HOMEWORKS_PHYSICS1 = [];
+// Homework assignments — MasteringPhysics-style problem sets. Module items reference
+// these by `refId` (hw1..hwN). Each homework has `problems`; each problem is worth 1 point
+// (multipart `parts` split that point equally). `answerType` ∈ { numeric, text, math }.
+//
+// Problem shape:
+//   { id, prompt, figure?, answerType, answer,
+//     unit?, sigFigs?, tolerance?,                 // numeric options
+//     parts?: [{ id, prompt, answerType, answer, ... }] }   // multipart
+//
+// - numeric: graded deterministically within ±2% (sig figs not penalized; correct answer
+//   shown in its proper sig figs on reveal).
+// - text:    graded generously by Claude.
+// - math:    LaTeX, graded by Claude for math/vector equivalence.
+export const HOMEWORKS_PHYSICS1 = [
+  {
+    id: "hw1",
+    title: "Homework 1: Test Assignment",
+    problems: [
+      {
+        id: "hw1_p1",
+        figure: "/homeworkFigures/HW1/fig1.png",
+        prompt: "Question 1",
+        answerType: "numeric",
+        answer: 1,
+      },
+      {
+        id: "hw1_p2",
+        figure: "/homeworkFigures/HW1/fig1.png",
+        prompt: "What color is my red hat?",
+        answerType: "text",
+        answer: "the hat is red",
+      },
+      {
+        id: "hw1_p3",
+        figure: "/homeworkFigures/HW1/fig1.png",
+        prompt: "Enter the force vector $\\vec{A}$ using correct math/LaTeX.",
+        answerType: "math",
+        answer: "\\vec{A} = 3\\hat{i} + 4\\hat{j}",
+      },
+    ],
+  },
+];

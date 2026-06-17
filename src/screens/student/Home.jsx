@@ -8,27 +8,34 @@ import { ModuleList } from "../../components/lms/ModuleList.jsx";
 //   quizzes: course quizzes WITH dueDate already merged (from App)
 //   submissions: all submissions for the active class
 //   onStartQuiz(quiz): called when a quiz item is clicked
+//   onStartHomework(hw): called when a homework item is clicked
 //   onOpenPage(item): called when a page item is clicked
-export function Home({ loggedInStudent, modules, quizzes, submissions, onStartQuiz, onOpenPage, storageKey }) {
+export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, storageKey }) {
   const completedQuizIds = new Set(
     submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId)
   );
+
+  const latestSub = id => [...submissions].reverse().find(s => s.studentId === loggedInStudent?.studentId && s.quizId === id) || null;
 
   const resolveItem = item => {
     if (item.type === "quiz") {
       const quiz = quizzes.find(q => q.id === item.refId);
       if (!quiz) return null;
       const completed = completedQuizIds.has(quiz.id);
-      const sub = completed
-        ? [...submissions].reverse().find(s => s.studentId === loggedInStudent?.studentId && s.quizId === quiz.id)
-        : null;
-      return { quiz, completed, sub };
+      return { quiz, completed, sub: completed ? latestSub(quiz.id) : null };
+    }
+    if (item.type === "homework") {
+      const homework = homeworks.find(h => h.id === item.refId);
+      if (!homework) return null; // not yet authored — falls back to placeholder
+      const completed = completedQuizIds.has(homework.id);
+      return { homework, completed, sub: completed ? latestSub(homework.id) : null };
     }
     return null;
   };
 
   const onItemClick = (item, meta) => {
     if (item.type === "quiz" && meta?.quiz) { onStartQuiz(meta.quiz); return; }
+    if (item.type === "homework" && meta?.homework) { onStartHomework(meta.homework); return; }
     if ((item.type === "reading" || item.type === "notes" || item.type === "link") && item.url) {
       window.open(item.url, "_blank", "noopener,noreferrer");
       return;

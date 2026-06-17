@@ -32,7 +32,7 @@ const EyeIcon = ({ hidden }) => hidden
   : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 
 export function Modules({
-  classId, modules, moduleConfig, pages, uploads, quizzes, customQuizzes,
+  classId, modules, moduleConfig, pages, uploads, quizzes, homeworks = [], customQuizzes,
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
@@ -417,11 +417,14 @@ export function Modules({
                     item.type === "file" ? (upload ? `${upload.name || "file"}${upload.size ? " · " + fmtBytes(upload.size) : ""}` : "File (missing)") :
                     null;
                   const canHaveUrl = item.type === "reading" || item.type === "notes";
+                  const schedulable = item.type === "quiz" || item.type === "homework";
                   const displayTitle = item.type === "quiz"
                     ? (quizzes.find(q => q.id === item.refId)?.title || `Quiz (${item.refId})`)
+                    : item.type === "homework"
+                    ? (homeworks.find(h => h.id === item.refId)?.title || `Homework (${item.refId})`)
                     : (item.title || (item.type === "link" ? item.url : (upload?.name || "Untitled")));
 
-                  const quizDueDate = item.type === "quiz" ? (dueDates?.[item.refId] || null) : null;
+                  const quizDueDate = schedulable ? (dueDates?.[item.refId] || null) : null;
                   const quizDateVal = quizDueDate ? quizDueDate.slice(0, 10) : "";
                   const quizTimeVal = quizDueDate && quizDueDate.length === 16 && quizDueDate[10] === ' ' ? quizDueDate.slice(11) : "23:59";
                   const quizLate = quizDueDate ? dueToDate(quizDueDate) < new Date() : false;
@@ -491,7 +494,7 @@ export function Modules({
                             onEditPage={item.type === "page" ? () => { setItemMenuFor(null); onOpenPageEditor(mod.id, item.id, item.pageId); } : undefined}
                             onEditQuiz={item.type === "quiz" && customQuizzes?.[item.refId] ? () => { setItemMenuFor(null); onOpenCustomQuizEditor?.(mod.id, item.refId); } : undefined}
                             onRename={item.type === "file" ? () => { setItemMenuFor(null); setRenamingItemKey(itemKey); setRenamingItemDraft(item.title || upload?.name || ""); } : undefined}
-                            dueField={item.type === "quiz" ? (
+                            dueField={schedulable ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <input
                                   type="date"
