@@ -11,6 +11,7 @@
 - **Inline styles and theme constants:** see [docs/styling.md](docs/styling.md)
 - **End-to-end testing, local-dev gotchas:** see [docs/testing.md](docs/testing.md)
 - **LMS-style redesign (multi-session plan):** see [docs/lms-redesign.md](docs/lms-redesign.md)
+- **Homework — remaining buildout (incl. practice-only retakes):** see [docs/homework-roadmap.md](docs/homework-roadmap.md)
 
 ## Key Files
 
