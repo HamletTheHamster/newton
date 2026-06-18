@@ -51,14 +51,24 @@ isn't saved and can be restarted anytime.
 
 ### ~~⚠️ Written-work integrity check~~ ✅ Done
 Before submitting a (non-practice) homework, students must upload images/PDFs of their
-handwritten work. `checkWorkIntegrity` (`homework.js`) runs a lenient Claude sniff-check;
-flagged submissions show the student **no score — "Pending review"** and are omitted from
-the overall until the instructor reviews the uploaded work in the Gradebook's `SubViewModal`
-and **clears** (full credit) or **upholds** (50% penalty) the flag. Work files ride on the
-submission (`workFiles[]`, Storage path `hwWork/{studentId}/{hwId}/...`); the verdict is
-`submission.integrity`; the instructor's decision is `gradeOverrides[...].integrityReview`.
-Shared logic: `integrityState` / `integrityAdjustedScore` (homework.js), used by both
-`Gradebook.jsx` and `StudentGrades.jsx`.
+handwritten work. `checkWorkIntegrity` (`homework.js`) runs a lenient Claude sniff-check.
+**A flag never withholds credit on its own** — a flagged submission counts at **full credit**
+(the student sees their normal score) until the instructor reviews the uploaded work in the
+shared `SubViewModal` (`src/components/SubmissionView.jsx`) and explicitly **upholds** the flag
+(50% penalty); they may also **clear** it (an explicit full-credit record). There is no
+"pending review" state. Work files ride on the submission (`workFiles[]`, Storage path
+`hwWork/{studentId}/{hwId}/...`); the verdict is `submission.integrity`; the instructor's
+decision is `gradeOverrides[...].integrityReview`. Shared logic: `integrityState`
+(→ `{ flagged, review, penalized }`) / `integrityAdjustedScore` (homework.js), used by both
+`Gradebook.jsx` and `StudentGrades.jsx`. The Gradebook flags such cells with a red `*` marker;
+students never see the AI verdict (`SubViewModal` is passed `showIntegrity={false}`).
+
+### ~~Students can view their own submissions~~ ✅ Done
+`SubViewModal` + `HomeworkItemRow` were extracted from `Gradebook.jsx` into the shared
+`src/components/SubmissionView.jsx`. In `StudentGrades.jsx`, each assignment row the student
+has submitted is clickable ("View ›") and opens that modal read-only — no edit/review
+callbacks and `showIntegrity={false}` — so students review their own submitted answers, sketches,
+chat dialogue, and uploaded work the same way instructors do.
 
 ## Remaining buildout steps
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in

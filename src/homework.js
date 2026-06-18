@@ -170,18 +170,17 @@ export function graphHint(reason) {
 // ── Written-work integrity ───────────────────────────────────────────────────────
 // Resolve the integrity state of a homework submission given the instructor's review
 // decision (stored at gradeOverrides[studentId][hwId].integrityReview). Single source of
-// truth shared by the gradebook and the student grades page.
-//   • not flagged                       → no penalty, not pending
-//   • flagged + no review               → PENDING (no score shown; omit from overall)
+// truth shared by the gradebook and the student grades page. A flag never withholds credit
+// on its own — the submission counts at full credit until an instructor explicitly upholds:
+//   • not flagged                       → no penalty
+//   • flagged + no review               → no penalty (full credit; instructor may still review)
 //   • flagged + review === "cleared"    → no penalty (full credit)
 //   • flagged + review === "upheld"     → penalized (50%)
 export function integrityState(sub, ov) {
   const flagged = !!(sub && sub.integrity && sub.integrity.flagged);
   const review = (ov && ov.integrityReview) || null;
-  if (!flagged) return { flagged: false, review, pending: false, penalized: false };
-  if (review === "cleared") return { flagged: true, review, pending: false, penalized: false };
-  if (review === "upheld") return { flagged: true, review, pending: false, penalized: true };
-  return { flagged: true, review: null, pending: true, penalized: false };
+  const penalized = flagged && review === "upheld";
+  return { flagged, review, penalized };
 }
 
 // Apply the integrity penalty to a base /10 score (null passes through).

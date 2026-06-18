@@ -56,6 +56,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [earned, setEarned] = useState({});        // { itemId: credit (points) }
   const [feedback, setFeedback] = useState({});    // { itemId: { text, kind } }
   const [submitNonce, setSubmitNonce] = useState(0); // bumps per submit → triggers scroll-to-feedback
+  const [glow, setGlow] = useState(false);          // green "burst" on the advance button when a problem completes
   const [revealed, setRevealed] = useState({});    // { itemId: revealed answer string }
   const [history, setHistory] = useState({});      // { itemId: [Claude turns] }
   const [busy, setBusy] = useState(null);          // itemId currently evaluating
@@ -64,6 +65,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [saveError, setSaveError] = useState(false);
   const [showLeave, setShowLeave] = useState(false);
   const [showGrading, setShowGrading] = useState(true);  // grading-policy explainer, expanded by default
+  // Written-work acknowledgment gate (non-practice). Session-only (not persisted), so the
+  // student must re-confirm every time they begin or resume — see the gate screen below.
+  const [acked, setAcked] = useState(false);
+  const [ackChecked, setAckChecked] = useState(false);   // the "I understand" checkbox state
 
   // Written-work integrity step (skipped in practice mode).
   const [submitStep, setSubmitStep] = useState(false);   // showing the upload-your-work step
@@ -137,10 +142,52 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // part. Without this the feedback can populate below the fold, behind the footer.
   // `submitNonce` bumps once per submit so the scroll fires even when the target is unchanged.
   const revealRef = useRef(null);
+  // Input element of the deepest visible item (the part the student should answer next).
+  // Auto-focused so the cursor lands in the next field without a click — on entry, on
+  // navigation, and after a submit reveals a new part. Numeric/text inputs only (the common
+  // cases); MathField/GraphField aren't focusable from here, so they fall through harmlessly.
+  const inputRef = useRef(null);
+  const focusInput = () => {
+    const el = inputRef.current;
+    if (el && !el.disabled) el.focus({ preventScroll: true }); // preventScroll: don't fight the smooth scroll
+  };
   useEffect(() => {
     if (submitNonce === 0) return; // skip initial mount
     revealRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    focusInput();
   }, [submitNonce]);
+
+  // Focus the first open input when entering the runner or navigating to another problem.
+  // No-ops while the resume modal / ack gate / loading screens are up (inputRef is unset).
+  useEffect(() => {
+    if (!practice && !acked) return;
+    focusInput();
+  }, [idx, acked]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Green "burst" on the advance (Next / Finish) button once the current problem is fully
+  // resolved, to invite the student onward. Armed once per problem (tracked in glowedRef) and
+  // delayed 3s so the student first reads the result of their last part; then the button
+  // glows in a repeating double-burst (the 5s-looped `hwGlowBurst` keyframe) until they leave
+  // the problem. The pending arm-timer lives in a ref so navigation can cancel it before it fires.
+  const glowedRef = useRef(new Set());
+  const glowTimerRef = useRef(null);
+  useEffect(() => {
+    if (submitNonce === 0) return;
+    const its = itemsOf(problems[idx]);
+    const resolved = its.every(it => { const st = status[it.id]; return st && st !== "open"; });
+    if (resolved && !glowedRef.current.has(idx)) {
+      glowedRef.current.add(idx);
+      glowTimerRef.current = setTimeout(() => setGlow(true), 3000);
+    }
+    return () => clearTimeout(glowTimerRef.current); // also clears on unmount
+  }, [submitNonce]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Stop the glow (and cancel a pending arm) when navigating to another problem, so it only
+  // ever shows on the problem the student just completed.
+  useEffect(() => {
+    clearTimeout(glowTimerRef.current);
+    setGlow(false);
+  }, [idx]);
 
   const late = isLate(homework.dueDate);
   const runningScore = allItems.reduce((sum, it) => sum + (earned[it.id] || 0), 0);
@@ -286,7 +333,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   };
 
   // ── Render an answer input for an item ────────────────────────────────────────
-  const renderInput = item => {
+  // `focusable` (true only for the deepest visible item) wires inputRef so the cursor can be
+  // auto-advanced into it. Only numeric/text inputs accept the ref.
+  const renderInput = (item, focusable = false) => {
     const st = status[item.id];
     const locked = st === "correct" || st === "revealed";
     const isBusy = busy === item.id;
@@ -311,6 +360,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <textarea
+            ref={focusable ? inputRef : undefined}
             value={answers[item.id] || ""}
             onChange={e => setAns(item.id, e.target.value)}
             disabled={locked || isBusy}
@@ -327,6 +377,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     return (
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input
+          ref={focusable ? inputRef : undefined}
           type="text"
           inputMode="decimal"
           value={answers[item.id] || ""}
@@ -344,7 +395,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   const FB_COLOR = { correct: "#4ade80", hint: "#fbbf24", revealed: "#60a5fa", wrong: "#f87171" };
 
-  const renderItem = (item, partLabel, rootRef) => {
+  const renderItem = (item, partLabel, rootRef, focusable = false) => {
     const st = status[item.id];
     const used = attempts[item.id] || 0;
     const left = Math.max(0, G.maxAttempts - used);
@@ -353,7 +404,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       <div key={item.id} ref={rootRef} style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: partLabel ? 12 : 0, borderTop: partLabel ? `1px solid ${border}` : "none", marginTop: partLabel ? 12 : 0 }}>
         {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part {partLabel}</div>}
         {item.prompt && <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{item.prompt}</MathText></div>}
-        {renderInput(item)}
+        {renderInput(item, focusable)}
         {st !== "correct" && st !== "revealed" && (() => {
           const credit = creditForAttempt(used + 1, G);
           const cColor = credit >= 1 ? FB_COLOR.correct : FB_COLOR.hint;
@@ -407,19 +458,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
-            {!practice && integrityResult?.flagged ? (
-              <>
-                <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>Homework submitted</div>
-                <div style={{ color: "#fbbf24", fontWeight: 800, fontSize: 22 }}>Pending instructor review</div>
-                <div style={{ color: muted, fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>Your written work has been submitted for review. Your grade will appear once your instructor has reviewed it.</div>
-              </>
-            ) : (
-              <>
-                <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete — not submitted for a grade" : "Homework complete"}</div>
-                <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
-                {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
-              </>
-            )}
+            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete — not submitted for a grade" : "Homework complete"}</div>
+            <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
+            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
           </div>
           {problems.map((p, i) => {
             const its = itemsOf(p);
@@ -494,7 +535,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ ...s.card, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ color: text, fontWeight: 700, fontSize: 16 }}>Upload your handwritten work</div>
             <div style={{ color: muted, fontSize: 14, lineHeight: 1.6 }}>
-              Attach photos or a PDF of your scratch work and calculations for this assignment. It doesn't need to be neat — messy scratch paper is fine. This is your proof that you solved these problems yourself, and your instructor can review it at any time.
+              Upload photos or a PDF of your handwritten work for these problems — your proof that you solved them yourself.
             </div>
 
             <label style={{ ...s.btnSec, width: "auto", alignSelf: "flex-start", padding: "8px 18px", cursor: saving ? "default" : "pointer", opacity: saving ? 0.4 : 1 }}>
@@ -533,10 +574,40 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     );
   }
 
+  // ── Acknowledgment gate (non-practice) ────────────────────────────────────────
+  // Must confirm understanding of the written-work upload requirement before the problem
+  // flow unlocks. `acked` is session-only (never persisted), and this check sits after the
+  // resume-modal/submit-step returns, so it re-appears every time a student begins OR returns
+  // to resume. Once acknowledged, the runner looks exactly as before (notice lives in the
+  // collapsible grading card).
+  if (!practice && !acked) {
+    const resuming = Object.keys(status).length > 0 || Object.keys(attempts).length > 0;
+    return (
+      <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+        <div style={{ ...s.card, background: solidBg, padding: 28, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 18 }}>
+          <div style={{ color: text, fontWeight: 700, fontSize: 18 }}>{homework.title}</div>
+          <div style={{ borderLeft: `3px solid ${teal}`, background: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.04)", borderRadius: 8, padding: "14px 16px", color: text, fontSize: 14, lineHeight: 1.6 }}>
+            <strong>Keep your written work.</strong> To finish and submit this assignment you'll upload photos or a PDF of your handwritten work for these problems — your proof that you solved them yourself. Hold onto your scratch paper as you work through the problems.
+          </div>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", color: text, fontSize: 14, lineHeight: 1.5 }}>
+            <input type="checkbox" checked={ackChecked} onChange={e => setAckChecked(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18, cursor: "pointer", flexShrink: 0 }} />
+            <span>I understand that I'll need to upload photos or a PDF of my handwritten work before I can submit.</span>
+          </label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <button onClick={() => setAcked(true)} disabled={!ackChecked} style={{ ...s.btnPri, opacity: ackChecked ? 1 : 0.4, cursor: ackChecked ? "pointer" : "default" }}>{resuming ? "Continue homework" : "Begin homework"}</button>
+            <button onClick={onLeave} style={{ ...s.btnGhost, fontSize: 13, padding: "6px 0" }}>← Back to course</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   // ── Active runner ─────────────────────────────────────────────────────────────
   const problem = problems[idx];
   const items = itemsOf(problem);
   const partLabels = problem.parts && problem.parts.length ? "abcdefgh".split("") : null;
+  // Outline needs a transparent base so the keyframe's outline-color can animate in.
+  const glowStyle = glow ? { animation: "hwGlowBurst 5s ease-in-out infinite", outline: "2px solid transparent", outlineOffset: 2 } : {};
 
   const handleLeaveConfirm = async () => {
     // Save progress before leaving. The answers guard ensures even a typed-but-not-yet-submitted
@@ -634,9 +705,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             const lastVisible = !partLabels ? items.length - 1 : (firstOpen === -1 ? items.length - 1 : firstOpen);
             return items.map((it, i) => {
               if (partLabels && i > lastVisible) return null;
-              // Tag the deepest visible part so a freshly revealed one can be scrolled into view.
-              const ref = i === lastVisible ? revealRef : null;
-              return renderItem(it, partLabels ? `${i + 1} of ${items.length}` : null, ref);
+              // Tag the deepest visible part so a freshly revealed one can be scrolled into view
+              // and auto-focused.
+              const isDeepest = i === lastVisible;
+              return renderItem(it, partLabels ? `${i + 1} of ${items.length}` : null, isDeepest ? revealRef : null, isDeepest);
             });
           })()}
         </div>
@@ -647,8 +719,8 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0} style={{ ...s.btnSec, width: "auto", padding: "8px 16px", opacity: idx === 0 ? 0.4 : 1 }}>← Previous</button>
           {idx < total - 1
-            ? <button onClick={() => setIdx(i => Math.min(total - 1, i + 1))} style={{ ...s.btnSec, width: "auto", padding: "8px 16px" }}>Next →</button>
-            : <button onClick={finish} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1 }}>{saving ? "Submitting…" : practice ? "Finish" : "Finish & Submit"}</button>}
+            ? <button onClick={() => setIdx(i => Math.min(total - 1, i + 1))} className="hw-advance-btn" style={{ ...s.btnSec, width: "auto", padding: "8px 16px", ...glowStyle }}>Next →</button>
+            : <button onClick={finish} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} className="hw-advance-btn" style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1, ...glowStyle }}>{saving ? "Submitting…" : practice ? "Finish" : "Finish & Submit"}</button>}
         </div>
       </div>
     </div>
