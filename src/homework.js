@@ -80,7 +80,91 @@ export function formatNumericAnswer(item) {
 // The canonical correct-answer string to reveal (numeric formatted, text as-is, math LaTeX).
 export function revealAnswerFor(item) {
   if (item.answerType === "numeric") return formatNumericAnswer(item);
+  if (item.answerType === "graph") return "See plotted solution.";
   return String(item.answer);
+}
+
+// ── Graph / sketch grading ─────────────────────────────────────────────────────
+// A graph answer is a JSON string of the shape:
+//   { curves: { [curveId]: { pts: [[x,y], …], shape: "line"|"curveUp"|"curveDown" } } }
+// The problem's `graph` config carries the axes, the curves to draw, and a per-curve
+// grading `key` ({ points: [[x,y], …], shape, yTolFrac? }). Grading is fully
+// deterministic (no Claude): each keyed curve must (a) span the keyed x-values, (b) pass
+// within tolerance of each key point, and (c) match the expected shape flag.
+export function parseGraphValue(raw) {
+  if (raw && typeof raw === "object") return raw.curves ? raw : { curves: {} };
+  try {
+    const o = JSON.parse(String(raw || ""));
+    return o && o.curves ? o : { curves: {} };
+  } catch { return { curves: {} }; }
+}
+
+// True if the student has placed at least one point on any curve (used to enable Submit).
+export function graphHasInput(raw) {
+  const d = parseGraphValue(raw);
+  return Object.values(d.curves || {}).some(c => Array.isArray(c?.pts) && c.pts.length > 0);
+}
+
+// Build a renderable value object from a graph config's grading key (the "correct sketch").
+export function keyToValue(graph) {
+  const curves = {};
+  for (const c of graph?.curves || []) {
+    const k = graph.key?.[c.id];
+    if (k) curves[c.id] = { pts: k.points.map(p => [...p]), shape: k.shape || "line" };
+  }
+  return { curves };
+}
+
+// Linear interpolation of a sorted point list at x; null if x is outside the drawn span.
+function valueAtX(pts, x) {
+  if (!pts.length) return null;
+  if (x < pts[0][0] || x > pts[pts.length - 1][0]) return null;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+    if (x >= x0 && x <= x1) {
+      if (x1 === x0) return y0;
+      return y0 + (y1 - y0) * ((x - x0) / (x1 - x0));
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+
+// Deterministic grade of a graph answer. Returns { correct, reasons:[{curve,type,...}] }.
+export function gradeGraph(raw, graph) {
+  const data = parseGraphValue(raw);
+  const reasons = [];
+  for (const c of graph?.curves || []) {
+    const key = graph.key?.[c.id];
+    if (!key) continue;
+    const sc = data.curves?.[c.id];
+    const pts = sc && Array.isArray(sc.pts) ? [...sc.pts].sort((a, b) => a[0] - b[0]) : [];
+    if (pts.length < 2) { reasons.push({ curve: c.label, type: "missing" }); continue; }
+    const yTol = (key.yTolFrac ?? 0.1) * (graph.yMax - graph.yMin);
+    let outOfRange = false, pointFail = false;
+    for (const [kx, ky] of key.points) {
+      const yv = valueAtX(pts, kx);
+      if (yv == null) { outOfRange = true; break; }
+      if (Math.abs(yv - ky) > yTol) pointFail = true;
+    }
+    if (outOfRange) { reasons.push({ curve: c.label, type: "range" }); continue; }
+    if (pointFail) { reasons.push({ curve: c.label, type: "points" }); continue; }
+    if (key.shape && (sc.shape || "line") !== key.shape) { reasons.push({ curve: c.label, type: "shape" }); continue; }
+  }
+  return { correct: reasons.length === 0, reasons };
+}
+
+// Targeted (but answer-preserving) hint for the first failing curve. Never names the exact
+// shape ("parabola") or values — only nudges toward the feature to reconsider.
+export function graphHint(reason) {
+  if (!reason) return "Re-examine your sketch.";
+  const c = reason.curve;
+  switch (reason.type) {
+    case "missing": return `Your “${c}” curve needs at least two points — sketch it across the time axis.`;
+    case "range":   return `Extend your “${c}” curve so it spans the full time axis.`;
+    case "points":  return `Your “${c}” curve doesn’t pass through the expected values — check where it should start and where the two motions meet.`;
+    case "shape":   return `Re-examine the shape of your “${c}” curve: does its slope stay constant, or change as time goes on?`;
+    default:        return "Re-examine your sketch.";
+  }
 }
 
 // ── Written-work integrity ───────────────────────────────────────────────────────
@@ -246,6 +330,15 @@ export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, 
       return { correct: false, message: "💡 " + (text.trim() || "Re-check your setup — look carefully at your formula and units.") };
     }
     return { correct: false, message: "That's not correct. Re-check your calculation and try again." };
+  }
+
+  if (item.answerType === "graph") {
+    // Deterministic grade — no Claude call needed.
+    const res = gradeGraph(studentAnswer, item.graph);
+    if (res.correct) return { correct: true, message: "✓ Correct — your sketch matches." };
+    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct sketch." };
+    if (phase === "hint") return { correct: false, message: "💡 " + graphHint(res.reasons[0]) };
+    return { correct: false, message: "Not quite — review the points your curves pass through and their shape, then try again." };
   }
 
   // text + math → Claude judges correctness and writes the reply.

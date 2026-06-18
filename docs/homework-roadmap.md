@@ -72,8 +72,17 @@ Shared logic: `integrityState` / `integrityAdjustedScore` (homework.js), used by
      and direction" questions are split into two numeric blanks each (direction = degrees
      CCW from +x, stated in the stem); answers are hardcoded numerics graded
      deterministically, with Claude reserved for the few text/math parts (1.51b direction,
-     1.53b expression, 1.53c explanation) and hints. The remaining `hw2…hw14` are still
-     stubs to author.
+     1.53b expression, 1.53c explanation) and hints.
+   - ✅ **`hw2` (Physics 1) is now real content** — "Homework 2: Motion Along a Straight
+     Line", 10 Young & Freedman Ch. 2 problems (2.3, 2.16, 2.21, 2.34, 2.35, 2.64, 2.66,
+     2.69, 2.80, 2.81). Single figure `figP2-80.png` (egg-drop building) in
+     `public/homeworkFigures/HW2/`. All answers are deterministic numerics (g = 9.80 m/s²)
+     with Claude reserved only for the 2.16 direction text parts and hints; 2.16 average
+     accelerations are entered as **signed** values (+x = right, so a negative value = left)
+     plus a text direction. 2.34 (c)/(d) are **`answerType: "graph"` sketch parts** —
+     students draw the $x$-$t$ and $v_x$-$t$ curves for both vehicles in `GraphField`,
+     graded deterministically by `gradeGraph`. 2.81 answers are entered as numerical
+     factors (×H, ×T). The remaining `hw3…hw14` are still stubs to author.
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into
@@ -91,18 +100,30 @@ Shared logic: `integrityState` / `integrityAdjustedScore` (homework.js), used by
    Instructors review all submissions — quizzes and homework alike — only from the Gradebook,
    where `SubViewModal` renders the chat dialogue (quizzes) or the per-part `HomeworkItemRow`
    breakdown (homework).
-5. **Image-answer problems** — homework supports `numeric` / `text` / `math`. Add an
+5. ~~**Graph / sketch problems**~~ ✅ Done — `answerType: "graph"` lets students draw curves
+   (e.g. $x$-$t$ / $v$-$t$ graphs) in `GraphField` (`src/components/GraphField.jsx`): click
+   to add points, drag to move, click to remove, and pick each curve's shape (line / concave
+   up / concave down). Graded deterministically by `gradeGraph` (`homework.js`) against a
+   per-curve `key` (key points within `yTolFrac` + matching shape flag) — no Claude call.
+   Reveal renders the read-only "correct sketch" (`keyToValue`); the gradebook re-renders the
+   student's sketch + expected side-by-side. First used in `hw2_p4` (2.34 c/d).
+   - **Future extensions:** the current grader treats each curve as a single `shape` flag
+     (sufficient for monotonic single-concavity curves). Piecewise sketches (e.g. the subway
+     train's ramp-up / flat / ramp-down $v$-$t$) would need per-segment shapes. Could also add
+     a region/inequality answer mode and richer concavity inference from anchors.
+6. **Image-answer problems** — homework supports `numeric` / `text` / `math` / `graph`. Add an
    `image` `answerType` reusing `compressImage` / `checkImageReadability` (`utils.js`) and
    the quiz upload UI.
-6. **Polish** — MathLive virtual-keyboard / mobile behavior in `MathField`;
+7. **Polish** — MathLive virtual-keyboard / mobile behavior in `MathField`;
    `formatNumericAnswer` sig-fig inference when `sigFigs` is omitted; optional unit-aware
    numeric parsing.
 
 ## Reference (current code)
 - Engine: `src/homework.js` — `HW_GRADING_DEFAULTS`, `creditForAttempt`, `phaseForAttempt`,
-  `numericMatch` / `parseNumber` / `formatNumericAnswer`, `evaluateHomeworkAnswer`.
+  `numericMatch` / `parseNumber` / `formatNumericAnswer`, `evaluateHomeworkAnswer`,
+  `gradeGraph` / `parseGraphValue` / `graphHasInput` / `keyToValue` / `graphHint` (graph).
 - Runner: `src/screens/student/HomeworkRunner.jsx`; math I/O: `MathField` (MathLive),
-  `MathText` (KaTeX).
+  `MathText` (KaTeX); graph I/O: `GraphField` (`src/components/GraphField.jsx`).
 - Content: `HOMEWORKS_PHYSICS1` in `src/courses/physics1.js`; `homeworksForCourse()` in
   `src/courses/index.js`.
 - Grading proxy: `netlify/functions/claude.js` reads `CLAUDE_API_KEY` (see

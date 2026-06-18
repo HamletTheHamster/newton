@@ -4,6 +4,7 @@ import { isLate } from "../../utils.js";
 import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
 import { MathField } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
+import { GraphField } from "../../components/GraphField.jsx";
 import {
   HW_GRADING_DEFAULTS,
   creditForAttempt,
@@ -11,6 +12,8 @@ import {
   evaluateHomeworkAnswer,
   revealAnswerFor,
   checkWorkIntegrity,
+  graphHasInput,
+  keyToValue,
 } from "../../homework.js";
 
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
@@ -30,7 +33,7 @@ function itemsOf(p) {
   }
   return [{
     id: p.id, prompt: p.prompt, answerType: p.answerType, answer: p.answer,
-    unit: p.unit, sigFigs: p.sigFigs, tolerance: p.tolerance, weight: 1, _problemId: p.id,
+    unit: p.unit, sigFigs: p.sigFigs, tolerance: p.tolerance, graph: p.graph, weight: 1, _problemId: p.id,
     _figure: p.figure || null, _problemPrompt: null,
   }];
 }
@@ -198,6 +201,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         studentAnswer: answers[it.id] || "", attempts: attempts[it.id] || 0,
         status: status[it.id] || "open", earned: parseFloat((earned[it.id] || 0).toFixed(3)),
         max: it.weight, correctAnswer: revealAnswerFor(it),
+        ...(it.answerType === "graph" ? { graph: it.graph } : {}),
       }));
       const pEarned = parseFloat(partRows.reduce((s2, r) => s2 + r.earned, 0).toFixed(3));
       if (p.parts && p.parts.length) {
@@ -294,6 +298,15 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
       );
     }
+    if (item.answerType === "graph") {
+      const val = answers[item.id] || "";
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <GraphField config={item.graph} value={val} onChange={v => setAns(item.id, v)} disabled={locked || isBusy} />
+          {!locked && <button onClick={() => submitItem(item)} disabled={isBusy || !graphHasInput(val)} style={{ ...s.btnPri, width: "auto", alignSelf: "flex-start", padding: "8px 20px", opacity: isBusy || !graphHasInput(val) ? 0.4 : 1 }}>{isBusy ? "Checking…" : "Submit"}</button>}
+        </div>
+      );
+    }
     if (item.answerType === "text") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -365,9 +378,15 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             Correct answer: <strong style={{ color: text }}>{revealAnswerFor(item)}</strong>
           </div>
         )}
-        {item.answerType !== "numeric" && st === "revealed" && revealed[item.id] != null && (
+        {item.answerType !== "numeric" && item.answerType !== "graph" && st === "revealed" && revealed[item.id] != null && (
           <div style={{ color: muted, fontSize: 14 }}>
             Correct answer: {item.answerType === "math" ? <MathText>{`$${revealed[item.id]}$`}</MathText> : <strong style={{ color: text }}>{revealed[item.id]}</strong>}
+          </div>
+        )}
+        {item.answerType === "graph" && st === "revealed" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ color: muted, fontSize: 13 }}>Correct sketch:</div>
+            <GraphField config={item.graph} value={JSON.stringify(keyToValue(item.graph))} readOnly />
           </div>
         )}
         {st && st !== "open" && (

@@ -1,9 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
-import { integrityState, integrityAdjustedScore } from "../../homework.js";
+import { integrityState, integrityAdjustedScore, keyToValue } from "../../homework.js";
 import { ChatMessages } from "../../components/ChatMessages.jsx";
 import { MathText } from "../../components/MathText.jsx";
+import { GraphField } from "../../components/GraphField.jsx";
 import { newId } from "../../courses/ids.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -420,12 +421,27 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
   const color = correct ? "#4ade80" : row.status === "revealed" ? "#60a5fa" : "#f87171";
   const parsedEdit = editEarned !== undefined ? parseFloat(editEarned) : NaN;
   const isOverridden = !isNaN(parsedEdit) && Math.abs(parsedEdit - (row.earned ?? 0)) > 0.0001;
+  const isGraph = row.answerType === "graph";
   return (
     <div style={{ paddingTop: label ? 10 : 0, borderTop: label ? `1px solid ${border}` : "none", marginTop: label ? 10 : 0 }}>
       {label && <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Part ({label})</div>}
       {row.prompt && <div style={{ color: text, fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}><MathText>{row.prompt}</MathText></div>}
+      {isGraph && row.graph && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginBottom: 8 }}>
+          <div style={{ maxWidth: 360 }}>
+            <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Student's sketch</div>
+            <GraphField config={row.graph} value={row.studentAnswer} readOnly />
+          </div>
+          {!correct && (
+            <div style={{ maxWidth: 360 }}>
+              <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Expected</div>
+              <GraphField config={row.graph} value={JSON.stringify(keyToValue(row.graph))} readOnly />
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: muted, alignItems: "center" }}>
-        <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>
+        {!isGraph && <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>}
         <span style={{ color }}>{correct ? "Correct" : row.status === "revealed" ? "Answer revealed" : "Open"}</span>
         <span>{row.attempts} attempt{row.attempts !== 1 ? "s" : ""}</span>
         {onEditChange ? (
@@ -444,7 +460,7 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
         ) : (
           <span style={{ ...s.badge(color), fontSize: 11 }}>{(row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
         )}
-        {!correct && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
+        {!correct && !isGraph && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
       </div>
     </div>
   );

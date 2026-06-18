@@ -64,12 +64,21 @@ export const MODULES_PHYSICS1 = [
 // Problem shape:
 //   { id, prompt, figure?, answerType, answer,
 //     unit?, sigFigs?, tolerance?,                 // numeric options
+//     graph?,                                      // graph option (see below)
 //     parts?: [{ id, prompt, answerType, answer, ... }] }   // multipart
 //
 // - numeric: graded deterministically within ±2% (sig figs not penalized; correct answer
 //   shown in its proper sig figs on reveal).
 // - text:    graded generously by Claude.
 // - math:    LaTeX, graded by Claude for math/vector equivalence.
+// - graph:   student sketches curves in GraphField; graded deterministically by gradeGraph.
+//   Carries `graph: { xLabel,yLabel,xMin,xMax,yMin,yMax,xTick,yTick,
+//                      curves:[{id,label,color}],
+//                      key:{ [curveId]: { points:[[x,y],…], shape:"line"|"curveUp"|"curveDown", yTolFrac? } },
+//                      snapDiv?, guide?:{ title, steps:[{ curve, minPoints?, shape?, label, note? }] } }`
+//   instead of `answer`. Each keyed curve must span the key x-values, pass within tolerance
+//   of every key point, and match the shape flag. The optional `guide` renders a checklist
+//   beside the plot (steps tick off as points/shape are set) to scaffold tricky sketches.
 export const HOMEWORKS_PHYSICS1 = [
   {
     id: "hw1",
@@ -179,6 +188,170 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 170,
         unit: "m²",
+      },
+    ],
+  },
+  {
+    id: "hw2",
+    title: "Homework 2: Motion Along a Straight Line",
+    problems: [
+      // 2.3 — Trip Home
+      {
+        id: "hw2_p1",
+        prompt: "Trip Home. You normally drive on the freeway between San Diego and Los Angeles at an average speed of $105\\text{ km/h}$, and the trip takes $2\\text{ h}$ and $20\\text{ min}$. On a Friday afternoon, however, heavy traffic slows you down and you drive the same distance at an average speed of only $70\\text{ km/h}$. How much longer does the trip take?",
+        answerType: "numeric",
+        answer: 1.17,
+        unit: "h",
+      },
+      // 2.16 — average acceleration over a 10.0-s interval
+      {
+        id: "hw2_p2",
+        prompt: "An astronaut has left the International Space Station to test a new space scooter. Her partner measures the following velocity changes, each taking place in a $10.0\\text{-s}$ interval. For each case, take the positive direction (the $+x$-axis) to be toward the right. Give each average acceleration **with its algebraic sign** (a negative value means it points toward the left), then state its direction.",
+        parts: [
+          { id: "hw2_p2a_a", prompt: "(a) At the beginning of the interval she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the right at $5.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -1.0, unit: "m/s²" },
+          { id: "hw2_p2a_d", prompt: "(a) In which direction does this average acceleration point?", answerType: "text", answer: "Toward the left (the $-x$-direction)." },
+          { id: "hw2_p2b_a", prompt: "(b) At the beginning she is moving toward the left at $5.0\\text{ m/s}$, and at the end she is moving toward the left at $15.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -1.0, unit: "m/s²" },
+          { id: "hw2_p2b_d", prompt: "(b) In which direction does this average acceleration point?", answerType: "text", answer: "Toward the left (the $-x$-direction)." },
+          { id: "hw2_p2c_a", prompt: "(c) At the beginning she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the left at $15.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -3.0, unit: "m/s²" },
+          { id: "hw2_p2c_d", prompt: "(c) In which direction does this average acceleration point?", answerType: "text", answer: "Toward the left (the $-x$-direction)." },
+        ],
+      },
+      // 2.21 — A Fast Pitch
+      {
+        id: "hw2_p3",
+        prompt: "A Fast Pitch. The fastest measured pitched baseball left the pitcher's hand at a speed of $45.0\\text{ m/s}$. If the pitcher was in contact with the ball over a distance of $1.50\\text{ m}$ and produced constant acceleration, do the following. Assume the ball starts from rest.",
+        parts: [
+          { id: "hw2_p3a", prompt: "(a) What acceleration did he give the ball?", answerType: "numeric", answer: 675, unit: "m/s²" },
+          { id: "hw2_p3b", prompt: "(b) How much time did it take him to pitch it?", answerType: "numeric", answer: 0.0667, unit: "s" },
+        ],
+      },
+      // 2.34 — car overtakes truck at a traffic light (parts c/d are sketched in-app)
+      {
+        id: "hw2_p4",
+        prompt: "At the instant the traffic light turns green, a car that has been waiting at an intersection starts ahead with a constant acceleration of $3.20\\text{ m/s}^2$. At the same instant a truck, traveling with a constant speed of $20.0\\text{ m/s}$, overtakes and passes the car. Take $x = 0$ at the intersection.",
+        parts: [
+          { id: "hw2_p4a", prompt: "(a) How far beyond its starting point does the car overtake the truck?", answerType: "numeric", answer: 250, unit: "m" },
+          { id: "hw2_p4b", prompt: "(b) How fast is the car traveling when it overtakes the truck?", answerType: "numeric", answer: 40.0, unit: "m/s" },
+          {
+            id: "hw2_p4c",
+            prompt: "(c) Sketch an $x$-$t$ graph of the motion of both vehicles, from $t = 0$ to the moment the car overtakes the truck. For each curve place a point at the start, at the point where they meet, and at least one point in between so its shape is clear; then set each curve to a straight line or a curve.",
+            answerType: "graph",
+            graph: {
+              xLabel: "t (s)", yLabel: "x (m)",
+              xMin: 0, xMax: 15, yMin: 0, yMax: 400, xTick: 5, yTick: 100,
+              curves: [
+                { id: "car", label: "Car", color: "#ef4444" },
+                { id: "truck", label: "Truck", color: "#3b82f6" },
+              ],
+              key: {
+                car:   { points: [[0, 0], [5, 40], [12.5, 250]], shape: "curveUp", yTolFrac: 0.12 },
+                truck: { points: [[0, 0], [5, 100], [12.5, 250]], shape: "line", yTolFrac: 0.12 },
+              },
+              guide: {
+                title: "How to plot it",
+                steps: [
+                  {
+                    curve: "car", minPoints: 3, shape: "curveUp",
+                    label: "plot three points — the start ($t=0$), an in-between point, and the overtake point — then set the shape to “Curve ↑”.",
+                    note: "The car speeds up, so its x–t graph curves. The in-between point is an extra step: pick a time (say t = 5 s) and compute the car's position there with x = ½at². For the overtake point, use the distance you found in part (a) at the time the car catches the truck.",
+                  },
+                  {
+                    curve: "truck", minPoints: 2, shape: "line",
+                    label: "plot two points — the start ($t=0$) and the overtake point (where it meets the car) — as a straight line (constant velocity).",
+                  },
+                ],
+              },
+            },
+          },
+          {
+            id: "hw2_p4d",
+            prompt: "(d) Sketch a $v_x$-$t$ graph of the motion of both vehicles over the same interval. Place points and set each curve's shape as before.",
+            answerType: "graph",
+            graph: {
+              xLabel: "t (s)", yLabel: "vₓ (m/s)",
+              xMin: 0, xMax: 15, yMin: 0, yMax: 50, xTick: 5, yTick: 10,
+              curves: [
+                { id: "car", label: "Car", color: "#ef4444" },
+                { id: "truck", label: "Truck", color: "#3b82f6" },
+              ],
+              key: {
+                car:   { points: [[0, 0], [5, 16], [12.5, 40]], shape: "line", yTolFrac: 0.12 },
+                truck: { points: [[0, 20], [5, 20], [12.5, 20]], shape: "line", yTolFrac: 0.12 },
+              },
+              guide: {
+                title: "How to plot it",
+                steps: [
+                  {
+                    curve: "car", minPoints: 2, shape: "line",
+                    label: "plot two points — it starts from rest ($v=0$ at $t=0$) and reaches its overtake speed (your part-(b) answer) at the catch-up time. Constant acceleration ⇒ a straight line.",
+                  },
+                  {
+                    curve: "truck", minPoints: 2, shape: "line",
+                    label: "the truck moves at a constant $20.0\\text{ m/s}$, so plot a horizontal straight line at $v = 20.0\\text{ m/s}$.",
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      // 2.35 — flea jump (free fall)
+      {
+        id: "hw2_p5",
+        prompt: "Use $g = 9.80\\text{ m/s}^2$ and neglect air resistance.",
+        parts: [
+          { id: "hw2_p5a", prompt: "(a) If a flea can jump straight up to a height of $0.440\\text{ m}$, what is its initial speed as it leaves the ground?", answerType: "numeric", answer: 2.94, unit: "m/s" },
+          { id: "hw2_p5b", prompt: "(b) How long is it in the air?", answerType: "numeric", answer: 0.600, unit: "s", sigFigs: 3 },
+        ],
+      },
+      // 2.64 — subway train, three phases
+      {
+        id: "hw2_p6",
+        prompt: "A subway train starts from rest at a station and accelerates at a rate of $1.60\\text{ m/s}^2$ for $14.0\\text{ s}$. It runs at constant speed for $70.0\\text{ s}$ and slows down at a rate of $3.50\\text{ m/s}^2$ until it stops at the next station. Find the total distance covered.",
+        answerType: "numeric",
+        answer: 1796,
+        unit: "m",
+      },
+      // 2.66 — sled with constant acceleration
+      {
+        id: "hw2_p7",
+        prompt: "A sled starts from rest at the top of a hill and slides down with a constant acceleration. At some later time it is $14.4\\text{ m}$ from the top; $2.00\\text{ s}$ after that it is $25.6\\text{ m}$ from the top; $2.00\\text{ s}$ after that, $40.0\\text{ m}$ from the top; and $2.00\\text{ s}$ after that, $57.6\\text{ m}$ from the top.",
+        parts: [
+          { id: "hw2_p7a1", prompt: "(a) What is the magnitude of the average velocity of the sled during the first $2.00\\text{-s}$ interval after passing the $14.4\\text{-m}$ point (from $14.4\\text{ m}$ to $25.6\\text{ m}$)?", answerType: "numeric", answer: 5.60, unit: "m/s" },
+          { id: "hw2_p7a2", prompt: "(a) Average velocity during the second $2.00\\text{-s}$ interval (from $25.6\\text{ m}$ to $40.0\\text{ m}$)?", answerType: "numeric", answer: 7.20, unit: "m/s" },
+          { id: "hw2_p7a3", prompt: "(a) Average velocity during the third $2.00\\text{-s}$ interval (from $40.0\\text{ m}$ to $57.6\\text{ m}$)?", answerType: "numeric", answer: 8.80, unit: "m/s" },
+          { id: "hw2_p7b", prompt: "(b) What is the acceleration of the sled?", answerType: "numeric", answer: 0.800, unit: "m/s²", sigFigs: 3 },
+          { id: "hw2_p7c", prompt: "(c) What is the speed of the sled as it passes the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 4.80, unit: "m/s" },
+          { id: "hw2_p7d", prompt: "(d) How much time did it take to go from the top to the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 6.00, unit: "s" },
+          { id: "hw2_p7e", prompt: "(e) How far did the sled go from the start (the top) during the first $2.00\\text{ s}$ after passing the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 25.6, unit: "m" },
+        ],
+      },
+      // 2.69 — ball rolls down a hill
+      {
+        id: "hw2_p8",
+        prompt: "A ball starts from rest and rolls down a hill with uniform acceleration, traveling $150\\text{ m}$ during the second $5.0\\text{ s}$ of its motion. How far did it roll during the first $5.0\\text{ s}$ of motion?",
+        answerType: "numeric",
+        answer: 50,
+        unit: "m",
+      },
+      // 2.80 — Egg Drop (Fig. P2.80)
+      {
+        id: "hw2_p9",
+        figure: "/homeworkFigures/HW2/figP2-80.png",
+        prompt: "Egg Drop. You are on the roof of the physics building, $46.0\\text{ m}$ above the ground (see figure). Your physics professor, who is $1.80\\text{ m}$ tall, is walking alongside the building at a constant speed of $1.20\\text{ m/s}$. If you wish to drop an egg on your professor's head, where should the professor be when you release the egg? Assume that the egg is in free fall ($g = 9.80\\text{ m/s}^2$). Give the professor's horizontal distance from the point directly below you (the egg's release point) at the moment of release.",
+        answerType: "numeric",
+        answer: 3.60,
+        unit: "m",
+        sigFigs: 3,
+      },
+      // 2.81 — volcano on Mars vs. Earth
+      {
+        id: "hw2_p10",
+        prompt: "A certain volcano on earth can eject rocks vertically to a maximum height $H$. The acceleration due to gravity on Mars is $3.71\\text{ m/s}^2$ (use $g = 9.80\\text{ m/s}^2$ on earth), and you can neglect air resistance on both planets. Give each answer as a numerical multiple of the earth quantity.",
+        parts: [
+          { id: "hw2_p10a", prompt: "(a) How high (in terms of $H$) would these rocks go if a volcano on Mars ejected them with the same initial velocity? Enter the numerical factor (height $= $ factor $\\times H$).", answerType: "numeric", answer: 2.64, unit: "× H" },
+          { id: "hw2_p10b", prompt: "(b) If the rocks are in the air for a time $T$ on earth, for how long (in terms of $T$) will they be in the air on Mars? Enter the numerical factor (time $= $ factor $\\times T$).", answerType: "numeric", answer: 2.64, unit: "× T" },
+        ],
       },
     ],
   },
