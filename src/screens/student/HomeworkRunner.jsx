@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
 import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
@@ -52,6 +52,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [status, setStatus] = useState({});        // { itemId: "open"|"correct"|"revealed" }
   const [earned, setEarned] = useState({});        // { itemId: credit (points) }
   const [feedback, setFeedback] = useState({});    // { itemId: { text, kind } }
+  const [submitNonce, setSubmitNonce] = useState(0); // bumps per submit → triggers scroll-to-feedback
   const [revealed, setRevealed] = useState({});    // { itemId: revealed answer string }
   const [history, setHistory] = useState({});      // { itemId: [Claude turns] }
   const [busy, setBusy] = useState(null);          // itemId currently evaluating
@@ -110,6 +111,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   const clearDraft = () => { if (draftPath) fbSet(draftPath, null).catch(() => {}); };
 
+  // One source of truth for the draft snapshot shape, reused by the auto-save effect, the
+  // leave-confirm handler, and the save-failure exit so the student's work is preserved
+  // identically in every exit path.
+  const draftSnapshot = () => ({ answers, attempts, status, earned, feedback, revealed, history, idx, savedAt: new Date().toISOString() });
+  const persistDraft = () => draftPath ? fbSet(draftPath, draftSnapshot()).catch(() => {}) : Promise.resolve();
+
   // Auto-save the full draft after every submit (attempts increments on each one) and
   // whenever an item is resolved. Both `attempts` and `status` are fresh object references
   // per submit, and the effect fires after all of submitItem's state updates are committed,
@@ -117,8 +124,20 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   useEffect(() => {
     if (!draftPath || draftLoading || pendingDraft) return;
     if (!Object.keys(attempts).length && !Object.keys(status).length) return;
-    fbSet(draftPath, { answers, attempts, status, earned, feedback, revealed, history, idx, savedAt: new Date().toISOString() }).catch(() => {});
+    fbSet(draftPath, draftSnapshot()).catch(() => {});
   }, [attempts, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // After every submission, scroll the deepest visible item into view. This is the newly
+  // revealed part when a correct answer unlocks the next one, and otherwise the item just
+  // submitted — so its feedback (correct answer + credit earned) is seen even for the final
+  // part of a problem, single-part problems, and wrong attempts, none of which reveal a new
+  // part. Without this the feedback can populate below the fold, behind the footer.
+  // `submitNonce` bumps once per submit so the scroll fires even when the target is unchanged.
+  const revealRef = useRef(null);
+  useEffect(() => {
+    if (submitNonce === 0) return; // skip initial mount
+    revealRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [submitNonce]);
 
   const late = isLate(homework.dueDate);
   const runningScore = allItems.reduce((sum, it) => sum + (earned[it.id] || 0), 0);
@@ -163,6 +182,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       setFeedback(f => ({ ...f, [item.id]: { text: "⚠️ " + (err?.message || "Couldn't reach the grader.") + " Your attempt was not counted — please try again.", kind: "wrong" } }));
     }
     setBusy(null);
+    // Bump after the feedback/status updates above so the scroll effect runs once the
+    // result (and any newly revealed part) has rendered.
+    setSubmitNonce(n => n + 1);
   };
 
   const buildSubmission = (workFilesMeta = [], integrity = null) => {
@@ -309,14 +331,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   const FB_COLOR = { correct: "#4ade80", hint: "#fbbf24", revealed: "#60a5fa", wrong: "#f87171" };
 
-  const renderItem = (item, partLabel) => {
+  const renderItem = (item, partLabel, rootRef) => {
     const st = status[item.id];
     const used = attempts[item.id] || 0;
     const left = Math.max(0, G.maxAttempts - used);
     const fb = feedback[item.id];
     return (
-      <div key={item.id} style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: partLabel ? 12 : 0, borderTop: partLabel ? `1px solid ${border}` : "none", marginTop: partLabel ? 12 : 0 }}>
-        {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part ({partLabel})</div>}
+      <div key={item.id} ref={rootRef} style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: partLabel ? 12 : 0, borderTop: partLabel ? `1px solid ${border}` : "none", marginTop: partLabel ? 12 : 0 }}>
+        {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part {partLabel}</div>}
         {item.prompt && <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{item.prompt}</MathText></div>}
         {renderInput(item)}
         {st !== "correct" && st !== "revealed" && (() => {
@@ -392,9 +414,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           })}
           {!practice && saveError && (
             <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
-              <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission could not be saved</p>
-              <p style={{ color: muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>Check your connection and tap Retry. If it keeps failing, contact your instructor and show them this screen.</p>
+              <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission couldn't be sent</p>
+              <p style={{ color: muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>Don't worry — <strong style={{ color: text }}>your work is saved</strong>. All your answers and progress are stored, so you can tap Retry now, or leave and come back later to finish submitting. If it keeps failing, contact your instructor and show them this screen.</p>
               <button onClick={retrySave} disabled={saving} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>{saving ? "Retrying…" : "Retry saving"}</button>
+              <button onClick={async () => { await persistDraft(); onLeave(); }} disabled={saving} style={{ ...s.btnSec, opacity: saving ? 0.4 : 1 }}>Leave — my work is saved</button>
             </div>
           )}
           {(practice || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>Back to Course</button>}
@@ -497,20 +520,24 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const partLabels = problem.parts && problem.parts.length ? "abcdefgh".split("") : null;
 
   const handleLeaveConfirm = async () => {
-    // Save progress (including current typed answers) before leaving
-    if (draftPath && (Object.keys(status).length > 0 || Object.keys(attempts).length > 0)) {
-      await fbSet(draftPath, { answers, attempts, status, earned, feedback, revealed, history, idx, savedAt: new Date().toISOString() }).catch(() => {});
+    // Save progress before leaving. The answers guard ensures even a typed-but-not-yet-submitted
+    // answer is persisted, so the "your progress will be saved" promise always holds.
+    if (draftPath && (Object.keys(status).length > 0 || Object.keys(attempts).length > 0 || Object.keys(answers).length > 0)) {
+      await persistDraft();
     }
     onLeave();
   };
 
   return (
-    <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
+    // Fixed viewport height (not just s.page's minHeight) so the footer nav stays pinned and
+    // the body scrolls internally — otherwise added feedback pushes the Prev/Next buttons
+    // below the fold. 100dvh keeps the footer clear of mobile browser chrome.
+    <div style={{ ...s.page, height: "100dvh", minHeight: 0, display: "flex", flexDirection: "column" }}>
       {showLeave && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
             <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave homework?</h3>
-            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "Your progress will be lost." : "Your progress will be saved — you can resume later."}</p>
+            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "This is a practice session — nothing is graded, and you can start it again anytime. Your practice progress won't be saved." : "Your progress will be saved — you can resume later."}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeave(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
               <button onClick={handleLeaveConfirm} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
@@ -580,7 +607,19 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           {problem.parts && problem.parts.length > 0 && problem.prompt && (
             <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{problem.prompt}</MathText></div>
           )}
-          {items.map((it, i) => renderItem(it, partLabels ? partLabels[i] : null))}
+          {(() => {
+            // Sequential reveal: a part appears only once every earlier part is resolved
+            // (correct or revealed). The first unresolved part is the deepest one shown —
+            // no "Next" click needed; later parts surface on this same page as each resolves.
+            const firstOpen = items.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
+            const lastVisible = !partLabels ? items.length - 1 : (firstOpen === -1 ? items.length - 1 : firstOpen);
+            return items.map((it, i) => {
+              if (partLabels && i > lastVisible) return null;
+              // Tag the deepest visible part so a freshly revealed one can be scrolled into view.
+              const ref = i === lastVisible ? revealRef : null;
+              return renderItem(it, partLabels ? `${i + 1} of ${items.length}` : null, ref);
+            });
+          })()}
         </div>
       </div>
 

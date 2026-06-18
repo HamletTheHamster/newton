@@ -13,3 +13,7 @@ dist/
 
 # OS
 .DS_Store
+
+# Homework source material (answer keys, copyrighted textbook scans) — not for the repo;
+# the figures the app uses live in public/homeworkFigures/
+hwImage/

@@ -20,7 +20,7 @@ service firebase.storage {
     }
     // Student homework written-work uploads (proof of original effort), saved
     // alongside the submission. Read by the instructor (any authed user is fine).
-    match /classes/{classId}/hwWork/{studentId}/{fileName} {
+    match /classes/{classId}/hwWork/{studentId}/{allPaths=**} {
       allow read: if request.auth != null;
       allow write: if request.auth != null
                    && request.resource.size < 25 * 1024 * 1024;

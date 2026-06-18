@@ -73,28 +73,112 @@ export const MODULES_PHYSICS1 = [
 export const HOMEWORKS_PHYSICS1 = [
   {
     id: "hw1",
-    title: "Homework 1: Test Assignment",
+    title: "Homework 1: Units & Vectors",
     problems: [
+      // 1.10 — unit conversions
       {
         id: "hw1_p1",
-        figure: "/homeworkFigures/HW1/fig1.png",
-        prompt: "Question 1",
-        answerType: "numeric",
-        answer: 1,
+        prompt: "The following conversions occur frequently in physics and are very useful.",
+        parts: [
+          { id: "hw1_p1a", prompt: "(a) Use $1\\text{ mi} = 5280\\text{ ft}$ and $1\\text{ h} = 3600\\text{ s}$ to convert $60\\text{ mph}$ to units of ft/s.", answerType: "numeric", answer: 88, unit: "ft/s" },
+          { id: "hw1_p1b", prompt: "(b) The acceleration of a freely falling object is $32\\text{ ft/s}^2$. Use $1\\text{ ft} = 30.48\\text{ cm}$ to express this acceleration in units of m/s².", answerType: "numeric", answer: 9.75, unit: "m/s²" },
+          { id: "hw1_p1c", prompt: "(c) The density of water is $1.0\\text{ g/cm}^3$. Convert this density to units of kg/m³.", answerType: "numeric", answer: 1000, unit: "kg/m³" },
+        ],
       },
+      // 1.33 — component from magnitude/angle
       {
         id: "hw1_p2",
-        figure: "/homeworkFigures/HW1/fig1.png",
-        prompt: "What color is my red hat?",
-        answerType: "text",
-        answer: "the hat is red",
+        prompt: "Vector $\\vec{A}$ has $y$-component $A_y = +13.0\\text{ m}$. $\\vec{A}$ makes an angle of $32.0°$ counterclockwise from the $+y$-axis.",
+        parts: [
+          { id: "hw1_p2a", prompt: "(a) What is the $x$-component of $\\vec{A}$?", answerType: "numeric", answer: -8.12, unit: "m" },
+          { id: "hw1_p2b", prompt: "(b) What is the magnitude of $\\vec{A}$?", answerType: "numeric", answer: 15.3, unit: "m" },
+        ],
       },
+      // 1.35 — sums & differences from Fig E1.28
       {
         id: "hw1_p3",
-        figure: "/homeworkFigures/HW1/fig1.png",
-        prompt: "Enter the force vector $\\vec{A}$ using correct math/LaTeX.",
-        answerType: "math",
-        answer: "\\vec{A} = 3\\hat{i} + 4\\hat{j}",
+        figure: "/homeworkFigures/HW1/figE1-28.png",
+        prompt: "For the vectors $\\vec{A}$ and $\\vec{B}$ shown in the figure, use the method of components to find the magnitude and direction of each vector below. Give every direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
+        parts: [
+          { id: "hw1_p3a_m", prompt: "(a) Magnitude of the vector sum $\\vec{A}+\\vec{B}$.", answerType: "numeric", answer: 9.00, unit: "m" },
+          { id: "hw1_p3a_d", prompt: "(a) Direction of $\\vec{A}+\\vec{B}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 33.6, unit: "°" },
+          { id: "hw1_p3b_m", prompt: "(b) Magnitude of the vector sum $\\vec{B}+\\vec{A}$.", answerType: "numeric", answer: 9.00, unit: "m" },
+          { id: "hw1_p3b_d", prompt: "(b) Direction of $\\vec{B}+\\vec{A}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 33.6, unit: "°" },
+          { id: "hw1_p3c_m", prompt: "(c) Magnitude of the vector difference $\\vec{A}-\\vec{B}$.", answerType: "numeric", answer: 22.3, unit: "m" },
+          { id: "hw1_p3c_d", prompt: "(c) Direction of $\\vec{A}-\\vec{B}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 250, unit: "°" },
+          { id: "hw1_p3d_m", prompt: "(d) Magnitude of the vector difference $\\vec{B}-\\vec{A}$.", answerType: "numeric", answer: 22.3, unit: "m" },
+          { id: "hw1_p3d_d", prompt: "(d) Direction of $\\vec{B}-\\vec{A}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 70.4, unit: "°" },
+        ],
+      },
+      // 1.36 — magnitude/direction from components
+      {
+        id: "hw1_p4",
+        prompt: "Find the magnitude and direction of the vector represented by each of the following pairs of components. Give every direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
+        parts: [
+          { id: "hw1_p4a_m", prompt: "(a) $A_x = -8.60\\text{ cm}$, $A_y = 5.20\\text{ cm}$ — magnitude.", answerType: "numeric", answer: 10.0, unit: "cm" },
+          { id: "hw1_p4a_d", prompt: "(a) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 149, unit: "°" },
+          { id: "hw1_p4b_m", prompt: "(b) $A_x = -9.70\\text{ m}$, $A_y = -2.45\\text{ m}$ — magnitude.", answerType: "numeric", answer: 10.0, unit: "m" },
+          { id: "hw1_p4b_d", prompt: "(b) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 194, unit: "°" },
+          { id: "hw1_p4c_m", prompt: "(c) $A_x = 7.75\\text{ km}$, $A_y = -2.70\\text{ km}$ — magnitude.", answerType: "numeric", answer: 8.21, unit: "km" },
+          { id: "hw1_p4c_d", prompt: "(c) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 341, unit: "°" },
+        ],
+      },
+      // 1.37 — resultant displacement
+      {
+        id: "hw1_p5",
+        prompt: "A disoriented physics professor drives $3.25\\text{ km}$ north, then $2.90\\text{ km}$ west, and then $1.50\\text{ km}$ south. Find the magnitude and direction of the resultant displacement, using the method of components. Take east as the $+x$-direction and north as the $+y$-direction, and give the direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
+        parts: [
+          { id: "hw1_p5_m", prompt: "Magnitude of the resultant displacement.", answerType: "numeric", answer: 3.39, unit: "km" },
+          { id: "hw1_p5_d", prompt: "Direction of the resultant displacement (degrees CCW from $+x$).", answerType: "numeric", answer: 149, unit: "°" },
+        ],
+      },
+      // 1.51 — scalar & vector product from Fig E1.43
+      {
+        id: "hw1_p6",
+        figure: "/homeworkFigures/HW1/figE1-43.png",
+        prompt: "For the two vectors $\\vec{A}$ and $\\vec{B}$ shown in the figure, find the scalar product and the vector product.",
+        parts: [
+          { id: "hw1_p6a", prompt: "(a) Find the scalar product $\\vec{A}\\cdot\\vec{B}$ (in m²).", answerType: "numeric", answer: -6.6, unit: "m²" },
+          { id: "hw1_p6b_m", prompt: "(b) Find the magnitude of the vector product $\\vec{A}\\times\\vec{B}$ (in m²).", answerType: "numeric", answer: 5.6, unit: "m²" },
+          { id: "hw1_p6b_d", prompt: "(b) Using the right-hand rule, what is the direction of $\\vec{A}\\times\\vec{B}$?", answerType: "text", answer: "Out of the page — the +z-direction." },
+        ],
+      },
+      // 1.53 — unit-vector arithmetic
+      {
+        id: "hw1_p7",
+        prompt: "Given two vectors $\\vec{A} = -2.00\\,\\hat{\\imath} + 3.00\\,\\hat{\\jmath} + 4.00\\,\\hat{k}$ and $\\vec{B} = 3.00\\,\\hat{\\imath} + 1.00\\,\\hat{\\jmath} - 3.00\\,\\hat{k}$, do the following.",
+        parts: [
+          { id: "hw1_p7a_A", prompt: "(a) Find the magnitude of $\\vec{A}$.", answerType: "numeric", answer: 5.39 },
+          { id: "hw1_p7a_B", prompt: "(a) Find the magnitude of $\\vec{B}$.", answerType: "numeric", answer: 4.36 },
+          { id: "hw1_p7b", prompt: "(b) Write an expression for the vector difference $\\vec{A}-\\vec{B}$ using unit vectors.", answerType: "math", answer: "-5.00\\,\\hat{\\imath} + 2.00\\,\\hat{\\jmath} + 7.00\\,\\hat{k}" },
+          { id: "hw1_p7c_m", prompt: "(c) Find the magnitude of the vector difference $\\vec{A}-\\vec{B}$.", answerType: "numeric", answer: 8.83 },
+          { id: "hw1_p7c_e", prompt: "(c) Is this the same as the magnitude of $\\vec{B}-\\vec{A}$? Explain.", answerType: "text", answer: "Yes — the magnitudes are equal. Since $\\vec{B}-\\vec{A} = -(\\vec{A}-\\vec{B})$, the two difference vectors point in opposite directions but have the same length (8.83)." },
+        ],
+      },
+      // 1.73 — dislocated shoulder (Fig P1.73)
+      {
+        id: "hw1_p8",
+        figure: "/homeworkFigures/HW1/figP1-73.png",
+        prompt: "Dislocated Shoulder. A patient with a dislocated shoulder is put into a traction apparatus as shown in the figure. The pulls $\\vec{A}$ and $\\vec{B}$ have equal magnitudes and must combine to produce an outward traction force of $5.60\\text{ N}$ on the patient's arm. How large should these pulls be?",
+        answerType: "numeric",
+        answer: 3.30,
+        unit: "N",
+      },
+      // 1.87 — angle from scalar & vector product
+      {
+        id: "hw1_p9",
+        prompt: "Vectors $\\vec{A}$ and $\\vec{B}$ have scalar product $-6.00$ and their vector product has magnitude $+9.00$. What is the angle between these two vectors?",
+        answerType: "numeric",
+        answer: 124,
+        unit: "°",
+      },
+      // 1.89 — magnitude of vector product
+      {
+        id: "hw1_p10",
+        prompt: "Vector $\\vec{A}$ has magnitude $12.0\\text{ m}$ and vector $\\vec{B}$ has magnitude $16.0\\text{ m}$. The scalar product $\\vec{A}\\cdot\\vec{B}$ is $90.0\\text{ m}^2$. What is the magnitude of the vector product between these two vectors?",
+        answerType: "numeric",
+        answer: 170,
+        unit: "m²",
       },
     ],
   },

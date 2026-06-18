@@ -34,6 +34,21 @@ attempts, or attempt counts). There is **no "Start fresh"** for graded homework:
 can't be reset and resolved items are locked, so a true do-over only exists via practice retakes.
 Practice mode never touches either node.
 
+**No-lost-work guarantee on exit.** Every way out of a live graded session is an intentional
+app-flow path that preserves the draft (never browser refresh/quit):
+- The runner's leave modal calls `handleLeaveConfirm`, which writes the draft first. Its guard
+  includes a non-empty `answers` map, so even a typed-but-not-yet-submitted answer is saved.
+- If the **final submission fails** (`submitWork` catch), the result screen no longer traps the
+  student with only a Retry button. It reassures "your work is saved" and adds a
+  **"Leave — my work is saved"** button. The draft is only cleared on submit *success*
+  (`clearDraft()` runs after `onFinish` resolves), so on a failure the full draft remains and the
+  student can leave, return, and finish submitting (re-uploading work) via the resume flow.
+- All three save paths (auto-save effect, leave-confirm, save-failure exit) share
+  `draftSnapshot()` / `persistDraft()` for an identical snapshot shape.
+
+Practice mode persists nothing by design; its leave modal states plainly that practice progress
+isn't saved and can be restarted anytime.
+
 ### ~~⚠️ Written-work integrity check~~ ✅ Done
 Before submitting a (non-practice) homework, students must upload images/PDFs of their
 handwritten work. `checkWorkIntegrity` (`homework.js`) runs a lenient Claude sniff-check;
@@ -49,7 +64,16 @@ Shared logic: `integrityState` / `integrityAdjustedScore` (homework.js), used by
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
    `src/courses/physics{1,2}.js` (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems,
    figures under `public/homeworkFigures/HWn/`, multipart `parts`, and per-problem
-   `unit` / `sigFigs` / `tolerance`. `hw1` is only a smoke test.
+   `unit` / `sigFigs` / `tolerance`.
+   - ✅ **`hw1` (Physics 1) is now real content** — "Homework 1: Units & Vectors", 10
+     Young & Freedman Ch. 1 problems (1.10, 1.33, 1.35, 1.36, 1.37, 1.51, 1.53, 1.73,
+     1.87, 1.89). Figures `figE1-28.png` / `figE1-43.png` / `figP1-73.png` in
+     `public/homeworkFigures/HW1/` (textbook "Figure …" labels cropped off). "Magnitude
+     and direction" questions are split into two numeric blanks each (direction = degrees
+     CCW from +x, stated in the stem); answers are hardcoded numerics graded
+     deterministically, with Claude reserved for the few text/math parts (1.51b direction,
+     1.53b expression, 1.53c explanation) and hints. The remaining `hw2…hw14` are still
+     stubs to author.
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into
