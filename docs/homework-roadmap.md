@@ -70,11 +70,40 @@ has submitted is clickable ("View ›") and opens that modal read-only — no ed
 callbacks and `showIntegrity={false}` — so students review their own submitted answers, sketches,
 chat dialogue, and uploaded work the same way instructors do.
 
+## Authoring — verify solutions first (REQUIRED)
+
+Before any new homework is authored or an existing answer is changed, **independently
+solve every problem and confirm each baked-in answer is correct AND complete.** Instructor
+answer keys are known to contain errors and omissions, so the source key is a starting point,
+not ground truth. The procedure:
+
+1. **Solve from scratch.** Compute every numeric with a script (e.g. a quick `python3`
+   heredoc), never by hand — last-digit arithmetic slips are the common failure. Keep the
+   ±2% grading tolerance in mind, but author answers to full precision anyway (e.g. a
+   direction of 250.3°, not 250°).
+2. **Check figures.** For any problem with a `figure`, open the image and confirm the
+   magnitudes/angles/quadrants you solved against actually match what the student sees —
+   a wrong assumed angle invalidates the answer silently.
+3. **Check graph keys.** For `answerType: "graph"`, confirm every `key.points` entry lies on
+   the curve the physics implies (recompute each point) and that `shape` matches.
+4. **Check completeness of prose.** A `text`/`math` answer is incomplete unless it states the
+   full reasoning/expression a student is expected to give (e.g. a direction stated *and*
+   justified, not just "out of the page").
+5. **Set `sigFigs` on every numeric answer/part.** The revealed correct answer is formatted to
+   the item's `sigFigs` (via `toSigFigString`); without it the reveal shows `String(answer)`,
+   which silently drops significant trailing zeros (`9.00` → "9", `40.0` → "40", `3.30` → "3.3").
+   Choose the count from the precision of the problem's given data. Grading is unaffected
+   (`sigFigs` is display-only) — answers stay within the ±2% numeric tolerance.
+
+HW1 and HW2 were fully re-verified on 2026-06-18 (every numeric, graph key point, and text
+answer confirmed correct/complete). When verifying a set, do it the same way and record the
+date here.
+
 ## Remaining buildout steps
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
    `src/courses/physics{1,2}.js` (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems,
    figures under `public/homeworkFigures/HWn/`, multipart `parts`, and per-problem
-   `unit` / `sigFigs` / `tolerance`.
+   `unit` / `sigFigs` / `tolerance`. **Verify all solutions first — see § Authoring above.**
    - ✅ **`hw1` (Physics 1) is now real content** — "Homework 1: Units & Vectors", 10
      Young & Freedman Ch. 1 problems (1.10, 1.33, 1.35, 1.36, 1.37, 1.51, 1.53, 1.73,
      1.87, 1.89). Figures `figE1-28.png` / `figE1-43.png` / `figP1-73.png` in

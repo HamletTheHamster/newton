@@ -65,15 +65,23 @@ export function numericMatch(studentRaw, answer, tol = HW_GRADING_DEFAULTS.numer
   return Math.abs(s - a) <= tol * Math.abs(a);
 }
 
+// Render x with `sf` significant figures in plain decimal notation, preserving
+// significant trailing zeros (e.g. 9 @3sf → "9.00", 40 @3sf → "40.0", 0.6 @3sf → "0.600").
+// Unlike Number.prototype.toPrecision, this never emits scientific notation for the
+// normal-magnitude values used in this course ((1000).toPrecision(2) === "1.0e+3" → "1000").
+export function toSigFigString(x, sf) {
+  const n = Number(x);
+  if (!Number.isFinite(n) || !sf) return String(x);
+  if (n === 0) return (0).toFixed(Math.max(0, sf - 1));
+  const rounded = Number(n.toPrecision(sf)); // correctly rounded to sf sig figs (e.g. 1796 @3 → 1800)
+  const exp = parseInt(Math.abs(rounded).toExponential().split("e")[1], 10); // order of magnitude
+  const decimals = Math.max(0, sf - 1 - exp);
+  return rounded.toFixed(decimals);
+}
+
 // Display the correct numeric answer in its proper sig figs (when specified), with unit.
 export function formatNumericAnswer(item) {
-  let val = String(item.answer);
-  if (item.sigFigs) {
-    const p = Number(item.answer).toPrecision(item.sigFigs);
-    // Trim trailing zeros that toPrecision may introduce for integers-as-decimals,
-    // but keep significant trailing zeros implied by sigFigs.
-    val = p;
-  }
+  const val = item.sigFigs ? toSigFigString(item.answer, item.sigFigs) : String(item.answer);
   return item.unit ? `${val} ${item.unit}` : val;
 }
 

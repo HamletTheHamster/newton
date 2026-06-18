@@ -89,9 +89,9 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw1_p1",
         prompt: "The following conversions occur frequently in physics and are very useful.",
         parts: [
-          { id: "hw1_p1a", prompt: "(a) Use $1\\text{ mi} = 5280\\text{ ft}$ and $1\\text{ h} = 3600\\text{ s}$ to convert $60\\text{ mph}$ to units of ft/s.", answerType: "numeric", answer: 88, unit: "ft/s" },
-          { id: "hw1_p1b", prompt: "(b) The acceleration of a freely falling object is $32\\text{ ft/s}^2$. Use $1\\text{ ft} = 30.48\\text{ cm}$ to express this acceleration in units of m/s².", answerType: "numeric", answer: 9.75, unit: "m/s²" },
-          { id: "hw1_p1c", prompt: "(c) The density of water is $1.0\\text{ g/cm}^3$. Convert this density to units of kg/m³.", answerType: "numeric", answer: 1000, unit: "kg/m³" },
+          { id: "hw1_p1a", prompt: "(a) Use $1\\text{ mi} = 5280\\text{ ft}$ and $1\\text{ h} = 3600\\text{ s}$ to convert $60\\text{ mph}$ to units of ft/s.", answerType: "numeric", answer: 88, unit: "ft/s", sigFigs: 2 },
+          { id: "hw1_p1b", prompt: "(b) The acceleration of a freely falling object is $32\\text{ ft/s}^2$. Use $1\\text{ ft} = 30.48\\text{ cm}$ to express this acceleration in units of m/s².", answerType: "numeric", answer: 9.75, unit: "m/s²", sigFigs: 2 },
+          { id: "hw1_p1c", prompt: "(c) The density of water is $1.0\\text{ g/cm}^3$. Convert this density to units of kg/m³.", answerType: "numeric", answer: 1000, unit: "kg/m³", sigFigs: 2 },
         ],
       },
       // 1.33 — component from magnitude/angle
@@ -99,8 +99,8 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw1_p2",
         prompt: "Vector $\\vec{A}$ has $y$-component $A_y = +13.0\\text{ m}$. $\\vec{A}$ makes an angle of $32.0°$ counterclockwise from the $+y$-axis.",
         parts: [
-          { id: "hw1_p2a", prompt: "(a) What is the $x$-component of $\\vec{A}$?", answerType: "numeric", answer: -8.12, unit: "m" },
-          { id: "hw1_p2b", prompt: "(b) What is the magnitude of $\\vec{A}$?", answerType: "numeric", answer: 15.3, unit: "m" },
+          { id: "hw1_p2a", prompt: "(a) What is the $x$-component of $\\vec{A}$?", answerType: "numeric", answer: -8.12, unit: "m", sigFigs: 3 },
+          { id: "hw1_p2b", prompt: "(b) What is the magnitude of $\\vec{A}$?", answerType: "numeric", answer: 15.3, unit: "m", sigFigs: 3 },
         ],
       },
       // 1.35 — sums & differences from Fig E1.28
@@ -109,14 +109,14 @@ export const HOMEWORKS_PHYSICS1 = [
         figure: "/homeworkFigures/HW1/figE1-28.png",
         prompt: "For the vectors $\\vec{A}$ and $\\vec{B}$ shown in the figure, use the method of components to find the magnitude and direction of each vector below. Give every direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
         parts: [
-          { id: "hw1_p3a_m", prompt: "(a) Magnitude of the vector sum $\\vec{A}+\\vec{B}$.", answerType: "numeric", answer: 9.00, unit: "m" },
-          { id: "hw1_p3a_d", prompt: "(a) Direction of $\\vec{A}+\\vec{B}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 33.6, unit: "°" },
-          { id: "hw1_p3b_m", prompt: "(b) Magnitude of the vector sum $\\vec{B}+\\vec{A}$.", answerType: "numeric", answer: 9.00, unit: "m" },
-          { id: "hw1_p3b_d", prompt: "(b) Direction of $\\vec{B}+\\vec{A}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 33.6, unit: "°" },
-          { id: "hw1_p3c_m", prompt: "(c) Magnitude of the vector difference $\\vec{A}-\\vec{B}$.", answerType: "numeric", answer: 22.3, unit: "m" },
-          { id: "hw1_p3c_d", prompt: "(c) Direction of $\\vec{A}-\\vec{B}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 250, unit: "°" },
-          { id: "hw1_p3d_m", prompt: "(d) Magnitude of the vector difference $\\vec{B}-\\vec{A}$.", answerType: "numeric", answer: 22.3, unit: "m" },
-          { id: "hw1_p3d_d", prompt: "(d) Direction of $\\vec{B}-\\vec{A}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 70.4, unit: "°" },
+          { id: "hw1_p3a_m", prompt: "(a) Magnitude of the vector sum $\\vec{A}+\\vec{B}$.", answerType: "numeric", answer: 9.00, unit: "m", sigFigs: 3 },
+          { id: "hw1_p3a_d", prompt: "(a) Direction of $\\vec{A}+\\vec{B}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 33.6, unit: "°", sigFigs: 3 },
+          { id: "hw1_p3b_m", prompt: "(b) Magnitude of the vector sum $\\vec{B}+\\vec{A}$.", answerType: "numeric", answer: 9.00, unit: "m", sigFigs: 3 },
+          { id: "hw1_p3b_d", prompt: "(b) Direction of $\\vec{B}+\\vec{A}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 33.6, unit: "°", sigFigs: 3 },
+          { id: "hw1_p3c_m", prompt: "(c) Magnitude of the vector difference $\\vec{A}-\\vec{B}$.", answerType: "numeric", answer: 22.3, unit: "m", sigFigs: 3 },
+          { id: "hw1_p3c_d", prompt: "(c) Direction of $\\vec{A}-\\vec{B}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 250.3, unit: "°", sigFigs: 4 },
+          { id: "hw1_p3d_m", prompt: "(d) Magnitude of the vector difference $\\vec{B}-\\vec{A}$.", answerType: "numeric", answer: 22.3, unit: "m", sigFigs: 3 },
+          { id: "hw1_p3d_d", prompt: "(d) Direction of $\\vec{B}-\\vec{A}$ (degrees CCW from $+x$).", answerType: "numeric", answer: 70.3, unit: "°", sigFigs: 3 },
         ],
       },
       // 1.36 — magnitude/direction from components
@@ -124,12 +124,12 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw1_p4",
         prompt: "Find the magnitude and direction of the vector represented by each of the following pairs of components. Give every direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
         parts: [
-          { id: "hw1_p4a_m", prompt: "(a) $A_x = -8.60\\text{ cm}$, $A_y = 5.20\\text{ cm}$ — magnitude.", answerType: "numeric", answer: 10.0, unit: "cm" },
-          { id: "hw1_p4a_d", prompt: "(a) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 149, unit: "°" },
-          { id: "hw1_p4b_m", prompt: "(b) $A_x = -9.70\\text{ m}$, $A_y = -2.45\\text{ m}$ — magnitude.", answerType: "numeric", answer: 10.0, unit: "m" },
-          { id: "hw1_p4b_d", prompt: "(b) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 194, unit: "°" },
-          { id: "hw1_p4c_m", prompt: "(c) $A_x = 7.75\\text{ km}$, $A_y = -2.70\\text{ km}$ — magnitude.", answerType: "numeric", answer: 8.21, unit: "km" },
-          { id: "hw1_p4c_d", prompt: "(c) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 341, unit: "°" },
+          { id: "hw1_p4a_m", prompt: "(a) $A_x = -8.60\\text{ cm}$, $A_y = 5.20\\text{ cm}$ — magnitude.", answerType: "numeric", answer: 10.0, unit: "cm", sigFigs: 3 },
+          { id: "hw1_p4a_d", prompt: "(a) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 149, unit: "°", sigFigs: 3 },
+          { id: "hw1_p4b_m", prompt: "(b) $A_x = -9.70\\text{ m}$, $A_y = -2.45\\text{ m}$ — magnitude.", answerType: "numeric", answer: 10.0, unit: "m", sigFigs: 3 },
+          { id: "hw1_p4b_d", prompt: "(b) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 194, unit: "°", sigFigs: 3 },
+          { id: "hw1_p4c_m", prompt: "(c) $A_x = 7.75\\text{ km}$, $A_y = -2.70\\text{ km}$ — magnitude.", answerType: "numeric", answer: 8.21, unit: "km", sigFigs: 3 },
+          { id: "hw1_p4c_d", prompt: "(c) Direction (degrees CCW from $+x$).", answerType: "numeric", answer: 341, unit: "°", sigFigs: 3 },
         ],
       },
       // 1.37 — resultant displacement
@@ -137,8 +137,8 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw1_p5",
         prompt: "A disoriented physics professor drives $3.25\\text{ km}$ north, then $2.90\\text{ km}$ west, and then $1.50\\text{ km}$ south. Find the magnitude and direction of the resultant displacement, using the method of components. Take east as the $+x$-direction and north as the $+y$-direction, and give the direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
         parts: [
-          { id: "hw1_p5_m", prompt: "Magnitude of the resultant displacement.", answerType: "numeric", answer: 3.39, unit: "km" },
-          { id: "hw1_p5_d", prompt: "Direction of the resultant displacement (degrees CCW from $+x$).", answerType: "numeric", answer: 149, unit: "°" },
+          { id: "hw1_p5_m", prompt: "Magnitude of the resultant displacement.", answerType: "numeric", answer: 3.39, unit: "km", sigFigs: 3 },
+          { id: "hw1_p5_d", prompt: "Direction of the resultant displacement (degrees CCW from $+x$).", answerType: "numeric", answer: 149, unit: "°", sigFigs: 3 },
         ],
       },
       // 1.51 — scalar & vector product from Fig E1.43
@@ -147,8 +147,8 @@ export const HOMEWORKS_PHYSICS1 = [
         figure: "/homeworkFigures/HW1/figE1-43.png",
         prompt: "For the two vectors $\\vec{A}$ and $\\vec{B}$ shown in the figure, find the scalar product and the vector product.",
         parts: [
-          { id: "hw1_p6a", prompt: "(a) Find the scalar product $\\vec{A}\\cdot\\vec{B}$ (in m²).", answerType: "numeric", answer: -6.6, unit: "m²" },
-          { id: "hw1_p6b_m", prompt: "(b) Find the magnitude of the vector product $\\vec{A}\\times\\vec{B}$ (in m²).", answerType: "numeric", answer: 5.6, unit: "m²" },
+          { id: "hw1_p6a", prompt: "(a) Find the scalar product $\\vec{A}\\cdot\\vec{B}$ (in m²).", answerType: "numeric", answer: -6.6, unit: "m²", sigFigs: 2 },
+          { id: "hw1_p6b_m", prompt: "(b) Find the magnitude of the vector product $\\vec{A}\\times\\vec{B}$ (in m²).", answerType: "numeric", answer: 5.6, unit: "m²", sigFigs: 2 },
           { id: "hw1_p6b_d", prompt: "(b) Using the right-hand rule, what is the direction of $\\vec{A}\\times\\vec{B}$?", answerType: "text", answer: "Out of the page — the +z-direction." },
         ],
       },
@@ -157,10 +157,10 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw1_p7",
         prompt: "Given two vectors $\\vec{A} = -2.00\\,\\hat{\\imath} + 3.00\\,\\hat{\\jmath} + 4.00\\,\\hat{k}$ and $\\vec{B} = 3.00\\,\\hat{\\imath} + 1.00\\,\\hat{\\jmath} - 3.00\\,\\hat{k}$, do the following.",
         parts: [
-          { id: "hw1_p7a_A", prompt: "(a) Find the magnitude of $\\vec{A}$.", answerType: "numeric", answer: 5.39 },
-          { id: "hw1_p7a_B", prompt: "(a) Find the magnitude of $\\vec{B}$.", answerType: "numeric", answer: 4.36 },
+          { id: "hw1_p7a_A", prompt: "(a) Find the magnitude of $\\vec{A}$.", answerType: "numeric", answer: 5.39, sigFigs: 3 },
+          { id: "hw1_p7a_B", prompt: "(a) Find the magnitude of $\\vec{B}$.", answerType: "numeric", answer: 4.36, sigFigs: 3 },
           { id: "hw1_p7b", prompt: "(b) Write an expression for the vector difference $\\vec{A}-\\vec{B}$ using unit vectors.", answerType: "math", answer: "-5.00\\,\\hat{\\imath} + 2.00\\,\\hat{\\jmath} + 7.00\\,\\hat{k}" },
-          { id: "hw1_p7c_m", prompt: "(c) Find the magnitude of the vector difference $\\vec{A}-\\vec{B}$.", answerType: "numeric", answer: 8.83 },
+          { id: "hw1_p7c_m", prompt: "(c) Find the magnitude of the vector difference $\\vec{A}-\\vec{B}$.", answerType: "numeric", answer: 8.83, sigFigs: 3 },
           { id: "hw1_p7c_e", prompt: "(c) Is this the same as the magnitude of $\\vec{B}-\\vec{A}$? Explain.", answerType: "text", answer: "Yes — the magnitudes are equal. Since $\\vec{B}-\\vec{A} = -(\\vec{A}-\\vec{B})$, the two difference vectors point in opposite directions but have the same length (8.83)." },
         ],
       },
@@ -172,6 +172,7 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 3.30,
         unit: "N",
+        sigFigs: 3,
       },
       // 1.87 — angle from scalar & vector product
       {
@@ -180,6 +181,7 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 124,
         unit: "°",
+        sigFigs: 3,
       },
       // 1.89 — magnitude of vector product
       {
@@ -188,6 +190,7 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 170,
         unit: "m²",
+        sigFigs: 3,
       },
     ],
   },
@@ -202,17 +205,18 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 1.17,
         unit: "h",
+        sigFigs: 2,
       },
       // 2.16 — average acceleration over a 10.0-s interval
       {
         id: "hw2_p2",
         prompt: "An astronaut has left the International Space Station to test a new space scooter. Her partner measures the following velocity changes, each taking place in a $10.0\\text{-s}$ interval. For each case, take the positive direction (the $+x$-axis) to be toward the right. Give each average acceleration **with its algebraic sign** (a negative value means it points toward the left), then state its direction.",
         parts: [
-          { id: "hw2_p2a_a", prompt: "(a) At the beginning of the interval she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the right at $5.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -1.0, unit: "m/s²" },
+          { id: "hw2_p2a_a", prompt: "(a) At the beginning of the interval she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the right at $5.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -1.0, unit: "m/s²", sigFigs: 2 },
           { id: "hw2_p2a_d", prompt: "(a) In which direction does this average acceleration point?", answerType: "text", answer: "Toward the left (the $-x$-direction)." },
-          { id: "hw2_p2b_a", prompt: "(b) At the beginning she is moving toward the left at $5.0\\text{ m/s}$, and at the end she is moving toward the left at $15.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -1.0, unit: "m/s²" },
+          { id: "hw2_p2b_a", prompt: "(b) At the beginning she is moving toward the left at $5.0\\text{ m/s}$, and at the end she is moving toward the left at $15.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -1.0, unit: "m/s²", sigFigs: 2 },
           { id: "hw2_p2b_d", prompt: "(b) In which direction does this average acceleration point?", answerType: "text", answer: "Toward the left (the $-x$-direction)." },
-          { id: "hw2_p2c_a", prompt: "(c) At the beginning she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the left at $15.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -3.0, unit: "m/s²" },
+          { id: "hw2_p2c_a", prompt: "(c) At the beginning she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the left at $15.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", answer: -3.0, unit: "m/s²", sigFigs: 2 },
           { id: "hw2_p2c_d", prompt: "(c) In which direction does this average acceleration point?", answerType: "text", answer: "Toward the left (the $-x$-direction)." },
         ],
       },
@@ -221,8 +225,8 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw2_p3",
         prompt: "A Fast Pitch. The fastest measured pitched baseball left the pitcher's hand at a speed of $45.0\\text{ m/s}$. If the pitcher was in contact with the ball over a distance of $1.50\\text{ m}$ and produced constant acceleration, do the following. Assume the ball starts from rest.",
         parts: [
-          { id: "hw2_p3a", prompt: "(a) What acceleration did he give the ball?", answerType: "numeric", answer: 675, unit: "m/s²" },
-          { id: "hw2_p3b", prompt: "(b) How much time did it take him to pitch it?", answerType: "numeric", answer: 0.0667, unit: "s" },
+          { id: "hw2_p3a", prompt: "(a) What acceleration did he give the ball?", answerType: "numeric", answer: 675, unit: "m/s²", sigFigs: 3 },
+          { id: "hw2_p3b", prompt: "(b) How much time did it take him to pitch it?", answerType: "numeric", answer: 0.0667, unit: "s", sigFigs: 3 },
         ],
       },
       // 2.34 — car overtakes truck at a traffic light (parts c/d are sketched in-app)
@@ -230,8 +234,8 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw2_p4",
         prompt: "At the instant the traffic light turns green, a car that has been waiting at an intersection starts ahead with a constant acceleration of $3.20\\text{ m/s}^2$. At the same instant a truck, traveling with a constant speed of $20.0\\text{ m/s}$, overtakes and passes the car. Take $x = 0$ at the intersection.",
         parts: [
-          { id: "hw2_p4a", prompt: "(a) How far beyond its starting point does the car overtake the truck?", answerType: "numeric", answer: 250, unit: "m" },
-          { id: "hw2_p4b", prompt: "(b) How fast is the car traveling when it overtakes the truck?", answerType: "numeric", answer: 40.0, unit: "m/s" },
+          { id: "hw2_p4a", prompt: "(a) How far beyond its starting point does the car overtake the truck?", answerType: "numeric", answer: 250, unit: "m", sigFigs: 3 },
+          { id: "hw2_p4b", prompt: "(b) How fast is the car traveling when it overtakes the truck?", answerType: "numeric", answer: 40.0, unit: "m/s", sigFigs: 3 },
           {
             id: "hw2_p4c",
             prompt: "(c) Sketch an $x$-$t$ graph of the motion of both vehicles, from $t = 0$ to the moment the car overtakes the truck. For each curve place a point at the start, at the point where they meet, and at least one point in between so its shape is clear; then set each curve to a straight line or a curve.",
@@ -300,7 +304,7 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw2_p5",
         prompt: "Use $g = 9.80\\text{ m/s}^2$ and neglect air resistance.",
         parts: [
-          { id: "hw2_p5a", prompt: "(a) If a flea can jump straight up to a height of $0.440\\text{ m}$, what is its initial speed as it leaves the ground?", answerType: "numeric", answer: 2.94, unit: "m/s" },
+          { id: "hw2_p5a", prompt: "(a) If a flea can jump straight up to a height of $0.440\\text{ m}$, what is its initial speed as it leaves the ground?", answerType: "numeric", answer: 2.94, unit: "m/s", sigFigs: 3 },
           { id: "hw2_p5b", prompt: "(b) How long is it in the air?", answerType: "numeric", answer: 0.600, unit: "s", sigFigs: 3 },
         ],
       },
@@ -311,19 +315,20 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 1796,
         unit: "m",
+        sigFigs: 3,
       },
       // 2.66 — sled with constant acceleration
       {
         id: "hw2_p7",
         prompt: "A sled starts from rest at the top of a hill and slides down with a constant acceleration. At some later time it is $14.4\\text{ m}$ from the top; $2.00\\text{ s}$ after that it is $25.6\\text{ m}$ from the top; $2.00\\text{ s}$ after that, $40.0\\text{ m}$ from the top; and $2.00\\text{ s}$ after that, $57.6\\text{ m}$ from the top.",
         parts: [
-          { id: "hw2_p7a1", prompt: "(a) What is the magnitude of the average velocity of the sled during the first $2.00\\text{-s}$ interval after passing the $14.4\\text{-m}$ point (from $14.4\\text{ m}$ to $25.6\\text{ m}$)?", answerType: "numeric", answer: 5.60, unit: "m/s" },
-          { id: "hw2_p7a2", prompt: "(a) Average velocity during the second $2.00\\text{-s}$ interval (from $25.6\\text{ m}$ to $40.0\\text{ m}$)?", answerType: "numeric", answer: 7.20, unit: "m/s" },
-          { id: "hw2_p7a3", prompt: "(a) Average velocity during the third $2.00\\text{-s}$ interval (from $40.0\\text{ m}$ to $57.6\\text{ m}$)?", answerType: "numeric", answer: 8.80, unit: "m/s" },
+          { id: "hw2_p7a1", prompt: "(a) What is the magnitude of the average velocity of the sled during the first $2.00\\text{-s}$ interval after passing the $14.4\\text{-m}$ point (from $14.4\\text{ m}$ to $25.6\\text{ m}$)?", answerType: "numeric", answer: 5.60, unit: "m/s", sigFigs: 3 },
+          { id: "hw2_p7a2", prompt: "(a) Average velocity during the second $2.00\\text{-s}$ interval (from $25.6\\text{ m}$ to $40.0\\text{ m}$)?", answerType: "numeric", answer: 7.20, unit: "m/s", sigFigs: 3 },
+          { id: "hw2_p7a3", prompt: "(a) Average velocity during the third $2.00\\text{-s}$ interval (from $40.0\\text{ m}$ to $57.6\\text{ m}$)?", answerType: "numeric", answer: 8.80, unit: "m/s", sigFigs: 3 },
           { id: "hw2_p7b", prompt: "(b) What is the acceleration of the sled?", answerType: "numeric", answer: 0.800, unit: "m/s²", sigFigs: 3 },
-          { id: "hw2_p7c", prompt: "(c) What is the speed of the sled as it passes the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 4.80, unit: "m/s" },
-          { id: "hw2_p7d", prompt: "(d) How much time did it take to go from the top to the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 6.00, unit: "s" },
-          { id: "hw2_p7e", prompt: "(e) How far did the sled go from the start (the top) during the first $2.00\\text{ s}$ after passing the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 25.6, unit: "m" },
+          { id: "hw2_p7c", prompt: "(c) What is the speed of the sled as it passes the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 4.80, unit: "m/s", sigFigs: 3 },
+          { id: "hw2_p7d", prompt: "(d) How much time did it take to go from the top to the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 6.00, unit: "s", sigFigs: 3 },
+          { id: "hw2_p7e", prompt: "(e) How far did the sled go from the start (the top) during the first $2.00\\text{ s}$ after passing the $14.4\\text{-m}$ point?", answerType: "numeric", answer: 25.6, unit: "m", sigFigs: 3 },
         ],
       },
       // 2.69 — ball rolls down a hill
@@ -333,6 +338,7 @@ export const HOMEWORKS_PHYSICS1 = [
         answerType: "numeric",
         answer: 50,
         unit: "m",
+        sigFigs: 2,
       },
       // 2.80 — Egg Drop (Fig. P2.80)
       {
@@ -349,8 +355,8 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw2_p10",
         prompt: "A certain volcano on earth can eject rocks vertically to a maximum height $H$. The acceleration due to gravity on Mars is $3.71\\text{ m/s}^2$ (use $g = 9.80\\text{ m/s}^2$ on earth), and you can neglect air resistance on both planets. Give each answer as a numerical multiple of the earth quantity.",
         parts: [
-          { id: "hw2_p10a", prompt: "(a) How high (in terms of $H$) would these rocks go if a volcano on Mars ejected them with the same initial velocity? Enter the numerical factor (height $= $ factor $\\times H$).", answerType: "numeric", answer: 2.64, unit: "× H" },
-          { id: "hw2_p10b", prompt: "(b) If the rocks are in the air for a time $T$ on earth, for how long (in terms of $T$) will they be in the air on Mars? Enter the numerical factor (time $= $ factor $\\times T$).", answerType: "numeric", answer: 2.64, unit: "× T" },
+          { id: "hw2_p10a", prompt: "(a) How high (in terms of $H$) would these rocks go if a volcano on Mars ejected them with the same initial velocity? Enter the numerical factor (height $= $ factor $\\times H$).", answerType: "numeric", answer: 2.64, unit: "× H", sigFigs: 3 },
+          { id: "hw2_p10b", prompt: "(b) If the rocks are in the air for a time $T$ on earth, for how long (in terms of $T$) will they be in the air on Mars? Enter the numerical factor (time $= $ factor $\\times T$).", answerType: "numeric", answer: 2.64, unit: "× T", sigFigs: 3 },
         ],
       },
     ],
