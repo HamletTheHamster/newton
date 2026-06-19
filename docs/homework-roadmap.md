@@ -182,6 +182,16 @@ record the date here.
    per-curve `key` (key points within `yTolFrac` + matching shape flag) — no Claude call.
    Reveal renders the read-only "correct sketch" (`keyToValue`); the gradebook re-renders the
    student's sketch + expected side-by-side. First used in `hw2_p4` (2.34 c/d).
+   - **No-Submit live-lock UX (2026-06-18):** graph/vector items have **no Submit button**.
+     Because grading is deterministic and local (free/instant), the runner grades on **every
+     placement** (`onGraphicalChange`): each piece (curve / arrow) that lands in tolerance turns
+     **green and freezes in place**, and when all pieces pass the part resolves at **full credit**
+     (no attempt schedule). A stuck student uses a **Show answer** button (confirm → reveal at
+     `revealCredit`); a free **Hint** button is always available. The guide checklist is
+     three-state (empty → drawn (neutral blue) → green ✓ + locked), verbose tool mechanics and
+     long guide notes are tucked behind an `InfoDot` (circled-i popover), SVG/guide fonts are
+     enlarged, the plot column is 540px, and the runner body matches the 960px module width.
+     Next/Finish still warns on a started-but-unfinished diagram. Same treatment for vectors below.
    - **Future extensions:** the current grader treats each curve as a single `shape` flag
      (sufficient for monotonic single-concavity curves). Piecewise sketches (e.g. the subway
      train's ramp-up / flat / ramp-down $v$-$t$) would need per-segment shapes. Could also add

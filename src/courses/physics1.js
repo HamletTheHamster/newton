@@ -265,12 +265,12 @@ export const HOMEWORKS_PHYSICS1 = [
                 steps: [
                   {
                     curve: "car", minPoints: 3, shape: "curveUp",
-                    label: "plot three points — the start ($t=0$), an in-between point, and the overtake point — then set the shape to “Curve ↑”.",
-                    note: "The car speeds up, so its x–t graph curves. The in-between point is an extra step: pick a time (say t = 5 s) and compute the car's position there with x = ½at². For the overtake point, use the distance you found in part (a) at the time the car catches the truck.",
+                    label: "start ($t=0$), an in-between point, and the overtake point; shape “Curve ↑”.",
+                    note: "The car speeds up, so its x–t graph curves. For the in-between point, pick a time (say t = 5 s) and use x = ½at². For the overtake point, use the distance from part (a) at the catch-up time.",
                   },
                   {
                     curve: "truck", minPoints: 2, shape: "line",
-                    label: "plot two points — the start ($t=0$) and the overtake point (where it meets the car) — as a straight line (constant velocity).",
+                    label: "start ($t=0$) and the overtake point; straight line (constant velocity).",
                   },
                 ],
               },
@@ -296,11 +296,12 @@ export const HOMEWORKS_PHYSICS1 = [
                 steps: [
                   {
                     curve: "car", minPoints: 2, shape: "line",
-                    label: "plot two points — it starts from rest ($v=0$ at $t=0$) and reaches its overtake speed (your part-(b) answer) at the catch-up time. Constant acceleration ⇒ a straight line.",
+                    label: "from rest ($v=0$ at $t=0$) up to your part-(b) speed at the catch-up time; straight line.",
+                    note: "Constant acceleration ⇒ a straight line on a v–t graph.",
                   },
                   {
                     curve: "truck", minPoints: 2, shape: "line",
-                    label: "the truck moves at a constant $20.0\\text{ m/s}$, so plot a horizontal straight line at $v = 20.0\\text{ m/s}$.",
+                    label: "horizontal line at a constant $v = 20.0\\text{ m/s}$.",
                   },
                 ],
               },
@@ -396,10 +397,10 @@ export const HOMEWORKS_PHYSICS1 = [
           { id: "hw3_p2b_d", prompt: "(b) Direction of the velocity at $t_2$ (degrees CCW from $+x$).", answerType: "numeric", answer: 4.584, unit: "°", sigFigs: 2 },
           {
             id: "hw3_p2c",
-            prompt: "(c) Sketch the dog's velocity vectors at $t_1$ and $t_2$ on the velocity plane below (axes in m/s), drawing each from the origin to the tip given by that instant's velocity components. Then draw the **average-acceleration vector** for the interval, which is parallel to the *change* in velocity $\\Delta\\vec v = \\vec v_2 - \\vec v_1$. You may draw it either as the graphical subtraction — an arrow from the tip of $\\vec v_1$ to the tip of $\\vec v_2$ — or as the same arrow starting from the origin; both are accepted. It points up and to the right at $31°$ above the $+x$-axis, which is exactly why the velocity arrow both lengthens and rotates counterclockwise from $t_1$ to $t_2$.",
+            prompt: "(c) Sketch the dog's velocity vectors at $t_1$ and $t_2$. Then draw the change in velocity for this interval $\\Delta\\vec v = \\vec v_2 - \\vec v_1$.",
             answerType: "vector",
             vector: {
-              xLabel: "vₓ (m/s)", yLabel: "v_y (m/s)",
+              xLabel: "v_x (m/s)", yLabel: "v_y (m/s)",
               xMin: -2, xMax: 8, yMin: -4, yMax: 3, xTick: 2, yTick: 1, snapDiv: 100, // snapDiv 100 ⇒ 0.02 in x, 0.01 in y, so v₂ sits exactly at its components (6.5, 0.52); yMax 3 fits the origin-drawn Δv (tip ≈ (3.86, 2.32))
               origin: [0, 0],
               vectors: [
@@ -419,14 +420,14 @@ export const HOMEWORKS_PHYSICS1 = [
               buildup: {
                 vectorId: "a", count: 10, base: ["v1", "v2"],
                 stepColor: "#eab308", runningColor: "#14b8a6",
-                caption: "Watch the average acceleration rebuild the velocity. Each second it adds $\\bar{a}\\,(1\\text{ s})$ — one-tenth of $\\Delta\\vec v$ — to the velocity (the yellow steps). After ten seconds those ten equal steps, laid tip to tail, have carried $\\vec v_1$ all the way to $\\vec v_2$: that is $\\vec v_2 = \\vec v_1 + \\bar{a}\\,\\Delta t$.",
+                caption: "Watch the average acceleration transform the velocity second-by-second over the ten-second interval. Each second it adds $\\textcolor{#10b981}{\\vec{a}}$ to the velocity, and after ten seconds of this applied acceleration $\\textcolor{#3b82f6}{\\vec{v}_1}$ $\\textit{becomes}$ $\\textcolor{#ef4444}{\\vec{v}_2}$! That is, $\\textcolor{#ef4444}{\\vec{v}_2} = \\textcolor{#3b82f6}{\\vec{v}_1} + \\textcolor{#10b981}{\\vec{a}}\\,\\Delta t$, or, $v = v_0 + at$.",
               },
               guide: {
                 title: "How to draw it",
                 steps: [
-                  { vector: "v1", label: "draw the velocity at $t_1$: put the arrow's tip at the components given in the problem, $(v_x, v_y) = (2.6, -1.8)\\text{ m/s}$." },
-                  { vector: "v2", label: "draw the velocity at $t_2$: put the arrow's tip at the components you found in part (a)." },
-                  { vector: "a", label: "draw $\\Delta\\vec v = \\vec v_2 - \\vec v_1$, which sets the direction of the average acceleration.", note: "It's drawn in two clicks (tail, then tip). Two equivalent ways, both accepted: (1) graphical subtraction — click the tip of $\\vec v_1$ to start it, then the tip of $\\vec v_2$, so it runs tip-to-tip; or (2) from the origin — click the origin to start it, then place its tip at the components of $\\vec v_2 - \\vec v_1$. Either way it points up and to the right at $31°$ — NOT along $\\vec v_2$." },
+                  { vector: "v1", label: "tip at $(v_x, v_y) = (2.6, -1.8)\\text{ m/s}$." },
+                  { vector: "v2", label: "tip at the components you found in part (a)." },
+                  { vector: "a", label: "$\\Delta\\vec v = \\vec v_2 - \\vec v_1$ — from the tip of $\\vec v_1$ to the tip of $\\vec v_2$." },
                 ],
               },
             },

@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useTheme } from "../theme.js";
 import { parseVectorValue } from "../homework.js";
 import { MathText } from "./MathText.jsx";
@@ -20,6 +20,9 @@ import { MathText } from "./MathText.jsx";
 //   onChange — (jsonString) => void
 //   disabled — locked (renders read-only, no toolbar)
 //   readOnly — display only (reveal / gradebook); no toolbar, no interaction
+//   grade    — { pass: { [vectorId]: bool } } from the last graded submission; a step's
+//              checklist tick turns green ONLY for vectors that actually passed, so a
+//              merely-drawn (but ungraded) arrow never looks "correct".
 const DEFAULT_COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#a855f7", "#ec4899"];
 const VB_W = 480, VB_H = 320;
 const PAD_L = 46, PAD_R = 14, PAD_T = 14, PAD_B = 38;
@@ -28,7 +31,24 @@ const PLOT_W = PLOT_X1 - PLOT_X0, PLOT_H = PLOT_Y1 - PLOT_Y0;
 
 const fmt = v => String(Math.round(v * 1000) / 1000);
 
-export function VectorField({ config, value, onChange, disabled = false, readOnly = false }) {
+// Render an axis-label string with `_x` / `_{xy}` subscripts as proper SVG subscripts
+// (e.g. "v_y (m/s)" → v with a subscript y). Uses small dy nudges so it works across browsers.
+export function axisLabelTspans(str) {
+  const re = /_(\{[^}]+\}|[A-Za-z0-9]+)/g;
+  const out = [];
+  let last = 0, m, k = 0, reset = 0;
+  const pushText = t => { if (t) { out.push(<tspan key={k++} dy={reset}>{t}</tspan>); reset = 0; } };
+  while ((m = re.exec(str))) {
+    pushText(str.slice(last, m.index));
+    out.push(<tspan key={k++} dy={3} fontSize="0.72em">{m[1].replace(/[{}]/g, "")}</tspan>);
+    reset = -3;
+    last = re.lastIndex;
+  }
+  pushText(str.slice(last));
+  return out;
+}
+
+export function VectorField({ config, value, onChange, disabled = false, readOnly = false, grade = null }) {
   const { border, text, muted, isLight } = useTheme();
   const { xMin, xMax, yMin, yMax, xTick, yTick, xLabel, yLabel } = config;
   const vectors = config.vectors || [];
@@ -52,6 +72,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
   const snapY = v => snap(v, yTick / snapDiv, yMin, yMax);
 
   const colorOf = (c, i) => c.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+  const isFrozen = id => !!grade?.pass?.[id]; // a vector graded correct locks in place (no Submit model)
   const gridColor = isLight ? "#e5e7eb" : "#3a3b3d";
   const axisColor = isLight ? "#9ca3af" : "#6b7280";
   const svgBg = isLight ? "#ffffff" : "#1c1d1e";
@@ -75,6 +96,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
     const { vx, vy } = toVB(e);
     if (vx < PLOT_X0 - 4 || vx > PLOT_X1 + 4 || vy < PLOT_Y0 - 4 || vy > PLOT_Y1 + 4) return;
     const id = activeRef.current;
+    if (isFrozen(id)) return; // locked: a vector that's graded correct can't be moved or removed
     const sv = data.vectors?.[id];
     const tip = sv?.tip;
     const tail = sv?.tail || origin;
@@ -91,13 +113,15 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
     }
   };
   const onMove = e => {
+    if (!interactive) { gestureRef.current = null; return; } // disabled mid-gesture (piece locked) → stop dragging
     const { vx, vy } = toVB(e);
-    if (interactive) {
+    {
       const inPlot = vx >= PLOT_X0 - 2 && vx <= PLOT_X1 + 2 && vy >= PLOT_Y0 - 2 && vy <= PLOT_Y1 + 2;
       setHover(inPlot ? { x: snapX(dx(vx)), y: snapY(dy(vy)) } : null);
     }
     const g = gestureRef.current;
     if (!g) return;
+    if (isFrozen(activeRef.current)) { gestureRef.current = null; return; } // piece locked mid-drag → freeze it in place
     if (Math.hypot(vx - g.startVX, vy - g.startVY) > 4) g.moved = true;
     if (g.type === "tip" || g.type === "tail") {
       const nx = snapX(dx(vx)), ny = snapY(dy(vy));
@@ -126,9 +150,18 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
     }
   };
 
-  const clearActive = () => commit(n => { delete n.vectors[activeRef.current]; });
+  const clearActive = () => { if (!isFrozen(activeRef.current)) commit(n => { delete n.vectors[activeRef.current]; }); };
   const rerender = useRerender();
   const setActive = id => { activeRef.current = id; rerender(); };
+
+  // When the active vector locks in (turns green), auto-advance to the next unsolved one so the
+  // student keeps drawing without clicking a chip. Keyed on the pass map so it fires on each lock.
+  const passKey = JSON.stringify(grade?.pass || {});
+  useEffect(() => {
+    if (!interactive || !isFrozen(activeRef.current)) return;
+    const next = vectors.find(v => !isFrozen(v.id));
+    if (next && next.id !== activeRef.current) { activeRef.current = next.id; rerender(); }
+  }, [passKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const xticks = [], yticks = [];
   for (let v = xMin; v <= xMax + 1e-9; v += xTick) xticks.push(Math.round(v * 1e6) / 1e6);
@@ -139,22 +172,28 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
   const ox = sx(origin[0]), oy = sy(origin[1]);
 
   const chip = (active, color) => ({
-    display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8,
+    display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 8,
     border: `1px solid ${active ? color : border}`, background: active ? color + "22" : "transparent",
-    color: text, fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer",
+    color: text, fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer",
   });
   const sbtn = on => ({
-    padding: "4px 10px", borderRadius: 8, border: `1px solid ${on ? text : border}`,
-    background: on ? text + "18" : "transparent", color: text, fontSize: 12, cursor: "pointer", fontWeight: on ? 700 : 500,
+    padding: "5px 11px", borderRadius: 8, border: `1px solid ${on ? text : border}`,
+    background: on ? text + "18" : "transparent", color: text, fontSize: 13, cursor: "pointer", fontWeight: on ? 700 : 500,
   });
 
-  // Optional step-by-step guide (interactive only). A step ticks off once its vector is placed.
+  // Optional step-by-step guide (interactive only). Each step has THREE states so a drawn-but-
+  // ungraded arrow never masquerades as correct: "empty" (not drawn), "drawn" (placed, neutral
+  // blue — work in progress), "correct" (green — only after a Submit that graded it right, via
+  // the `grade.pass` map). This is the fix for students mistaking a drawn checkmark for a grade.
   const guide = interactive ? config.guide : null;
-  const guideDone = step => Array.isArray(data.vectors?.[step.vector]?.tip);
+  const stepState = step =>
+    grade?.pass?.[step.vector] ? "correct"
+      : Array.isArray(data.vectors?.[step.vector]?.tip) ? "drawn"
+      : "empty";
 
   // An arrow from (tailX,tailY) to (tx,ty) in screen space, with a triangular head. When
   // `showTail` is set, a hollow handle marks the (draggable) tail of a free-tail vector.
-  const Arrow = ({ tailX, tailY, tx, ty, color, label, faded, showTail }) => {
+  const Arrow = ({ tailX, tailY, tx, ty, color, label, faded, showTail, locked }) => {
     const ang = Math.atan2(ty - tailY, tx - tailX);
     const len = Math.hypot(tx - tailX, ty - tailY);
     if (len < 0.5) return null;
@@ -167,9 +206,10 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
       <g opacity={faded ? 0.5 : 1}>
         <line x1={tailX} y1={tailY} x2={tx} y2={ty} stroke={color} strokeWidth={2.5} strokeLinecap="round" />
         <polygon points={`${tx},${ty} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`} fill={color} />
+        {locked && <circle cx={tx} cy={ty} r={9} fill="none" stroke="#4ade80" strokeWidth={2} />}
         {showTail && <circle cx={tailX} cy={tailY} r={4} fill={svgBg} stroke={color} strokeWidth={2} />}
         {label && (
-          <text x={tx + 8 * Math.cos(ang)} y={ty + 8 * Math.sin(ang)} fill={color} fontSize={13} fontWeight={700}
+          <text x={tx + 8 * Math.cos(ang)} y={ty + 8 * Math.sin(ang)} fill={color} fontSize={15.5} fontWeight={700}
             textAnchor={tx >= tailX ? "start" : "end"} dominantBaseline={ty >= tailY ? "hanging" : "auto"}
             style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
             {label}
@@ -180,15 +220,16 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
   };
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", maxWidth: guide ? 800 : 480 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 320px", minWidth: 0, maxWidth: 480 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", maxWidth: guide ? 940 : 540 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 360px", minWidth: 0, maxWidth: 540 }}>
         {interactive && vectors.length > 1 && (
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <span style={{ color: muted, fontSize: 12 }}>Vector:</span>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <span style={{ color: muted, fontSize: 13 }}>Vector:</span>
             {vectors.map((c, i) => (
               <button key={c.id} type="button" onClick={() => setActive(c.id)} style={chip(activeId === c.id, colorOf(c, i))}>
                 <span style={{ width: 10, height: 10, borderRadius: 2, background: colorOf(c, i), display: "inline-block" }} />
                 {c.label}
+                {isFrozen(c.id) && <span style={{ color: "#4ade80", fontWeight: 900 }}>✓</span>}
               </button>
             ))}
             <button type="button" onClick={clearActive} style={{ ...sbtn(false), marginLeft: "auto", color: muted }}>Clear</button>
@@ -214,11 +255,11 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
           <line x1={zeroX ? sx(0) : PLOT_X0} y1={PLOT_Y0} x2={zeroX ? sx(0) : PLOT_X0} y2={PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
           <line x1={PLOT_X0} y1={zeroY ? sy(0) : PLOT_Y1} x2={PLOT_X1} y2={zeroY ? sy(0) : PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
           {/* tick labels (hidden for scale-free diagrams like FBDs) */}
-          {!config.hideTicks && xticks.map(v => <text key={"tx" + v} x={sx(v)} y={PLOT_Y1 + 16} fill={muted} fontSize={11} textAnchor="middle">{fmt(v)}</text>)}
-          {!config.hideTicks && yticks.map(v => <text key={"ty" + v} x={PLOT_X0 - 6} y={sy(v) + 4} fill={muted} fontSize={11} textAnchor="end">{fmt(v)}</text>)}
+          {!config.hideTicks && xticks.map(v => <text key={"tx" + v} x={sx(v)} y={PLOT_Y1 + 17} fill={muted} fontSize={13} textAnchor="middle">{fmt(v)}</text>)}
+          {!config.hideTicks && yticks.map(v => <text key={"ty" + v} x={PLOT_X0 - 6} y={sy(v) + 4} fill={muted} fontSize={13} textAnchor="end">{fmt(v)}</text>)}
           {/* axis labels */}
-          {xLabel && <text x={(PLOT_X0 + PLOT_X1) / 2} y={VB_H - 6} fill={text} fontSize={12} textAnchor="middle">{xLabel}</text>}
-          {yLabel && <text x={12} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={text} fontSize={12} textAnchor="middle" transform={`rotate(-90 12 ${(PLOT_Y0 + PLOT_Y1) / 2})`}>{yLabel}</text>}
+          {xLabel && <text x={(PLOT_X0 + PLOT_X1) / 2} y={VB_H - 5} fill={text} fontSize={14.5} fontWeight={600} textAnchor="middle">{axisLabelTspans(xLabel)}</text>}
+          {yLabel && <text x={11} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={text} fontSize={14.5} fontWeight={600} textAnchor="middle" transform={`rotate(-90 11 ${(PLOT_Y0 + PLOT_Y1) / 2})`}>{axisLabelTspans(yLabel)}</text>}
 
           {/* origin dot */}
           <circle cx={ox} cy={oy} r={3} fill={axisColor} />
@@ -228,7 +269,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
             const sv = data.vectors?.[c.id];
             if (!sv) return null;
             const color = colorOf(c, i);
-            const faded = interactive && c.id !== activeId;
+            const faded = interactive && c.id !== activeId && !isFrozen(c.id);
             // Free vector mid-placement: tail set but no tip yet — show the lone tail handle.
             if (!sv.tip) {
               return c.freeTail && sv.tail
@@ -236,11 +277,11 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
                 : null;
             }
             const tail = sv.tail || origin;
-            return <Arrow key={c.id} tailX={sx(tail[0])} tailY={sy(tail[1])} tx={sx(sv.tip[0])} ty={sy(sv.tip[1])} color={color} label={c.label} faded={faded} showTail={!!c.freeTail} />;
+            return <Arrow key={c.id} tailX={sx(tail[0])} tailY={sy(tail[1])} tx={sx(sv.tip[0])} ty={sy(sv.tip[1])} color={color} label={c.label} faded={faded} showTail={!!c.freeTail} locked={interactive && isFrozen(c.id)} />;
           })}
 
           {interactive && !data.vectors?.[activeId]?.tip && !hover && (
-            <text x={(PLOT_X0 + PLOT_X1) / 2} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={muted} fontSize={12} textAnchor="middle">
+            <text x={(PLOT_X0 + PLOT_X1) / 2} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={muted} fontSize={14} textAnchor="middle">
               {freeTailOf(activeId) ? (data.vectors?.[activeId]?.tail ? "Click to place the tip (the arrow's head)" : "Click to place the tail") : "Click to draw the arrow tip"}
             </text>
           )}
@@ -258,8 +299,8 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
                 {!config.hideTicks && (
                   <text
                     x={px + (rightSide ? -8 : 8)}
-                    y={py + (topSide ? 18 : -9)}
-                    fill={text} fontSize={12} fontWeight={700}
+                    y={py + (topSide ? 19 : -9)}
+                    fill={text} fontSize={14} fontWeight={700}
                     textAnchor={rightSide ? "end" : "start"}
                     style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}
                   >
@@ -271,32 +312,36 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
           })()}
         </svg>
 
-        {interactive && (
-          <div style={{ color: muted, fontSize: 11, lineHeight: 1.4 }}>
-            Click in the plane to place an arrow tip · drag the tip to move it · click the tip to remove it.{vectors.length > 1 ? " Use the chips to switch which vector you're drawing." : ""}{vectors.some(c => c.freeTail) ? " A free vector (shown with a hollow tail handle) is drawn in two clicks — first its tail, then its tip — so you can run it from one arrow's tip to another's; drag either end to adjust." : ""}
-          </div>
-        )}
       </div>
 
       {guide && (
-        <aside style={{ flex: "1 1 220px", minWidth: 200, maxWidth: 300, border: `1px solid ${border}`, borderRadius: 10, padding: "12px 14px", background: isLight ? "#f8fafc" : "#202122" }}>
-          <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 8 }}>{guide.title || "How to draw it"}</div>
-          <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
+        <aside style={{ flex: "1 1 240px", minWidth: 210, maxWidth: 320, border: `1px solid ${border}`, borderRadius: 10, padding: "13px 15px", background: isLight ? "#f8fafc" : "#202122" }}>
+          <div style={{ color: text, fontWeight: 700, fontSize: 15, marginBottom: 9 }}>{guide.title || "How to draw it"}</div>
+          <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 12 }}>
             {guide.steps.map((step, i) => {
-              const done = guideDone(step);
+              const state = stepState(step);
               const cv = vectors.find(c => c.id === step.vector);
+              const vColor = cv ? colorOf(cv, vectors.indexOf(cv)) : "#3b82f6";
+              // Drawn-but-not-yet-correct → color-code the box to its own vector; correct → green ✓.
+              const box = state === "correct"
+                ? { border: "1.5px solid #4ade80", background: "#4ade80", glyph: "✓", glyphColor: "#0b3b18" }
+                : state === "drawn"
+                  ? { border: `1.5px solid ${vColor}`, background: vColor + "33", glyph: "•", glyphColor: vColor }
+                  : { border: `1.5px solid ${border}`, background: "transparent", glyph: "", glyphColor: "transparent" };
               return (
-                <li key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 4, marginTop: 1, border: `1.5px solid ${done ? "#4ade80" : border}`, background: done ? "#4ade80" : "transparent", color: "#0b3b18", fontSize: 11, fontWeight: 900, lineHeight: "14px", textAlign: "center" }}>{done ? "✓" : ""}</span>
-                  <div style={{ fontSize: 12.5, lineHeight: 1.45, color: done ? muted : text }}>
+                <li key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, marginTop: 1, border: box.border, background: box.background, color: box.glyphColor, fontSize: 12, fontWeight: 900, lineHeight: "15px", textAlign: "center" }}>{box.glyph}</span>
+                  <div style={{ fontSize: 14, lineHeight: 1.5, color: state === "correct" ? muted : text }}>
                     {cv && <span style={{ color: colorOf(cv, vectors.indexOf(cv)), fontWeight: 700 }}>{cv.label}: </span>}
                     <MathText>{step.label}</MathText>
-                    {step.note && <div style={{ color: muted, fontSize: 11.5, marginTop: 3, lineHeight: 1.4 }}><MathText>{step.note}</MathText></div>}
                   </div>
                 </li>
               );
             })}
           </ol>
+          <div style={{ marginTop: 11, paddingTop: 9, borderTop: `1px solid ${border}`, color: muted, fontSize: 12.5, lineHeight: 1.45 }}>
+            Each box turns <span style={{ color: "#4ade80", fontWeight: 700 }}>green ✓</span> (and you receive credit) when the vector has been placed correctly.
+          </div>
         </aside>
       )}
     </div>

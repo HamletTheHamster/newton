@@ -18,7 +18,13 @@ import {
   keyToValue,
   vectorHasInput,
   keyToVectorValue,
+  gradeGraph,
+  gradeVectors,
+  graphHint,
+  vectorHint,
 } from "../../homework.js";
+
+const GRAPHICAL = new Set(["graph", "vector"]);
 
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
 const HW_INTEGRITY_MODEL = "claude-opus-4-8";
@@ -62,12 +68,16 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [submitNonce, setSubmitNonce] = useState(0); // bumps per submit → triggers scroll-to-feedback
   const [glow, setGlow] = useState(false);          // green "burst" on the advance button when a problem completes
   const [revealed, setRevealed] = useState({});    // { itemId: revealed answer string }
+  const [gradePass, setGradePass] = useState({});  // { itemId: { [curveId|vectorId]: bool } } — per-piece verdict from the last graph/vector grade
+  const [hintUsed, setHintUsed] = useState({});    // { itemId: true } — graphical item where a hint was taken (drops self-solve to hintCredit)
   const [history, setHistory] = useState({});      // { itemId: [Claude turns] }
   const [busy, setBusy] = useState(null);          // itemId currently evaluating
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState(false);
   const [showLeave, setShowLeave] = useState(false);
+  const [navWarn, setNavWarn] = useState(null);    // { go } — pending Next/Finish while a diagram is unfinished
+  const [confirmReveal, setConfirmReveal] = useState(null); // graphical item pending a "Show answer" confirm
   const [showGrading, setShowGrading] = useState(true);  // grading-policy explainer, expanded by default
   // Written-work acknowledgment gate (non-practice). Session-only (not persisted), so the
   // student must re-confirm every time they begin or resume — see the gate screen below.
@@ -107,9 +117,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       // never set `status`, so no draft is written) would return with attempts reset to 0
       // and overwrite the saved count on their next submit, defeating the anti-gaming guard.
       setAttempts(sa);
-      // Offer to resume whenever there is any saved progress: a draft with resolved items,
-      // a draft with in-progress attempts, or attempt counts on the authoritative node.
-      const hasDraftProgress = d && (Object.keys(d.status || {}).length > 0 || Object.keys(d.attempts || {}).length > 0);
+      // Offer to resume whenever there is any saved progress: resolved items, in-progress
+      // attempts, attempt counts on the authoritative node, or typed/drawn-but-unresolved work
+      // (graphical items live-lock without attempts, so their partial progress lives in answers/gradePass).
+      const hasDraftProgress = d && (Object.keys(d.status || {}).length > 0 || Object.keys(d.attempts || {}).length > 0 || Object.keys(d.answers || {}).length > 0 || Object.keys(d.gradePass || {}).length > 0);
       if (d && (hasDraftProgress || Object.keys(sa).length > 0)) setPendingDraft(d);
     }).finally(() => setDraftLoading(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
@@ -118,7 +129,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const applyDraft = d => {
     setAnswers(d.answers || {}); setAttempts(savedAttempts); setStatus(d.status || {});
     setEarned(d.earned || {}); setFeedback(d.feedback || {}); setRevealed(d.revealed || {});
-    setHistory(d.history || {}); setIdx(d.idx || 0);
+    setGradePass(d.gradePass || {}); setHintUsed(d.hintUsed || {}); setHistory(d.history || {}); setIdx(d.idx || 0);
   };
 
   const clearDraft = () => { if (draftPath) fbSet(draftPath, null).catch(() => {}); };
@@ -126,7 +137,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // One source of truth for the draft snapshot shape, reused by the auto-save effect, the
   // leave-confirm handler, and the save-failure exit so the student's work is preserved
   // identically in every exit path.
-  const draftSnapshot = () => ({ answers, attempts, status, earned, feedback, revealed, history, idx, savedAt: new Date().toISOString() });
+  const draftSnapshot = () => ({ answers, attempts, status, earned, feedback, revealed, gradePass, hintUsed, history, idx, savedAt: new Date().toISOString() });
   const persistDraft = () => draftPath ? fbSet(draftPath, draftSnapshot()).catch(() => {}) : Promise.resolve();
 
   // Auto-save the full draft after every submit (attempts increments on each one) and
@@ -146,6 +157,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // part. Without this the feedback can populate below the fold, behind the footer.
   // `submitNonce` bumps once per submit so the scroll fires even when the target is unchanged.
   const revealRef = useRef(null);
+  const bodyRef = useRef(null); // the scrollable body — scrolled fully to the bottom when a buildup reveals
   // Input element of the deepest visible item (the part the student should answer next).
   // Auto-focused so the cursor lands in the next field without a click — on entry, on
   // navigation, and after a submit reveals a new part. Numeric/text inputs only (the common
@@ -157,7 +169,18 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   };
   useEffect(() => {
     if (submitNonce === 0) return; // skip initial mount
-    revealRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // When a buildup illustration just appeared, scroll the whole body to the bottom so the full
+    // animation + caption are in view; otherwise center the freshly revealed item.
+    const its = itemsOf(problems[idx]);
+    const firstOpen = its.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
+    const lastVisible = (problems[idx]?.parts?.length ? (firstOpen === -1 ? its.length - 1 : firstOpen) : its.length - 1);
+    const deep = its[lastVisible];
+    const showsBuildup = deep && deep.answerType === "vector" && deep.vector?.buildup && (status[deep.id] === "correct" || status[deep.id] === "revealed");
+    if (showsBuildup && bodyRef.current) {
+      bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
+    } else {
+      revealRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
     focusInput();
   }, [submitNonce]);
 
@@ -199,6 +222,46 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   const setAns = (id, v) => setAnswers(a => ({ ...a, [id]: v }));
 
+  // ── Graphical items (graph / vector): no Submit button ────────────────────────
+  // Grading is deterministic and local (gradeGraph / gradeVectors — no Claude, free, instant),
+  // so we grade on EVERY placement. Each piece that lands in tolerance turns green and freezes
+  // (the field locks pieces whose id is in `grade.pass`). When all pieces pass, the part resolves
+  // at full credit. A stuck student uses "Show answer" (reveal at G.revealCredit) instead.
+  const gradeGraphical = (item, raw) =>
+    item.answerType === "graph" ? gradeGraph(raw, item.graph) : gradeVectors(raw, item.vector);
+
+  const onGraphicalChange = (item, v) => {
+    setAnswers(a => ({ ...a, [item.id]: v }));
+    const res = gradeGraphical(item, v);
+    setGradePass(g => ({ ...g, [item.id]: res.pass }));
+    const st = status[item.id];
+    if (res.correct && st !== "correct" && st !== "revealed") {
+      // Full credit when self-solved; if a hint was taken, drop to hintCredit (consistent with
+      // the rest of the homework's grading schedule).
+      const credit = hintUsed[item.id] ? G.hintCredit : 1;
+      setEarned(e => ({ ...e, [item.id]: credit * item.weight }));
+      setStatus(s2 => ({ ...s2, [item.id]: "correct" }));
+      setFeedback(f => ({ ...f, [item.id]: { text: (item.answerType === "graph" ? "Your sketch matches." : "Your diagram matches.") + (hintUsed[item.id] ? ` (Hint used — ${Math.round(G.hintCredit * 100)}% credit.)` : ""), kind: "correct" } }));
+      setSubmitNonce(n => n + 1);                                       // scroll + unlock next part / play buildup
+    }
+  };
+
+  const showGraphicalHint = item => {
+    setHintUsed(h => ({ ...h, [item.id]: true }));                      // taking a hint caps this part at hintCredit
+    const res = gradeGraphical(item, answers[item.id] || "");
+    const r0 = res.reasons[0];
+    const text = r0 ? (item.answerType === "graph" ? graphHint(r0) : vectorHint(r0)) : "Place each piece where the steps describe — it locks in green when it's in the right spot.";
+    setFeedback(f => ({ ...f, [item.id]: { text: "💡 " + text, kind: "hint" } }));
+  };
+
+  const revealGraphical = item => {
+    setConfirmReveal(null);
+    setStatus(s2 => ({ ...s2, [item.id]: "revealed" }));
+    setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
+    setFeedback(f => ({ ...f, [item.id]: { text: item.answerType === "graph" ? "Here is the correct sketch." : "Here is the correct diagram.", kind: "revealed" } }));
+    setSubmitNonce(n => n + 1);
+  };
+
   const submitItem = async item => {
     if (busy) return;
     const ans = (answers[item.id] || "").trim();
@@ -215,6 +278,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       if (result._historyUser) {
         setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));
       }
+      // Per-piece verdict (graph curves / vector arrows) — drives the checklist greening so a
+      // drawn-but-unverified piece never shows as correct until it's actually been submitted right.
+      if (result._gradePass) setGradePass(g => ({ ...g, [item.id]: result._gradePass }));
       setAttempts(a => ({ ...a, [item.id]: attemptNum }));
       // Persist attempt count immediately — written even for wrong-but-still-open items so
       // the count survives a logout or leaving without resuming.
@@ -337,6 +403,15 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     await submitWork();
   };
 
+  // Hint + Show-answer controls shown under a graphical (graph/vector) item — there is no Submit
+  // button; pieces grade and lock live as they're placed.
+  const graphicalControls = item => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <button onClick={() => showGraphicalHint(item)} className="hw-hint-btn" style={{ ...s.btnPri, width: "auto", padding: "7px 16px" }}>💡 Hint</button>
+      <button onClick={() => setConfirmReveal(item)} className="hw-reveal-btn" style={{ ...s.btnGhost, width: "auto", padding: "7px 16px", color: muted }}>Show answer</button>
+    </div>
+  );
+
   // ── Render an answer input for an item ────────────────────────────────────────
   // `focusable` (true only for the deepest visible item) wires inputRef so the cursor can be
   // auto-advanced into it. Only numeric/text inputs accept the ref.
@@ -355,18 +430,18 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     if (item.answerType === "graph") {
       const val = answers[item.id] || "";
       return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <GraphField config={item.graph} value={val} onChange={v => setAns(item.id, v)} disabled={locked || isBusy} />
-          {!locked && <button onClick={() => submitItem(item)} disabled={isBusy || !graphHasInput(val)} style={{ ...s.btnPri, width: "auto", alignSelf: "flex-start", padding: "8px 20px", opacity: isBusy || !graphHasInput(val) ? 0.4 : 1 }}>{isBusy ? "Checking…" : "Submit"}</button>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <GraphField config={item.graph} value={val} onChange={v => onGraphicalChange(item, v)} disabled={locked || isBusy} grade={{ pass: gradePass[item.id] || null }} />
+          {!locked && graphicalControls(item)}
         </div>
       );
     }
     if (item.answerType === "vector") {
       const val = answers[item.id] || "";
       return (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <VectorField config={item.vector} value={val} onChange={v => setAns(item.id, v)} disabled={locked || isBusy} />
-          {!locked && <button onClick={() => submitItem(item)} disabled={isBusy || !vectorHasInput(val)} style={{ ...s.btnPri, width: "auto", alignSelf: "flex-start", padding: "8px 20px", opacity: isBusy || !vectorHasInput(val) ? 0.4 : 1 }}>{isBusy ? "Checking…" : "Submit"}</button>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <VectorField config={item.vector} value={val} onChange={v => onGraphicalChange(item, v)} disabled={locked || isBusy} grade={{ pass: gradePass[item.id] || null }} />
+          {!locked && graphicalControls(item)}
         </div>
       );
     }
@@ -419,7 +494,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part {partLabel}</div>}
         {item.prompt && <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{item.prompt}</MathText></div>}
         {renderInput(item, focusable)}
-        {st !== "correct" && st !== "revealed" && (() => {
+        {st !== "correct" && st !== "revealed" && GRAPHICAL.has(item.answerType) && (
+          <div style={{ color: muted, fontSize: 12.5, lineHeight: 1.4 }}>
+            Receive <strong style={{ color: text }}>full credit</strong> by completing it yourself, or take a hint for <span style={{ color: FB_COLOR.hint, fontWeight: 700 }}>{Math.round(G.hintCredit * 100)}%</span>, or <span style={{ color: FB_COLOR.wrong, fontWeight: 700 }}>click Show Answer for {G.revealCredit === 0 ? "no credit" : `${Math.round(G.revealCredit * 100)}%`}</span>.
+          </div>
+        )}
+        {st !== "correct" && st !== "revealed" && !GRAPHICAL.has(item.answerType) && (() => {
           const credit = creditForAttempt(used + 1, G);
           const cColor = credit >= 1 ? FB_COLOR.correct : FB_COLOR.hint;
           return (
@@ -462,7 +542,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         )}
         {item.answerType === "vector" && item.vector?.buildup && (st === "correct" || st === "revealed") && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <div style={{ color: muted, fontSize: 13 }}>How acceleration rebuilds the velocity:</div>
+            <div style={{ color: text, fontSize: 15.5, fontWeight: 600 }}>How acceleration rebuilds the velocity:</div>
             <VectorBuildup vector={item.vector} />
           </div>
         )}
@@ -632,6 +712,17 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const problem = problems[idx];
   const items = itemsOf(problem);
   const partLabels = problem.parts && problem.parts.length ? "abcdefgh".split("") : null;
+  // Intercept Next/Finish when the current problem has a graph/vector answer that's been started
+  // but isn't fully resolved (some pieces not yet locked green) — so a student doesn't wander off
+  // from a half-finished diagram thinking it counts.
+  const hasUnfinishedDrawing = items.some(it => {
+    if (!GRAPHICAL.has(it.answerType)) return false;
+    const st = status[it.id];
+    if (st === "correct" || st === "revealed") return false;
+    const v = answers[it.id] || "";
+    return it.answerType === "graph" ? graphHasInput(v) : vectorHasInput(v);
+  });
+  const guardedNav = go => { if (hasUnfinishedDrawing) setNavWarn({ go }); else go(); };
   // Outline needs a transparent base so the keyframe's outline-color can animate in.
   const glowStyle = glow ? { animation: "hwGlowBurst 5s ease-in-out infinite", outline: "2px solid transparent", outlineOffset: 2 } : {};
 
@@ -662,6 +753,32 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
       )}
 
+      {navWarn && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+          <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
+            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>This diagram isn't finished</h3>
+            <p style={{ ...s.muted, marginBottom: 20, lineHeight: 1.5 }}>Some pieces on this problem aren't <strong style={{ color: "#4ade80" }}>green</strong> yet. A piece only earns credit once it locks in green (or use <strong style={{ color: text }}>Show answer</strong>). If you move on now, the unfinished pieces won't count.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setNavWarn(null)} style={{ ...s.btnPri, flex: 1 }}>Keep working</button>
+              <button onClick={() => { const g = navWarn.go; setNavWarn(null); g(); }} style={{ ...s.btnSec, flex: 1 }}>Leave it unfinished</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmReveal && (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+          <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
+            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Show the answer?</h3>
+            <p style={{ ...s.muted, marginBottom: 20, lineHeight: 1.5 }}>This will reveal the correct {confirmReveal.answerType === "graph" ? "sketch" : "diagram"} and mark this part at <strong style={{ color: "#f87171" }}>{G.revealCredit === 0 ? "no credit" : `${Math.round(G.revealCredit * 100)}%`}</strong> — you won't be able to earn full credit on it.</p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={() => setConfirmReveal(null)} style={{ ...s.btnPri, flex: 1 }}>Keep trying</button>
+              <button onClick={() => revealGraphical(confirmReveal)} style={{ ...s.btnSec, flex: 1 }}>Show answer</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top bar */}
       <div style={{ background: card, borderBottom: `1px solid ${border}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -681,7 +798,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       </div>
 
       {/* Body */}
-      <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 16 }}>
+      <div ref={bodyRef} style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 960, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 16 }}>
         {/* Grading-policy explainer — transparent, upfront, collapsible */}
         <div style={{ ...s.card, padding: "12px 16px" }}>
           <button
@@ -704,6 +821,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
                   )}
                   <li>After <C color={FB_COLOR.wrong}>{G.maxAttempts}</C> incorrect attempts the answer is shown and that part earns <C color={FB_COLOR.wrong}>{pct(G.revealCredit)}</C>.</li>
                   <li>Numeric answers count as correct within <C color={FB_COLOR.revealed}>±{+(G.numericTolerance * 100).toFixed(2)}%</C> of the exact value.</li>
+                  {allItems.some(it => GRAPHICAL.has(it.answerType)) && (
+                    <li><C color={text}>Sketch / diagram parts</C> are different: each piece <C color={FB_COLOR.correct}>locks in green</C> the moment it's in the right place — <C color={FB_COLOR.correct}>full credit</C> when you complete it yourself, <C color={FB_COLOR.hint}>{pct(G.hintCredit)}</C> if you take a hint, or <C color={FB_COLOR.wrong}>{G.revealCredit === 0 ? "no credit" : pct(G.revealCredit)}</C> with “Show answer”.</li>
+                  )}
                 </ul>
                 {!practice && (
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, color: muted, fontSize: 13, lineHeight: 1.6 }}>
@@ -742,11 +862,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
       {/* Footer nav */}
       <div style={{ background: card, borderTop: `1px solid ${border}`, padding: 16, flexShrink: 0 }}>
-        <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ maxWidth: 960, margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
           <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0} style={{ ...s.btnSec, width: "auto", padding: "8px 16px", opacity: idx === 0 ? 0.4 : 1 }}>← Previous</button>
           {idx < total - 1
-            ? <button onClick={() => setIdx(i => Math.min(total - 1, i + 1))} className="hw-advance-btn" style={{ ...s.btnSec, width: "auto", padding: "8px 16px", ...glowStyle }}>Next →</button>
-            : <button onClick={finish} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} className="hw-advance-btn" style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1, ...glowStyle }}>{saving ? "Submitting…" : practice ? "Finish" : "Finish & Submit"}</button>}
+            ? <button onClick={() => guardedNav(() => setIdx(i => Math.min(total - 1, i + 1)))} className="hw-advance-btn" style={{ ...s.btnSec, width: "auto", padding: "8px 16px", ...glowStyle }}>Next →</button>
+            : <button onClick={() => guardedNav(finish)} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} className="hw-advance-btn" style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1, ...glowStyle }}>{saving ? "Submitting…" : practice ? "Finish" : "Finish & Submit"}</button>}
         </div>
       </div>
     </div>

@@ -141,9 +141,11 @@ function valueAtX(pts, x) {
 export function gradeGraph(raw, graph) {
   const data = parseGraphValue(raw);
   const reasons = [];
+  const pass = {}; // { [curveId]: bool } — per-curve verdict, so the UI can green only what's right
   for (const c of graph?.curves || []) {
     const key = graph.key?.[c.id];
     if (!key) continue;
+    pass[c.id] = false;
     const sc = data.curves?.[c.id];
     const pts = sc && Array.isArray(sc.pts) ? [...sc.pts].sort((a, b) => a[0] - b[0]) : [];
     if (pts.length < 2) { reasons.push({ curve: c.label, type: "missing" }); continue; }
@@ -157,8 +159,9 @@ export function gradeGraph(raw, graph) {
     if (outOfRange) { reasons.push({ curve: c.label, type: "range" }); continue; }
     if (pointFail) { reasons.push({ curve: c.label, type: "points" }); continue; }
     if (key.shape && (sc.shape || "line") !== key.shape) { reasons.push({ curve: c.label, type: "shape" }); continue; }
+    pass[c.id] = true;
   }
-  return { correct: reasons.length === 0, reasons };
+  return { correct: reasons.length === 0, reasons, pass };
 }
 
 // Targeted (but answer-preserving) hint for the first failing curve. Never names the exact
@@ -226,9 +229,11 @@ export function gradeVectors(raw, vector) {
   const data = parseVectorValue(raw);
   const origin = vector?.origin || [0, 0];
   const reasons = [];
+  const pass = {}; // { [vectorId]: bool } — per-vector verdict, so the UI can green only what's right
   for (const v of vector?.vectors || []) {
     const key = vector.key?.[v.id];
     if (!key || !Array.isArray(key.tip)) continue;
+    pass[v.id] = false;
     const sv = data.vectors?.[v.id];
     const tip = sv && Array.isArray(sv.tip) ? sv.tip : null;
     if (!tip) { reasons.push({ vector: v.label, type: "missing" }); continue; }
@@ -244,8 +249,9 @@ export function gradeVectors(raw, vector) {
     if (key.magTol != null && Math.abs(sMag - kMag) > key.magTol * kMag) {
       reasons.push({ vector: v.label, type: "magnitude" }); continue;
     }
+    pass[v.id] = true;
   }
-  return { correct: reasons.length === 0, reasons };
+  return { correct: reasons.length === 0, reasons, pass };
 }
 
 // Targeted (but answer-preserving) hint for the first failing vector.
@@ -425,21 +431,23 @@ export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, 
   }
 
   if (item.answerType === "graph") {
-    // Deterministic grade — no Claude call needed.
+    // Deterministic grade — no Claude call needed. `_gradePass` lets the runner green only the
+    // curves that actually passed (so a drawn-but-unverified curve never looks "correct").
     const res = gradeGraph(studentAnswer, item.graph);
-    if (res.correct) return { correct: true, message: "✓ Correct — your sketch matches." };
-    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct sketch." };
-    if (phase === "hint") return { correct: false, message: "💡 " + graphHint(res.reasons[0]) };
-    return { correct: false, message: "Not quite — review the points your curves pass through and their shape, then try again." };
+    if (res.correct) return { correct: true, message: "✓ Correct — your sketch matches.", _gradePass: res.pass };
+    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct sketch.", _gradePass: res.pass };
+    if (phase === "hint") return { correct: false, message: "💡 " + graphHint(res.reasons[0]), _gradePass: res.pass };
+    return { correct: false, message: "Not quite — review the points your curves pass through and their shape, then try again.", _gradePass: res.pass };
   }
 
   if (item.answerType === "vector") {
-    // Deterministic grade — no Claude call needed.
+    // Deterministic grade — no Claude call needed. `_gradePass` lets the runner green only the
+    // vectors that actually passed (so a drawn-but-unverified arrow never looks "correct").
     const res = gradeVectors(studentAnswer, item.vector);
-    if (res.correct) return { correct: true, message: "✓ Correct — your vectors match." };
-    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct diagram." };
-    if (phase === "hint") return { correct: false, message: "💡 " + vectorHint(res.reasons[0]) };
-    return { correct: false, message: "Not quite — re-check the direction (and length) of each vector, then try again." };
+    if (res.correct) return { correct: true, message: "✓ Correct — your vectors match.", _gradePass: res.pass };
+    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct diagram.", _gradePass: res.pass };
+    if (phase === "hint") return { correct: false, message: "💡 " + vectorHint(res.reasons[0]), _gradePass: res.pass };
+    return { correct: false, message: "Not quite — re-check the direction (and length) of each vector, then try again.", _gradePass: res.pass };
   }
 
   // text + math → Claude judges correctness and writes the reply.

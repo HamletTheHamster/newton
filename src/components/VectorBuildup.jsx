@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useTheme } from "../theme.js";
 import { MathText } from "./MathText.jsx";
+import { axisLabelTspans } from "./VectorField.jsx";
 
 // Animated, read-only illustration that decomposes a keyed vector into `count` equal steps laid
 // tip-to-tail, revealing them one per tick — showing how repeated equal increments rebuild a
@@ -15,7 +16,7 @@ const PLOT_X0 = PAD_L, PLOT_X1 = VB_W - PAD_R, PLOT_Y0 = PAD_T, PLOT_Y1 = VB_H -
 const PLOT_W = PLOT_X1 - PLOT_X0, PLOT_H = PLOT_Y1 - PLOT_Y0;
 const fmt = v => String(Math.round(v * 100) / 100);
 
-export function VectorBuildup({ vector, autoPlay = true, stepMs = 430 }) {
+export function VectorBuildup({ vector, autoPlay = true, stepMs = 430, startDelayMs = 1000 }) {
   const { border, text, muted, isLight } = useTheme();
   const b = vector?.buildup;
   const keyV = b && vector.key?.[b.vectorId];
@@ -38,9 +39,12 @@ export function VectorBuildup({ vector, autoPlay = true, stepMs = 430 }) {
       if (i >= count) clearInterval(timerRef.current);
     }, stepMs);
   };
+  // Start after a short delay so the student can take in the setup (and the page can scroll the
+  // whole illustration + caption into view) before the steps begin marching.
   useEffect(() => {
-    if (autoPlay) play();
-    return () => clearInterval(timerRef.current);
+    if (!autoPlay) return undefined;
+    const t = setTimeout(play, startDelayMs);
+    return () => { clearTimeout(t); clearInterval(timerRef.current); };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!b || !keyV || !tip) return null;
@@ -81,21 +85,21 @@ export function VectorBuildup({ vector, autoPlay = true, stepMs = 430 }) {
   const done = k >= count;
 
   const btn = {
-    alignSelf: "flex-start", padding: "5px 12px", borderRadius: 8, border: `1px solid ${border}`,
-    background: "transparent", color: text, fontSize: 12.5, fontWeight: 600, cursor: "pointer",
+    alignSelf: "flex-start", padding: "6px 14px", borderRadius: 8, border: `1px solid ${border}`,
+    background: "transparent", color: text, fontSize: 13.5, fontWeight: 600, cursor: "pointer",
   };
-  const swatch = c => ({ width: 11, height: 11, borderRadius: 2, background: c, display: "inline-block", marginRight: 5, verticalAlign: "-1px" });
+  const swatch = c => ({ width: 12, height: 12, borderRadius: 2, background: c, display: "inline-block", marginRight: 5, verticalAlign: "-1px" });
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 480 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 540 }}>
       <svg viewBox={`0 0 ${VB_W} ${VB_H}`} width={VB_W} height={VB_H}
         style={{ width: "100%", height: "auto", background: svgBg, border: `1px solid ${border}`, borderRadius: 10 }}>
         {xticks.map(v => <line key={"gx" + v} x1={sx(v)} y1={PLOT_Y0} x2={sx(v)} y2={PLOT_Y1} stroke={gridColor} strokeWidth={1} />)}
         {yticks.map(v => <line key={"gy" + v} x1={PLOT_X0} y1={sy(v)} x2={PLOT_X1} y2={sy(v)} stroke={gridColor} strokeWidth={1} />)}
         <line x1={zeroX ? sx(0) : PLOT_X0} y1={PLOT_Y0} x2={zeroX ? sx(0) : PLOT_X0} y2={PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
         <line x1={PLOT_X0} y1={zeroY ? sy(0) : PLOT_Y1} x2={PLOT_X1} y2={zeroY ? sy(0) : PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
-        {xLabel && <text x={(PLOT_X0 + PLOT_X1) / 2} y={VB_H - 6} fill={text} fontSize={12} textAnchor="middle">{xLabel}</text>}
-        {yLabel && <text x={12} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={text} fontSize={12} textAnchor="middle" transform={`rotate(-90 12 ${(PLOT_Y0 + PLOT_Y1) / 2})`}>{yLabel}</text>}
+        {xLabel && <text x={(PLOT_X0 + PLOT_X1) / 2} y={VB_H - 5} fill={text} fontSize={14.5} fontWeight={600} textAnchor="middle">{axisLabelTspans(xLabel)}</text>}
+        {yLabel && <text x={11} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={text} fontSize={14.5} fontWeight={600} textAnchor="middle" transform={`rotate(-90 11 ${(PLOT_Y0 + PLOT_Y1) / 2})`}>{axisLabelTspans(yLabel)}</text>}
 
         {/* faint dashed guide along the full decomposed vector (the target the steps fill in) */}
         <Arrow a={tail} c={tip} color={axisColor} width={1.25} dash="4 4" />
@@ -107,7 +111,7 @@ export function VectorBuildup({ vector, autoPlay = true, stepMs = 430 }) {
           return (
             <g key={id} opacity={0.4}>
               <Arrow a={origin} c={t} color={colorOf(id)} width={2} />
-              <text x={sx(t[0]) + (t[0] >= origin[0] ? 7 : -7)} y={sy(t[1]) + (t[1] >= origin[1] ? 13 : -6)} fill={colorOf(id)} fontSize={12} fontWeight={700}
+              <text x={sx(t[0]) + (t[0] >= origin[0] ? 7 : -7)} y={sy(t[1]) + (t[1] >= origin[1] ? 14 : -6)} fill={colorOf(id)} fontSize={15} fontWeight={700}
                 textAnchor={t[0] >= origin[0] ? "start" : "end"}
                 style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>{labelOf(id)}</text>
             </g>
@@ -123,19 +127,19 @@ export function VectorBuildup({ vector, autoPlay = true, stepMs = 430 }) {
         <circle cx={sx(headK[0])} cy={sy(headK[1])} r={3.5} fill={runColor} stroke={svgBg} strokeWidth={1.5} />
 
         {/* running counters */}
-        <text x={PLOT_X0 + 6} y={PLOT_Y0 + 15} fill={text} fontSize={12.5} fontWeight={700}
+        <text x={PLOT_X0 + 6} y={PLOT_Y0 + 16} fill={text} fontSize={14} fontWeight={700}
           style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
           t = {k} s · |v| = {fmt(runMag)} m/s
         </text>
       </svg>
 
-      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontSize: 11.5, color: muted }}>
+      <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontSize: 13, color: muted }}>
         <span><span style={swatch(runColor)} />velocity v(t)</span>
         <span><span style={swatch(stepColor)} />ā·(1 s) steps</span>
         <button type="button" onClick={play} style={btn}>{done ? "↻ Replay" : "▶ Playing…"}</button>
       </div>
 
-      {b.caption && <div style={{ color: muted, fontSize: 12.5, lineHeight: 1.5 }}><MathText>{b.caption}</MathText></div>}
+      {b.caption && <div style={{ color: muted, fontSize: 14, lineHeight: 1.55 }}><MathText>{b.caption}</MathText></div>}
     </div>
   );
 }

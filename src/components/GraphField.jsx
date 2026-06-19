@@ -1,7 +1,8 @@
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useTheme } from "../theme.js";
 import { parseGraphValue } from "../homework.js";
 import { MathText } from "./MathText.jsx";
+import { InfoDot } from "./InfoDot.jsx";
 
 // Controlled structured-sketch plotter for homework `answerType: "graph"` items.
 //
@@ -17,6 +18,9 @@ import { MathText } from "./MathText.jsx";
 //   onChange — (jsonString) => void
 //   disabled — locked (renders read-only, no toolbar)
 //   readOnly — display only (reveal / gradebook); no toolbar, no interaction
+//   grade    — { pass: { [curveId]: bool } } from the last graded submission; a step's
+//              checklist tick turns green ONLY for curves that actually passed, so a
+//              merely-drawn (but ungraded) curve never looks "correct".
 const DEFAULT_COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b"];
 const VB_W = 480, VB_H = 320;
 const PAD_L = 46, PAD_R = 14, PAD_T = 14, PAD_B = 38;
@@ -60,7 +64,7 @@ const SHAPES = [
   { id: "curveDown", label: "Curve ↓" },
 ];
 
-export function GraphField({ config, value, onChange, disabled = false, readOnly = false }) {
+export function GraphField({ config, value, onChange, disabled = false, readOnly = false, grade = null }) {
   const { border, text, muted, isLight, card } = useTheme();
   const { xMin, xMax, yMin, yMax, xTick, yTick, xLabel, yLabel } = config;
   const curves = config.curves || [];
@@ -83,6 +87,7 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
   const snapY = v => snap(v, yTick / snapDiv, yMin, yMax);
 
   const colorOf = (c, i) => c.color || DEFAULT_COLORS[i % DEFAULT_COLORS.length];
+  const isFrozen = id => !!grade?.pass?.[id]; // a curve graded correct locks in place (no Submit model)
   const gridColor = isLight ? "#e5e7eb" : "#3a3b3d";
   const axisColor = isLight ? "#9ca3af" : "#6b7280";
   const svgBg = isLight ? "#ffffff" : "#1c1d1e";
@@ -105,6 +110,7 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
     const { vx, vy } = toVB(e);
     if (vx < PLOT_X0 - 4 || vx > PLOT_X1 + 4 || vy < PLOT_Y0 - 4 || vy > PLOT_Y1 + 4) return;
     const id = activeRef.current;
+    if (isFrozen(id)) return; // locked: a curve that's graded correct can't be edited
     const cur = data.curves?.[id] || { pts: [] };
     let idx = -1, best = 144; // ~12px hit radius (viewBox units)
     cur.pts.forEach((p, i) => {
@@ -116,13 +122,15 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
     else gestureRef.current = { type: "bg", x: snapX(dx(vx)), y: snapY(dy(vy)), moved: false, startVX: vx, startVY: vy };
   };
   const onMove = e => {
+    if (!interactive) { gestureRef.current = null; return; } // disabled mid-gesture (curve locked) → stop dragging
     const { vx, vy } = toVB(e);
-    if (interactive) {
+    {
       const inPlot = vx >= PLOT_X0 - 2 && vx <= PLOT_X1 + 2 && vy >= PLOT_Y0 - 2 && vy <= PLOT_Y1 + 2;
       setHover(inPlot ? { x: snapX(dx(vx)), y: snapY(dy(vy)) } : null);
     }
     const g = gestureRef.current;
     if (!g) return;
+    if (isFrozen(activeRef.current)) { gestureRef.current = null; return; } // curve locked mid-drag → freeze it in place
     if (Math.hypot(vx - g.startVX, vy - g.startVY) > 4) g.moved = true;
     if (g.type === "point") {
       const nx = snapX(dx(vx)), ny = snapY(dy(vy));
@@ -140,11 +148,20 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
     }
   };
 
-  const setShape = shape => commit(n => { ensure(n, activeRef.current).shape = shape; });
-  const clearActive = () => commit(n => { if (n.curves[activeRef.current]) n.curves[activeRef.current].pts = []; });
+  const setShape = shape => { if (!isFrozen(activeRef.current)) commit(n => { ensure(n, activeRef.current).shape = shape; }); };
+  const clearActive = () => { if (!isFrozen(activeRef.current)) commit(n => { if (n.curves[activeRef.current]) n.curves[activeRef.current].pts = []; }); };
   // activeRef drives interaction; force a re-render on curve switch via onChange-free state.
   const rerender = useRerender();
   const setActive = id => { activeRef.current = id; rerender(); };
+
+  // When the active curve locks in (turns green), auto-advance to the next unsolved curve so the
+  // student keeps plotting without clicking a chip. Keyed on the pass map so it fires on each lock.
+  const passKey = JSON.stringify(grade?.pass || {});
+  useEffect(() => {
+    if (!interactive || !isFrozen(activeRef.current)) return;
+    const next = curves.find(c => !isFrozen(c.id));
+    if (next && next.id !== activeRef.current) { activeRef.current = next.id; rerender(); }
+  }, [passKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const xticks = [], yticks = [];
   for (let v = xMin; v <= xMax + 1e-9; v += xTick) xticks.push(Math.round(v * 1e6) / 1e6);
@@ -155,48 +172,61 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
   const activeEmpty = !(data.curves?.[activeId]?.pts || []).length;
 
   const chip = (active, color) => ({
-    display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8,
+    display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 11px", borderRadius: 8,
     border: `1px solid ${active ? color : border}`, background: active ? color + "22" : "transparent",
-    color: text, fontSize: 12, fontWeight: active ? 700 : 500, cursor: "pointer",
+    color: text, fontSize: 13, fontWeight: active ? 700 : 500, cursor: "pointer",
   });
   const sbtn = on => ({
-    padding: "4px 10px", borderRadius: 8, border: `1px solid ${on ? text : border}`,
-    background: on ? text + "18" : "transparent", color: text, fontSize: 12, cursor: "pointer", fontWeight: on ? 700 : 500,
+    padding: "5px 11px", borderRadius: 8, border: `1px solid ${on ? text : border}`,
+    background: on ? text + "18" : "transparent", color: text, fontSize: 13, cursor: "pointer", fontWeight: on ? 700 : 500,
   });
 
-  // Optional step-by-step guide rendered beside the plot (interactive only). Each step ticks
-  // off when its curve has `minPoints` points and (if given) matches `shape`.
+  // Optional step-by-step guide rendered beside the plot (interactive only). Each step has THREE
+  // states so a drawn-but-ungraded curve never masquerades as correct: "empty" (not drawn),
+  // "drawn" (meets the step's point/shape criteria — neutral blue, work in progress), and
+  // "correct" (green — only after a Submit that graded it right, via the `grade.pass` map).
   const guide = interactive ? config.guide : null;
-  const guideDone = step => {
+  const stepDrawn = step => {
     const c = data.curves?.[step.curve];
     const pts = c?.pts || [];
     if (step.minPoints && pts.length < step.minPoints) return false;
     if (step.shape && (c?.shape || "line") !== step.shape) return false;
-    return true;
+    return (pts.length || 0) >= 2;
   };
+  const stepState = step =>
+    grade?.pass?.[step.curve] ? "correct" : stepDrawn(step) ? "drawn" : "empty";
 
   return (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", maxWidth: guide ? 800 : 480 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 320px", minWidth: 0, maxWidth: 480 }}>
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 14, alignItems: "flex-start", maxWidth: guide ? 940 : 540 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: "1 1 360px", minWidth: 0, maxWidth: 540 }}>
       {interactive && (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {curves.length > 1 && (
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-              <span style={{ color: muted, fontSize: 12 }}>Curve:</span>
+              <span style={{ color: muted, fontSize: 13 }}>Curve:</span>
               {curves.map((c, i) => (
                 <button key={c.id} type="button" onClick={() => setActive(c.id)} style={chip(activeId === c.id, colorOf(c, i))}>
                   <span style={{ width: 10, height: 10, borderRadius: 2, background: colorOf(c, i), display: "inline-block" }} />
                   {c.label}
+                  {isFrozen(c.id) && <span style={{ color: "#4ade80", fontWeight: 900 }}>✓</span>}
                 </button>
               ))}
             </div>
           )}
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <span style={{ color: muted, fontSize: 12 }}>Shape:</span>
+            <span style={{ color: muted, fontSize: 13 }}>Shape:</span>
             {SHAPES.map(sh => (
               <button key={sh.id} type="button" onClick={() => setShape(sh.id)} style={sbtn(activeShape === sh.id)}>{sh.label}</button>
             ))}
-            <button type="button" onClick={clearActive} style={{ ...sbtn(false), marginLeft: "auto", color: muted }}>Clear</button>
+            <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+              <button type="button" onClick={clearActive} style={{ ...sbtn(false), color: muted }}>Clear</button>
+              <InfoDot title="How to plot" align="right">
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div>Click in the plot to add a point. Drag a point to move it; click a point to remove it.</div>
+                  <div>Pick each curve's <strong>shape</strong> with the buttons above. The readout shows the coordinate under your cursor.</div>
+                </div>
+              </InfoDot>
+            </div>
           </div>
         </div>
       )}
@@ -220,11 +250,11 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
         <line x1={PLOT_X0} y1={PLOT_Y0} x2={PLOT_X0} y2={PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
         <line x1={PLOT_X0} y1={PLOT_Y1} x2={PLOT_X1} y2={PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
         {/* tick labels */}
-        {xticks.map(v => <text key={"tx" + v} x={sx(v)} y={PLOT_Y1 + 16} fill={muted} fontSize={11} textAnchor="middle">{fmt(v)}</text>)}
-        {yticks.map(v => <text key={"ty" + v} x={PLOT_X0 - 6} y={sy(v) + 4} fill={muted} fontSize={11} textAnchor="end">{fmt(v)}</text>)}
+        {xticks.map(v => <text key={"tx" + v} x={sx(v)} y={PLOT_Y1 + 17} fill={muted} fontSize={13} textAnchor="middle">{fmt(v)}</text>)}
+        {yticks.map(v => <text key={"ty" + v} x={PLOT_X0 - 6} y={sy(v) + 4} fill={muted} fontSize={13} textAnchor="end">{fmt(v)}</text>)}
         {/* axis labels */}
-        {xLabel && <text x={(PLOT_X0 + PLOT_X1) / 2} y={VB_H - 6} fill={text} fontSize={12} textAnchor="middle">{xLabel}</text>}
-        {yLabel && <text x={12} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={text} fontSize={12} textAnchor="middle" transform={`rotate(-90 12 ${(PLOT_Y0 + PLOT_Y1) / 2})`}>{yLabel}</text>}
+        {xLabel && <text x={(PLOT_X0 + PLOT_X1) / 2} y={VB_H - 5} fill={text} fontSize={14.5} fontWeight={600} textAnchor="middle">{xLabel}</text>}
+        {yLabel && <text x={11} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={text} fontSize={14.5} fontWeight={600} textAnchor="middle" transform={`rotate(-90 11 ${(PLOT_Y0 + PLOT_Y1) / 2})`}>{yLabel}</text>}
 
         {/* curves */}
         {curves.map((c, i) => {
@@ -233,17 +263,19 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
           const color = colorOf(c, i);
           const P = [...cur.pts].sort((a, b) => a[0] - b[0]).map(p => [sx(p[0]), sy(p[1])]);
           const isActive = c.id === activeId;
+          const frozen = interactive && isFrozen(c.id);
           const r = isActive && interactive ? 5 : 3.5;
           return (
-            <g key={c.id} opacity={interactive && !isActive ? 0.55 : 1}>
+            <g key={c.id} opacity={interactive && !isActive && !frozen ? 0.55 : 1}>
               {P.length >= 2 && <path d={buildPath(P, cur.shape || "line")} fill="none" stroke={color} strokeWidth={2.25} strokeLinecap="round" strokeLinejoin="round" />}
+              {frozen && P.map((p, j) => <circle key={"lk" + j} cx={p[0]} cy={p[1]} r={r + 3} fill="none" stroke="#4ade80" strokeWidth={1.5} />)}
               {P.map((p, j) => <circle key={j} cx={p[0]} cy={p[1]} r={r} fill={color} stroke={svgBg} strokeWidth={1.5} />)}
             </g>
           );
         })}
 
         {interactive && activeEmpty && !hover && (
-          <text x={(PLOT_X0 + PLOT_X1) / 2} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={muted} fontSize={12} textAnchor="middle">Click to add points</text>
+          <text x={(PLOT_X0 + PLOT_X1) / 2} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={muted} fontSize={14} textAnchor="middle">Click to add points</text>
         )}
 
         {/* Hover crosshair + coordinate readout — shows the snapped point the next click places. */}
@@ -258,8 +290,8 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
               <circle cx={px} cy={py} r={3.5} fill="none" stroke={text} strokeWidth={1.5} />
               <text
                 x={px + (rightSide ? -8 : 8)}
-                y={py + (topSide ? 18 : -9)}
-                fill={text} fontSize={12} fontWeight={700}
+                y={py + (topSide ? 19 : -9)}
+                fill={text} fontSize={14} fontWeight={700}
                 textAnchor={rightSide ? "end" : "start"}
                 style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}
               >
@@ -270,32 +302,35 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
         })()}
       </svg>
 
-      {interactive && (
-        <div style={{ color: muted, fontSize: 11, lineHeight: 1.4 }}>
-          Click in the plot to add a point · drag a point to move it · click a point to remove it. The readout shows the coordinate under your cursor.
-        </div>
-      )}
       </div>
 
       {guide && (
-        <aside style={{ flex: "1 1 220px", minWidth: 200, maxWidth: 300, border: `1px solid ${border}`, borderRadius: 10, padding: "12px 14px", background: isLight ? "#f8fafc" : "#202122" }}>
-          <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 8 }}>{guide.title || "How to plot it"}</div>
-          <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 11 }}>
+        <aside style={{ flex: "1 1 240px", minWidth: 210, maxWidth: 320, border: `1px solid ${border}`, borderRadius: 10, padding: "13px 15px", background: isLight ? "#f8fafc" : "#202122" }}>
+          <div style={{ color: text, fontWeight: 700, fontSize: 15, marginBottom: 9 }}>{guide.title || "How to plot it"}</div>
+          <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 12 }}>
             {guide.steps.map((step, i) => {
-              const done = guideDone(step);
+              const state = stepState(step);
               const cv = curves.find(c => c.id === step.curve);
+              const box = state === "correct"
+                ? { border: "1.5px solid #4ade80", background: "#4ade80", glyph: "✓", glyphColor: "#0b3b18" }
+                : state === "drawn"
+                  ? { border: "1.5px solid #3b82f6", background: "#3b82f633", glyph: "•", glyphColor: "#3b82f6" }
+                  : { border: `1.5px solid ${border}`, background: "transparent", glyph: "", glyphColor: "transparent" };
               return (
-                <li key={i} style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
-                  <span style={{ flexShrink: 0, width: 16, height: 16, borderRadius: 4, marginTop: 1, border: `1.5px solid ${done ? "#4ade80" : border}`, background: done ? "#4ade80" : "transparent", color: "#0b3b18", fontSize: 11, fontWeight: 900, lineHeight: "14px", textAlign: "center" }}>{done ? "✓" : ""}</span>
-                  <div style={{ fontSize: 12.5, lineHeight: 1.45, color: done ? muted : text }}>
+                <li key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
+                  <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, marginTop: 1, border: box.border, background: box.background, color: box.glyphColor, fontSize: 12, fontWeight: 900, lineHeight: "15px", textAlign: "center" }}>{box.glyph}</span>
+                  <div style={{ fontSize: 14, lineHeight: 1.5, color: state === "correct" ? muted : text }}>
                     {cv && <span style={{ color: colorOf(cv, curves.indexOf(cv)), fontWeight: 700 }}>{cv.label}: </span>}
                     <MathText>{step.label}</MathText>
-                    {step.note && <div style={{ color: muted, fontSize: 11.5, marginTop: 3, lineHeight: 1.4 }}><MathText>{step.note}</MathText></div>}
+                    {step.note && <> <InfoDot title="More detail"><MathText>{step.note}</MathText></InfoDot></>}
                   </div>
                 </li>
               );
             })}
           </ol>
+          <div style={{ marginTop: 11, paddingTop: 9, borderTop: `1px solid ${border}`, color: muted, fontSize: 12.5, lineHeight: 1.45 }}>
+            Each box turns <span style={{ color: "#4ade80", fontWeight: 700 }}>green ✓</span> and locks the moment that curve is in the right place — no Submit needed.
+          </div>
         </aside>
       )}
     </div>
