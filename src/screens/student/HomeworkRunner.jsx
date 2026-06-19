@@ -5,6 +5,8 @@ import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
 import { MathField } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import { GraphField } from "../../components/GraphField.jsx";
+import { VectorField } from "../../components/VectorField.jsx";
+import { VectorBuildup } from "../../components/VectorBuildup.jsx";
 import {
   HW_GRADING_DEFAULTS,
   creditForAttempt,
@@ -14,6 +16,8 @@ import {
   checkWorkIntegrity,
   graphHasInput,
   keyToValue,
+  vectorHasInput,
+  keyToVectorValue,
 } from "../../homework.js";
 
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
@@ -33,7 +37,7 @@ function itemsOf(p) {
   }
   return [{
     id: p.id, prompt: p.prompt, answerType: p.answerType, answer: p.answer,
-    unit: p.unit, sigFigs: p.sigFigs, tolerance: p.tolerance, graph: p.graph, weight: 1, _problemId: p.id,
+    unit: p.unit, sigFigs: p.sigFigs, tolerance: p.tolerance, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
     _figure: p.figure || null, _problemPrompt: null,
   }];
 }
@@ -249,6 +253,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         status: status[it.id] || "open", earned: parseFloat((earned[it.id] || 0).toFixed(3)),
         max: it.weight, correctAnswer: revealAnswerFor(it),
         ...(it.answerType === "graph" ? { graph: it.graph } : {}),
+        ...(it.answerType === "vector" ? { vector: it.vector } : {}),
       }));
       const pEarned = parseFloat(partRows.reduce((s2, r) => s2 + r.earned, 0).toFixed(3));
       if (p.parts && p.parts.length) {
@@ -356,6 +361,15 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
       );
     }
+    if (item.answerType === "vector") {
+      const val = answers[item.id] || "";
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <VectorField config={item.vector} value={val} onChange={v => setAns(item.id, v)} disabled={locked || isBusy} />
+          {!locked && <button onClick={() => submitItem(item)} disabled={isBusy || !vectorHasInput(val)} style={{ ...s.btnPri, width: "auto", alignSelf: "flex-start", padding: "8px 20px", opacity: isBusy || !vectorHasInput(val) ? 0.4 : 1 }}>{isBusy ? "Checking…" : "Submit"}</button>}
+        </div>
+      );
+    }
     if (item.answerType === "text") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -429,7 +443,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             Correct answer: <strong style={{ color: text }}>{revealAnswerFor(item)}</strong>
           </div>
         )}
-        {item.answerType !== "numeric" && item.answerType !== "graph" && st === "revealed" && revealed[item.id] != null && (
+        {item.answerType !== "numeric" && item.answerType !== "graph" && item.answerType !== "vector" && st === "revealed" && revealed[item.id] != null && (
           <div style={{ color: muted, fontSize: 14 }}>
             Correct answer: {item.answerType === "math" ? <MathText>{`$${revealed[item.id]}$`}</MathText> : <strong style={{ color: text }}>{revealed[item.id]}</strong>}
           </div>
@@ -438,6 +452,18 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ color: muted, fontSize: 13 }}>Correct sketch:</div>
             <GraphField config={item.graph} value={JSON.stringify(keyToValue(item.graph))} readOnly />
+          </div>
+        )}
+        {item.answerType === "vector" && st === "revealed" && !item.vector?.buildup && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ color: muted, fontSize: 13 }}>Correct diagram:</div>
+            <VectorField config={item.vector} value={JSON.stringify(keyToVectorValue(item.vector))} readOnly />
+          </div>
+        )}
+        {item.answerType === "vector" && item.vector?.buildup && (st === "correct" || st === "revealed") && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ color: muted, fontSize: 13 }}>How acceleration rebuilds the velocity:</div>
+            <VectorBuildup vector={item.vector} />
           </div>
         )}
         {st && st !== "open" && (

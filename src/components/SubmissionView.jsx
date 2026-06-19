@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useTheme } from "../theme.js";
-import { keyToValue } from "../homework.js";
+import { keyToValue, keyToVectorValue } from "../homework.js";
 import { ChatMessages } from "./ChatMessages.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
+import { VectorField } from "./VectorField.jsx";
 
 // One gradable item (a whole problem or a part) in a homework submission breakdown.
 // When `onEditChange` is provided the earned value becomes an editable number input
@@ -15,6 +16,8 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
   const parsedEdit = editEarned !== undefined ? parseFloat(editEarned) : NaN;
   const isOverridden = !isNaN(parsedEdit) && Math.abs(parsedEdit - (row.earned ?? 0)) > 0.0001;
   const isGraph = row.answerType === "graph";
+  const isVector = row.answerType === "vector";
+  const isPlot = isGraph || isVector;
   return (
     <div style={{ paddingTop: label ? 10 : 0, borderTop: label ? `1px solid ${border}` : "none", marginTop: label ? 10 : 0 }}>
       {label && <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Part ({label})</div>}
@@ -33,8 +36,22 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
           )}
         </div>
       )}
+      {isVector && row.vector && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginBottom: 8 }}>
+          <div style={{ maxWidth: 360 }}>
+            <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Student's diagram</div>
+            <VectorField config={row.vector} value={row.studentAnswer} readOnly />
+          </div>
+          {!correct && (
+            <div style={{ maxWidth: 360 }}>
+              <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Expected</div>
+              <VectorField config={row.vector} value={JSON.stringify(keyToVectorValue(row.vector))} readOnly />
+            </div>
+          )}
+        </div>
+      )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: muted, alignItems: "center" }}>
-        {!isGraph && <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>}
+        {!isPlot && <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>}
         <span style={{ color }}>{correct ? "Correct" : row.status === "revealed" ? "Answer revealed" : "Open"}</span>
         <span>{row.attempts} attempt{row.attempts !== 1 ? "s" : ""}</span>
         {onEditChange ? (
@@ -53,7 +70,7 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
         ) : (
           <span style={{ ...s.badge(color), fontSize: 11 }}>{(row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
         )}
-        {!correct && !isGraph && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
+        {!correct && !isPlot && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
       </div>
     </div>
   );

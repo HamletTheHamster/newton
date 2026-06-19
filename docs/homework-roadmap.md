@@ -94,10 +94,20 @@ not ground truth. The procedure:
    which silently drops significant trailing zeros (`9.00` → "9", `40.0` → "40", `3.30` → "3.3").
    Choose the count from the precision of the problem's given data. Grading is unaffected
    (`sigFigs` is display-only) — answers stay within the ±2% numeric tolerance.
+6. **Log every key-vs-verified discrepancy** in
+   [answer-key-discrepancies.md](answer-key-discrepancies.md). Any time your verified value
+   differs from the instructor's source key — *even within the ±2% tolerance* — add a row
+   (noting whether the gap exceeds ±2%). The app uses your verified value, so this log is the
+   instructor's to-do list for fixing the printed key documents.
+7. **Flag questions that a deterministic numeric doesn't serve well** (ill-conditioned numerics,
+   diagram/sketch/direction questions, expression/reasoning answers) and choose a fitting
+   `answerType` (`text`/`graph`/`vector`/`math`) — see the Workflow Rules in `CLAUDE.md`.
 
 HW1 and HW2 were fully re-verified on 2026-06-18 (every numeric, graph key point, and text
-answer confirmed correct/complete). When verifying a set, do it the same way and record the
-date here.
+answer confirmed correct/complete). HW3 was authored and verified from scratch on 2026-06-18
+(every numeric recomputed by script against the figures; two instructor-key values corrected —
+3.22(c) → 15.9 m, 3.6(b) direction → 4.58°). When verifying a set, do it the same way and
+record the date here.
 
 ## Remaining buildout steps
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
@@ -121,7 +131,33 @@ date here.
      plus a text direction. 2.34 (c)/(d) are **`answerType: "graph"` sketch parts** —
      students draw the $x$-$t$ and $v_x$-$t$ curves for both vehicles in `GraphField`,
      graded deterministically by `gradeGraph`. 2.81 answers are entered as numerical
-     factors (×H, ×T). The remaining `hw3…hw14` are still stubs to author.
+     factors (×H, ×T).
+   - ✅ **`hw3` (Physics 1) is now real content** — "Homework 3: Motion in Two Dimensions",
+     10 Young & Freedman Ch. 3 problems (3.1, 3.6, 3.11, 3.15, 3.16, 3.22, 3.29, 3.51, 3.54,
+     3.63). Figures `figE3-29.png` (Ferris wheel) / `figP3-63.png` (grasshopper cliff) in
+     `public/homeworkFigures/HW3/` (copied straight from the screenshots — no textbook caption
+     to crop). Mostly deterministic numerics (g = 9.80 m/s²): vector/velocity questions split
+     into component + magnitude + direction blanks (direction = degrees CCW from +x, stated in
+     the stem). **3.6(c)** is an `answerType: "vector"` part — the student draws the two velocity
+     arrows $\vec v_1$, $\vec v_2$ (graded on direction + magnitude) **and the average-acceleration
+     arrow** $\vec a$ (graded on direction only — it must point along $\Delta\vec v$ at 31°, the
+     misconception being to draw it along $\vec v_2$) from the origin in the new `VectorField`
+     widget, graded deterministically by `gradeVectors`. Claude is reserved for the
+     remaining text parts and hints: **3.29(a)/(b)** acceleration directions (toward the center —
+     up at the bottom, down at the top) and **3.54(b)** (see next paragraph). Note two
+     instructor-key values were corrected during verification: 3.22(c)
+     strike height is **15.9 m** (key said 15.8 — key rounded $\sin 53.1°$) and 3.6(b) direction
+     is **4.58°** (key said 4.8°); both differences are inside the ±2% grading tolerance.
+   - ⚠️ **`hw3` 3.54(b) is intentionally a `text` answer (ill-conditioned numerically).** With
+     the *minimum* muzzle velocity from 3.54(a), the trajectory's apex (~25.3 m) barely exceeds
+     the 25.0-m cliff and is reached *before* the edge (at x ≈ 54 m), so the shell is descending
+     as it grazes the corner and lands **essentially at the edge (~0 m beyond)**. The "distance
+     past the edge" is hypersensitive to how `v0` is rounded — it swings from negative (doesn't
+     clear) to +2.6 m over v0 = 32.6 → 32.8 m/s — and the true value ≈ 0 has no meaningful ±2%
+     tolerance band. So 3.54(b) is graded as a conceptual `text` explanation rather than a fixed
+     numeric. (3.6(c) is `text` for a different reason: the sketch can't be captured by the
+     curve-on-axes `GraphField`.)
+   The remaining `hw4…hw14` are still stubs to author.
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into
@@ -150,6 +186,33 @@ date here.
      (sufficient for monotonic single-concavity curves). Piecewise sketches (e.g. the subway
      train's ramp-up / flat / ramp-down $v$-$t$) would need per-segment shapes. Could also add
      a region/inequality answer mode and richer concavity inference from anchors.
+6b. ~~**Vector / arrow-diagram problems**~~ ✅ Done — `answerType: "vector"` lets students draw
+   arrows from a common origin (e.g. velocity/acceleration vectors, or free-body diagrams) in
+   `VectorField` (`src/components/VectorField.jsx`): click to place an arrow tip, drag to move,
+   click the tip to remove, and use chips to switch which vector is active. A vector flagged
+   `freeTail` is instead placed in **two clicks (tail, then tip)** so it can run from one arrow's
+   tip to another's (a graphical subtraction like $\vec v_2-\vec v_1$); either end can then be
+   dragged. Graded deterministically by `gradeVectors` (`homework.js`) against a per-vector
+   `key` (`{ tip:[x,y], tail?:[x,y], angleTol?, magTol? }`) by the arrow's displacement
+   $(\text{tip}-\text{tail})$ — so an arrow grades the same drawn from the origin or anywhere
+   else — with **direction always graded; magnitude only when the key supplies `magTol`.** This makes it reusable for scale-free **free-body diagrams** (set
+   `hideTicks` and omit `magTol` → graded on directions alone) as well as scaled component
+   vectors. Helpers mirror the graph ones: `parseVectorValue`, `vectorHasInput`,
+   `keyToVectorValue` (config `key` → renderable "correct diagram"), `vectorHint`. Reveal renders
+   the read-only correct diagram; the gradebook shows the student's diagram + expected
+   side-by-side (`SubmissionView`). First used in `hw3_p2c` (3.6c — two velocity vectors graded
+   on direction+magnitude, plus a `freeTail` $\Delta\vec v$ vector — placed in two clicks
+   (tail then tip) — that the student may draw either as the subtraction from $\vec v_1$'s tip to
+   $\vec v_2$'s tip OR from the origin, graded on direction+magnitude of the arrow itself). Once
+   that part resolves it auto-plays a `VectorBuildup` (`src/components/VectorBuildup.jsx`)
+   illustration: ten $\bar a\,(1\text{ s})$ steps (each $\Delta\vec v/10$) march tip-to-tail from
+   $\vec v_1$'s tip to $\vec v_2$'s tip while a running velocity vector sweeps $\vec v_1\to\vec v_2$,
+   driving home $\vec v_2=\vec v_1+\bar a\,\Delta t$ — the graphical link between acceleration and
+   velocity. Config is `vector.buildup` ({ vectorId, count, base, … }); reusable for impulse /
+   net-force-over-time.
+   - **Future extensions for FBDs:** optional per-vector fixed length (qualitative arrows),
+     required labels/equilibrium checks, and endpoint magnetism (snap a free tail onto another
+     arrow's tip automatically).
 6. **Image-answer problems** — homework supports `numeric` / `text` / `math` / `graph`. Add an
    `image` `answerType` reusing `compressImage` / `checkImageReadability` (`utils.js`) and
    the quiz upload UI.

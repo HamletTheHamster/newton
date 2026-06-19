@@ -88,7 +88,7 @@ export function formatNumericAnswer(item) {
 // The canonical correct-answer string to reveal (numeric formatted, text as-is, math LaTeX).
 export function revealAnswerFor(item) {
   if (item.answerType === "numeric") return formatNumericAnswer(item);
-  if (item.answerType === "graph") return "See plotted solution.";
+  if (item.answerType === "graph" || item.answerType === "vector") return "See plotted solution.";
   return String(item.answer);
 }
 
@@ -172,6 +172,91 @@ export function graphHint(reason) {
     case "points":  return `Your “${c}” curve doesn’t pass through the expected values — check where it should start and where the two motions meet.`;
     case "shape":   return `Re-examine the shape of your “${c}” curve: does its slope stay constant, or change as time goes on?`;
     default:        return "Re-examine your sketch.";
+  }
+}
+
+// ── Vector / arrow grading ──────────────────────────────────────────────────────
+// A vector answer is a JSON string of the shape:
+//   { vectors: { [vecId]: { tip: [x, y], tail?: [x, y] } } }
+// Each vector is an arrow from a `tail` to a `tip`; when `tail` is omitted it defaults to the
+// config's common `origin` (default [0,0]). The graded quantity is the arrow itself — the
+// displacement (tip − tail) — NOT the absolute tip, so a free vector drawn anywhere on the plane
+// is judged purely on its direction and length. (Most vectors are rooted at the origin and only
+// place a tip; a vector flagged `freeTail` in the config can also have its tail dragged, e.g. to
+// draw a graphical subtraction v₂−v₁ from v₁'s tip to v₂'s tip.) The problem's `vector` config
+// carries the plane (axes), the vectors to draw, the common origin, and a per-vector grading
+// `key` ({ tip:[x,y], tail?:[x,y], angleTol?:deg, magTol?:frac }). Direction is ALWAYS graded
+// (the angle between the student's arrow and the key arrow must be within `angleTol`, default
+// 15°). Magnitude is graded ONLY when the key supplies `magTol` (a fraction of the key length)
+// — so free-body diagrams (no meaningful scale) can omit it and be graded on direction alone,
+// while scaled vectors (e.g. velocity components) set it to also require the right length. Fully
+// deterministic (no Claude), mirroring gradeGraph.
+export function parseVectorValue(raw) {
+  if (raw && typeof raw === "object") return raw.vectors ? raw : { vectors: {} };
+  try {
+    const o = JSON.parse(String(raw || ""));
+    return o && o.vectors ? o : { vectors: {} };
+  } catch { return { vectors: {} }; }
+}
+
+// True if the student has placed at least one vector tip (used to enable Submit).
+export function vectorHasInput(raw) {
+  const d = parseVectorValue(raw);
+  return Object.values(d.vectors || {}).some(
+    v => Array.isArray(v?.tip) && v.tip.length === 2 && Number.isFinite(v.tip[0]) && Number.isFinite(v.tip[1])
+  );
+}
+
+// Build a renderable value object from a vector config's grading key (the "correct diagram").
+export function keyToVectorValue(vector) {
+  const vectors = {};
+  for (const v of vector?.vectors || []) {
+    const k = vector.key?.[v.id];
+    if (k && Array.isArray(k.tip)) {
+      vectors[v.id] = Array.isArray(k.tail) ? { tail: [...k.tail], tip: [...k.tip] } : { tip: [...k.tip] };
+    }
+  }
+  return { vectors };
+}
+
+// Deterministic grade of a vector answer. Returns { correct, reasons:[{vector,type}] }.
+// Each vector is judged by its displacement (tip − tail), so the same arrow grades the same
+// whether drawn from the origin or anywhere else (e.g. a subtraction from one tip to another).
+export function gradeVectors(raw, vector) {
+  const data = parseVectorValue(raw);
+  const origin = vector?.origin || [0, 0];
+  const reasons = [];
+  for (const v of vector?.vectors || []) {
+    const key = vector.key?.[v.id];
+    if (!key || !Array.isArray(key.tip)) continue;
+    const sv = data.vectors?.[v.id];
+    const tip = sv && Array.isArray(sv.tip) ? sv.tip : null;
+    if (!tip) { reasons.push({ vector: v.label, type: "missing" }); continue; }
+    const sTail = Array.isArray(sv.tail) ? sv.tail : origin;
+    const kTail = Array.isArray(key.tail) ? key.tail : origin;
+    const sdx = tip[0] - sTail[0], sdy = tip[1] - sTail[1];
+    const kdx = key.tip[0] - kTail[0], kdy = key.tip[1] - kTail[1];
+    const sMag = Math.hypot(sdx, sdy), kMag = Math.hypot(kdx, kdy);
+    if (sMag < 1e-9 || kMag < 1e-9) { reasons.push({ vector: v.label, type: "missing" }); continue; }
+    const cos = (sdx * kdx + sdy * kdy) / (sMag * kMag);
+    const angDiff = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+    if (angDiff > (key.angleTol ?? 15)) { reasons.push({ vector: v.label, type: "direction" }); continue; }
+    if (key.magTol != null && Math.abs(sMag - kMag) > key.magTol * kMag) {
+      reasons.push({ vector: v.label, type: "magnitude" }); continue;
+    }
+  }
+  return { correct: reasons.length === 0, reasons };
+}
+
+// Targeted (but answer-preserving) hint for the first failing vector.
+export function vectorHint(reason) {
+  if (!reason) return "Re-examine your vectors.";
+  const v = reason.vector;
+  switch (reason.type) {
+    case "missing":   return `Draw the “${v}” vector — click in the plane to place its arrow tip.`;
+    case "direction": return `Re-check the direction of “${v}”: which quadrant should it point into, and at what angle?`;
+    case "magnitude": return `Re-check the length of “${v}”: its components set how far its tip sits from the origin.`;
+    default:          return "Re-examine your vectors.";
   }
 }
 
@@ -346,6 +431,15 @@ export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, 
     if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct sketch." };
     if (phase === "hint") return { correct: false, message: "💡 " + graphHint(res.reasons[0]) };
     return { correct: false, message: "Not quite — review the points your curves pass through and their shape, then try again." };
+  }
+
+  if (item.answerType === "vector") {
+    // Deterministic grade — no Claude call needed.
+    const res = gradeVectors(studentAnswer, item.vector);
+    if (res.correct) return { correct: true, message: "✓ Correct — your vectors match." };
+    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct diagram." };
+    if (phase === "hint") return { correct: false, message: "💡 " + vectorHint(res.reasons[0]) };
+    return { correct: false, message: "Not quite — re-check the direction (and length) of each vector, then try again." };
   }
 
   // text + math → Claude judges correctness and writes the reply.

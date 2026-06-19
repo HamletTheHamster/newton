@@ -65,6 +65,7 @@ export const MODULES_PHYSICS1 = [
 //   { id, prompt, figure?, answerType, answer,
 //     unit?, sigFigs?, tolerance?,                 // numeric options
 //     graph?,                                      // graph option (see below)
+//     vector?,                                     // vector option (see below)
 //     parts?: [{ id, prompt, answerType, answer, ... }] }   // multipart
 //
 // - numeric: graded deterministically within ±2% (sig figs not penalized; correct answer
@@ -79,6 +80,14 @@ export const MODULES_PHYSICS1 = [
 //   instead of `answer`. Each keyed curve must span the key x-values, pass within tolerance
 //   of every key point, and match the shape flag. The optional `guide` renders a checklist
 //   beside the plot (steps tick off as points/shape are set) to scaffold tricky sketches.
+// - vector:  student draws arrows from a common origin in VectorField; graded deterministically
+//   by gradeVectors. Carries `vector: { xLabel?,yLabel?,xMin,xMax,yMin,yMax,xTick,yTick,
+//                      origin?:[x,y], vectors:[{id,label,color}],
+//                      key:{ [vecId]: { tip:[x,y], angleTol?:deg=15, magTol?:frac } },
+//                      snapDiv?, hideTicks?, guide?:{ title, steps:[{ vector, label, note? }] } }`
+//   instead of `answer`. Direction is always graded (within angleTol); magnitude is graded only
+//   when the key gives magTol — so free-body diagrams (set hideTicks, omit magTol) grade on
+//   direction alone, while scaled vectors (velocity components, etc.) also require the right length.
 export const HOMEWORKS_PHYSICS1 = [
   {
     id: "hw1",
@@ -357,6 +366,158 @@ export const HOMEWORKS_PHYSICS1 = [
         parts: [
           { id: "hw2_p10a", prompt: "(a) How high (in terms of $H$) would these rocks go if a volcano on Mars ejected them with the same initial velocity? Enter the numerical factor (height $= $ factor $\\times H$).", answerType: "numeric", answer: 2.64, unit: "× H", sigFigs: 3 },
           { id: "hw2_p10b", prompt: "(b) If the rocks are in the air for a time $T$ on earth, for how long (in terms of $T$) will they be in the air on Mars? Enter the numerical factor (time $= $ factor $\\times T$).", answerType: "numeric", answer: 2.64, unit: "× T", sigFigs: 3 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hw3",
+    title: "Homework 3: Motion in Two Dimensions",
+    problems: [
+      // 3.1 — squirrel average velocity
+      {
+        id: "hw3_p1",
+        prompt: "A squirrel has $x$- and $y$-coordinates $(1.1\\text{ m},\\ 3.4\\text{ m})$ at time $t_1 = 0$ and coordinates $(5.3\\text{ m},\\ -0.5\\text{ m})$ at time $t_2 = 3.0\\text{ s}$. For this time interval, find the average velocity. Give the direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
+        parts: [
+          { id: "hw3_p1a_x", prompt: "(a) $x$-component of the average velocity.", answerType: "numeric", answer: 1.4, unit: "m/s", sigFigs: 2 },
+          { id: "hw3_p1a_y", prompt: "(a) $y$-component of the average velocity.", answerType: "numeric", answer: -1.3, unit: "m/s", sigFigs: 2 },
+          { id: "hw3_p1b_m", prompt: "(b) Magnitude of the average velocity.", answerType: "numeric", answer: 1.9105, unit: "m/s", sigFigs: 2 },
+          { id: "hw3_p1b_d", prompt: "(b) Direction of the average velocity (degrees CCW from $+x$).", answerType: "numeric", answer: 317.12, unit: "°", sigFigs: 3 },
+        ],
+      },
+      // 3.6 — dog, average acceleration over 10.0 s
+      {
+        id: "hw3_p2",
+        prompt: "A dog running in an open field has components of velocity $v_x = 2.6\\text{ m/s}$ and $v_y = -1.8\\text{ m/s}$ at $t_1 = 10.0\\text{ s}$. For the time interval from $t_1 = 10.0\\text{ s}$ to $t_2 = 20.0\\text{ s}$, the average acceleration of the dog has magnitude $0.45\\text{ m/s}^2$ and direction $31.0°$ measured from the $+x$-axis toward the $+y$-axis. At $t_2 = 20.0\\text{ s}$, find the velocity of the dog. Give the direction as an angle measured counterclockwise from the $+x$-axis.",
+        parts: [
+          { id: "hw3_p2a_x", prompt: "(a) $x$-component of the velocity at $t_2$.", answerType: "numeric", answer: 6.4573, unit: "m/s", sigFigs: 2 },
+          { id: "hw3_p2a_y", prompt: "(a) $y$-component of the velocity at $t_2$.", answerType: "numeric", answer: 0.5177, unit: "m/s", sigFigs: 2 },
+          { id: "hw3_p2b_m", prompt: "(b) Magnitude of the velocity at $t_2$.", answerType: "numeric", answer: 6.478, unit: "m/s", sigFigs: 2 },
+          { id: "hw3_p2b_d", prompt: "(b) Direction of the velocity at $t_2$ (degrees CCW from $+x$).", answerType: "numeric", answer: 4.584, unit: "°", sigFigs: 2 },
+          {
+            id: "hw3_p2c",
+            prompt: "(c) Sketch the dog's velocity vectors at $t_1$ and $t_2$ on the velocity plane below (axes in m/s), drawing each from the origin to the tip given by that instant's velocity components. Then draw the **average-acceleration vector** for the interval, which is parallel to the *change* in velocity $\\Delta\\vec v = \\vec v_2 - \\vec v_1$. You may draw it either as the graphical subtraction — an arrow from the tip of $\\vec v_1$ to the tip of $\\vec v_2$ — or as the same arrow starting from the origin; both are accepted. It points up and to the right at $31°$ above the $+x$-axis, which is exactly why the velocity arrow both lengthens and rotates counterclockwise from $t_1$ to $t_2$.",
+            answerType: "vector",
+            vector: {
+              xLabel: "vₓ (m/s)", yLabel: "v_y (m/s)",
+              xMin: -2, xMax: 8, yMin: -4, yMax: 3, xTick: 2, yTick: 1, snapDiv: 100, // snapDiv 100 ⇒ 0.02 in x, 0.01 in y, so v₂ sits exactly at its components (6.5, 0.52); yMax 3 fits the origin-drawn Δv (tip ≈ (3.86, 2.32))
+              origin: [0, 0],
+              vectors: [
+                { id: "v1", label: "v₁", color: "#3b82f6" },
+                { id: "v2", label: "v₂", color: "#ef4444" },
+                { id: "a", label: "Δv", color: "#10b981", freeTail: true },
+              ],
+              key: {
+                v1: { tip: [2.6, -1.8], angleTol: 14, magTol: 0.2 },
+                v2: { tip: [6.4573, 0.5177], angleTol: 14, magTol: 0.2 },
+                // a ∥ Δv = v₂ − v₁ = (3.857, 2.318). Graded by (tip − tail), so the same arrow
+                // works drawn from v₁'s tip to v₂'s tip OR from the origin. Key is the subtraction form.
+                a:  { tail: [2.6, -1.8], tip: [6.4573, 0.5177], angleTol: 16, magTol: 0.25 },
+              },
+              // After the part resolves, auto-play the conceptual payoff: ten ā·(1 s) steps laid
+              // tip-to-tail equal Δv and carry v₁ to v₂ (each step = Δv/10, derived from key.a).
+              buildup: {
+                vectorId: "a", count: 10, base: ["v1", "v2"],
+                stepColor: "#eab308", runningColor: "#14b8a6",
+                caption: "Watch the average acceleration rebuild the velocity. Each second it adds $\\bar{a}\\,(1\\text{ s})$ — one-tenth of $\\Delta\\vec v$ — to the velocity (the yellow steps). After ten seconds those ten equal steps, laid tip to tail, have carried $\\vec v_1$ all the way to $\\vec v_2$: that is $\\vec v_2 = \\vec v_1 + \\bar{a}\\,\\Delta t$.",
+              },
+              guide: {
+                title: "How to draw it",
+                steps: [
+                  { vector: "v1", label: "draw the velocity at $t_1$: put the arrow's tip at the components given in the problem, $(v_x, v_y) = (2.6, -1.8)\\text{ m/s}$." },
+                  { vector: "v2", label: "draw the velocity at $t_2$: put the arrow's tip at the components you found in part (a)." },
+                  { vector: "a", label: "draw $\\Delta\\vec v = \\vec v_2 - \\vec v_1$, which sets the direction of the average acceleration.", note: "It's drawn in two clicks (tail, then tip). Two equivalent ways, both accepted: (1) graphical subtraction — click the tip of $\\vec v_1$ to start it, then the tip of $\\vec v_2$, so it runs tip-to-tip; or (2) from the origin — click the origin to start it, then place its tip at the components of $\\vec v_2 - \\vec v_1$. Either way it points up and to the right at $31°$ — NOT along $\\vec v_2$." },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      // 3.11 — crickets jump from a cliff
+      {
+        id: "hw3_p3",
+        prompt: "Two crickets, Chirpy and Milada, jump from the top of a vertical cliff. Chirpy just drops and reaches the ground in $3.50\\text{ s}$, while Milada jumps horizontally with an initial speed of $95.0\\text{ cm/s}$. How far from the base of the cliff will Milada hit the ground?",
+        answerType: "numeric",
+        answer: 3.325,
+        unit: "m",
+        sigFigs: 3,
+      },
+      // 3.15 — starship on Planet X
+      {
+        id: "hw3_p4",
+        prompt: "Inside a starship at rest on the earth, a ball rolls off the top of a horizontal table and lands a distance $D$ from the foot of the table. This starship now lands on the unexplored Planet X. The commander, Captain Curious, rolls the same ball off the same table with the same initial speed as on earth and finds that it lands a distance $2.76D$ from the foot of the table. What is the acceleration due to gravity on Planet X? (Use $g = 9.80\\text{ m/s}^2$ on earth.)",
+        answerType: "numeric",
+        answer: 1.2865,
+        unit: "m/s²",
+        sigFigs: 3,
+      },
+      // 3.16 — shell fired on level ground
+      {
+        id: "hw3_p5",
+        prompt: "On level ground a shell is fired with an initial velocity of $50.0\\text{ m/s}$ at $60.0°$ above the horizontal and feels no appreciable air resistance. Use $g = 9.80\\text{ m/s}^2$.",
+        parts: [
+          { id: "hw3_p5a_x", prompt: "(a) Horizontal component of the shell's initial velocity.", answerType: "numeric", answer: 25.0, unit: "m/s", sigFigs: 3 },
+          { id: "hw3_p5a_y", prompt: "(a) Vertical component of the shell's initial velocity.", answerType: "numeric", answer: 43.301, unit: "m/s", sigFigs: 3 },
+          { id: "hw3_p5b", prompt: "(b) How long does it take the shell to reach its highest point?", answerType: "numeric", answer: 4.4185, unit: "s", sigFigs: 3 },
+          { id: "hw3_p5c", prompt: "(c) Find its maximum height above the ground.", answerType: "numeric", answer: 95.663, unit: "m", sigFigs: 3 },
+          { id: "hw3_p5d", prompt: "(d) How far from its firing point does the shell land?", answerType: "numeric", answer: 220.92, unit: "m", sigFigs: 3 },
+          { id: "hw3_p5e_ax", prompt: "(e) At its highest point, find the horizontal component of its acceleration.", answerType: "numeric", answer: 0, unit: "m/s²", sigFigs: 1 },
+          { id: "hw3_p5e_ay", prompt: "(e) At its highest point, find the vertical component of its acceleration (take up as positive).", answerType: "numeric", answer: -9.80, unit: "m/s²", sigFigs: 3 },
+          { id: "hw3_p5e_vx", prompt: "(e) At its highest point, find the horizontal component of its velocity.", answerType: "numeric", answer: 25.0, unit: "m/s", sigFigs: 3 },
+          { id: "hw3_p5e_vy", prompt: "(e) At its highest point, find the vertical component of its velocity.", answerType: "numeric", answer: 0, unit: "m/s", sigFigs: 1 },
+        ],
+      },
+      // 3.22 — firemen's hose
+      {
+        id: "hw3_p6",
+        prompt: "Firemen are shooting a stream of water at a burning building using a high-pressure hose that shoots the water with a speed of $25.0\\text{ m/s}$ as it leaves the end of the hose. Once it leaves the hose, the water moves in projectile motion. The firemen adjust the angle of elevation $\\alpha$ of the hose until the water takes $3.00\\text{ s}$ to reach a building $45.0\\text{ m}$ away. You can ignore air resistance; assume that the end of the hose is at ground level. Use $g = 9.80\\text{ m/s}^2$.",
+        parts: [
+          { id: "hw3_p6a", prompt: "(a) Find the angle of elevation $\\alpha$ (degrees above the horizontal).", answerType: "numeric", answer: 53.130, unit: "°", sigFigs: 3 },
+          { id: "hw3_p6b_s", prompt: "(b) Find the speed of the water at the highest point in its trajectory.", answerType: "numeric", answer: 15.0, unit: "m/s", sigFigs: 3 },
+          { id: "hw3_p6b_a", prompt: "(b) Find the magnitude of the water's acceleration at the highest point (its direction is straight down).", answerType: "numeric", answer: 9.80, unit: "m/s²", sigFigs: 3 },
+          { id: "hw3_p6c_h", prompt: "(c) How high above the ground does the water strike the building?", answerType: "numeric", answer: 15.90, unit: "m", sigFigs: 3 },
+          { id: "hw3_p6c_s", prompt: "(c) How fast is the water moving just before it hits the building?", answerType: "numeric", answer: 17.702, unit: "m/s", sigFigs: 3 },
+        ],
+      },
+      // 3.29 — Ferris wheel (uniform circular motion)
+      {
+        id: "hw3_p7",
+        figure: "/homeworkFigures/HW3/figE3-29.png",
+        prompt: "A Ferris wheel with radius $14.0\\text{ m}$ is turning about a horizontal axis through its center (see figure). The linear speed of a passenger on the rim is constant and equal to $7.00\\text{ m/s}$.",
+        parts: [
+          { id: "hw3_p7a_m", prompt: "(a) What is the magnitude of the passenger's acceleration as she passes through the lowest point in her circular motion?", answerType: "numeric", answer: 3.50, unit: "m/s²", sigFigs: 3 },
+          { id: "hw3_p7a_d", prompt: "(a) What is the direction of that acceleration?", answerType: "text", answer: "Upward — directed toward the center of the wheel (the centripetal direction). Because the speed is constant there is no tangential acceleration, so the acceleration is purely radial." },
+          { id: "hw3_p7b_m", prompt: "(b) What is the magnitude of the passenger's acceleration at the highest point in her circular motion?", answerType: "numeric", answer: 3.50, unit: "m/s²", sigFigs: 3 },
+          { id: "hw3_p7b_d", prompt: "(b) What is the direction of that acceleration?", answerType: "text", answer: "Downward — directed toward the center of the wheel. The magnitude is the same as at the lowest point; only the direction (toward the center) has changed." },
+          { id: "hw3_p7c", prompt: "(c) How much time does it take the Ferris wheel to make one revolution?", answerType: "numeric", answer: 12.566, unit: "s", sigFigs: 3 },
+        ],
+      },
+      // 3.51 — monkey and hunter
+      {
+        id: "hw3_p8",
+        prompt: "A jungle veterinarian with a blow-gun loaded with a tranquilizer dart and a sly $1.5\\text{-kg}$ monkey are each $25\\text{ m}$ above the ground in trees $70\\text{ m}$ apart. Just as the hunter shoots horizontally at the monkey, the monkey drops from the tree in a vain attempt to escape being hit. What must the minimum muzzle velocity of the dart have been for the hunter to have hit the monkey before it reached the ground? Use $g = 9.80\\text{ m/s}^2$.",
+        answerType: "numeric",
+        answer: 30.99,
+        unit: "m/s",
+        sigFigs: 2,
+      },
+      // 3.54 — cannon firing over a cliff
+      {
+        id: "hw3_p9",
+        prompt: "A cannon, located $60.0\\text{ m}$ from the base of a vertical $25.0\\text{-m}$-tall cliff, shoots a $15\\text{-kg}$ shell at $43.0°$ above the horizontal toward the cliff. Use $g = 9.80\\text{ m/s}^2$.",
+        parts: [
+          { id: "hw3_p9a", prompt: "(a) What must the minimum muzzle velocity be for the shell to clear the top of the cliff?", answerType: "numeric", answer: 32.643, unit: "m/s", sigFigs: 3 },
+          { id: "hw3_p9b", prompt: "(b) The ground at the top of the cliff is level, with a constant elevation of $25.0\\text{ m}$ above the cannon. Under the conditions of part (a), how far does the shell land past the edge of the cliff? Explain your reasoning.", answerType: "text", answer: "Essentially zero — the shell lands right at the edge. With the minimum muzzle velocity from part (a), the trajectory's peak height is only about $25.3\\text{ m}$, just barely above the $25.0\\text{-m}$ cliff, and that peak occurs at a horizontal distance of about $54\\text{ m}$ — before the cliff edge at $60.0\\text{ m}$. So the shell is already descending as it reaches the edge: it passes back down through the $25.0\\text{-m}$ height essentially at the edge itself (at $x \\approx 60.0\\text{ m}$). It therefore lands at (to within rounding, $0\\text{ m}$ beyond) the edge of the cliff." },
+        ],
+      },
+      // 3.63 — grasshopper leaping from a cliff
+      {
+        id: "hw3_p10",
+        figure: "/homeworkFigures/HW3/figP3-63.png",
+        prompt: "A grasshopper leaps into the air from the edge of a vertical cliff, as shown in the figure. It rises $6.74\\text{ cm}$ above the launch point while moving a horizontal distance of $1.06\\text{ m}$ to where it lands at the base of the cliff; its initial velocity is directed $50.0°$ above the horizontal. Use information from the figure to find the following. Use $g = 9.80\\text{ m/s}^2$.",
+        parts: [
+          { id: "hw3_p10a", prompt: "(a) Find the initial speed of the grasshopper.", answerType: "numeric", answer: 1.5004, unit: "m/s", sigFigs: 3 },
+          { id: "hw3_p10b", prompt: "(b) Find the height of the cliff.", answerType: "numeric", answer: 4.656, unit: "m", sigFigs: 3 },
         ],
       },
     ],
