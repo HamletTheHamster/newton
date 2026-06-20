@@ -35,6 +35,28 @@ a conceptual `text` part rather than a numeric, so it is not a key discrepancy.
 
 ---
 
+## HW4 — Newton's Laws of Motion (verified 2026-06-19)
+
+The HW4 source key (`hwImage/HW4/PHY 115 HW 4 Key.pdf`) used $g = 9.81\text{ m/s}^2$, whereas
+the app/course convention is $g = 9.80\text{ m/s}^2$ — this accounts for most of the small gaps
+below. The app uses the $g=9.80$ values; all are within ±2% except 4.37(a).
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| **4.37 (a)** — smallest child force | **17 N** | **16.6 N** (16.603) | **Yes** — ±2% band is ≈ [16.27, 16.94] | Key over-rounded $F_2\sin30° - F_1\sin60° = 70.0 - 86.6 = -16.6\text{ N}$ up to 17 N. | ☐ |
+| 4.12 (a) / (c) — acceleration / speed | 4.3 m/s² / 43 m/s | 4.31 m/s² (4.3077) / 43.1 m/s | No | Key carried only 2 sig figs for $a$; the given data (32.5 kg, 140 N, 10.0 s) support 3. | ☐ |
+| 4.19 (b) — weight on Io | 8.12 N | 8.13 N (8.127) | No | Key used $g=9.81$ for the earth-mass step ($m=4.485$ kg); $g=9.80$ gives $m=4.490$ kg → $w_\text{Io}=8.13$ N. | ☐ |
+| 4.37 (b) — weight of cart | 840 N | 839 N (839.1) | No | Key used $g=9.81$; $m=85.6$ kg × 9.80 = 839 N. | ☐ |
+| 4.57 (a)/(b) — mass of B / mass of A | 4.33 kg / 5.29 kg | 4.34 kg (4.337) / 5.30 kg (5.301) | No | Key used $g=9.81$ in $g-a = 8.31$; with $g=9.80$, $g-a = 8.30$. | ☐ |
+
+**Not a key error, but noted for context:** 4.38 (b) — the impact speed ($0.17\text{ m/s}$) is a
+small difference of two larger numbers ($v^2 = 1.5^2 - 2|a|\cdot500 = 2.25 - 2.222 = 0.028$), so it
+is mildly sensitive to how the acceleration is rounded. It is *not* ill-conditioned enough to drop
+the numeric (the canonical 0.17 m/s sits inside the ±2% band as long as full precision is carried),
+unlike 3.54(b). Kept as a numeric part.
+
+---
+
 ## HW1 / HW2
 
 Re-verified on 2026-06-18 and confirmed correct/complete (per homework-roadmap.md § Authoring),

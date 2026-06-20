@@ -135,7 +135,7 @@ export function VectorBuildup({ vector, autoPlay = true, stepMs = 430, startDela
 
       <div style={{ display: "flex", gap: 14, alignItems: "center", flexWrap: "wrap", fontSize: 13, color: muted }}>
         <span><span style={swatch(runColor)} />velocity v(t)</span>
-        <span><span style={swatch(stepColor)} />ā·(1 s) steps</span>
+        <span style={{ display: "inline-flex", alignItems: "center" }}><span style={swatch(stepColor)} /><MathText>{"$\\vec{a}\\cdot(1\\text{ s})$"}</MathText>&nbsp;steps</span>
         <button type="button" onClick={play} style={btn}>{done ? "↻ Replay" : "▶ Playing…"}</button>
       </div>
 

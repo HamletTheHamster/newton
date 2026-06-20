@@ -89,6 +89,7 @@ export function formatNumericAnswer(item) {
 export function revealAnswerFor(item) {
   if (item.answerType === "numeric") return formatNumericAnswer(item);
   if (item.answerType === "graph" || item.answerType === "vector") return "See plotted solution.";
+  if (item.answerType === "fbd") return "See the free-body diagram solution.";
   return String(item.answer);
 }
 
@@ -265,6 +266,144 @@ export function vectorHint(reason) {
     default:          return "Re-examine your vectors.";
   }
 }
+
+// ── Free-body-diagram grading (`answerType: "fbd"`) ─────────────────────────────────
+// An FBD is built from a *bank* of force types (the student draws any number of each), plus
+// an off-to-the-side acceleration arrow and a ( pedagogical, ungraded) positive-axes gizmo.
+// We never tell the student which forces act on the body — they choose from the bank. The
+// grader matches the drawn set of force arrows against the key as a multiset (by type +
+// direction), so it accepts the forces in any order and flags missing / extra ones without
+// naming them. Deterministic (no Claude), like gradeGraph / gradeVectors.
+//
+//   config.fbd = {
+//     bank:    ["F","T","N","w","f"]          // which force types are offered (subset)
+//     forces:  [{ type, dir:[dx,dy], angleTol? }]   // the required forces (the key)
+//     prefill: [{ type, dir:[dx,dy] }]        // forces the app draws & locks for the student
+//     accel:   { dir:[dx,dy], angleTol? } | { none:true }   // expected acceleration (or equilibrium)
+//     origin?, plane bounds, guide?, bodyLabel?
+//   }
+//   value (JSON string) = {
+//     forces: { [id]: { type, tip:[x,y] } },  // origin-rooted force arrows the student placed
+//     accel:  { tail:[x,y], tip:[x,y] } | { none:true } | null,
+//     axes:   { angle:degrees }               // +x orientation (ungraded)
+//   }
+const FORCE_TYPES = { F: "F", T: "T", N: "N", w: "w", f: "f" }; // symbol per type (f rendered italic)
+
+export function parseFBDValue(raw) {
+  const norm = o => ({
+    forces: o && o.forces && typeof o.forces === "object" ? o.forces : {},
+    accel: o && o.accel ? o.accel : null,
+    axes: o && o.axes && Number.isFinite(o.axes.angle) ? o.axes : { angle: 0 },
+  });
+  if (raw && typeof raw === "object") return norm(raw);
+  try { return norm(JSON.parse(String(raw || ""))); } catch { return norm(null); }
+}
+
+// True once the student has placed any force tip or set the acceleration (enables resume / nav warn).
+export function fbdHasInput(raw) {
+  const d = parseFBDValue(raw);
+  const anyForce = Object.values(d.forces).some(v => Array.isArray(v?.tip) && Number.isFinite(v.tip[0]));
+  const anyAccel = !!d.accel && (d.accel.none || (Array.isArray(d.accel.tip) && Array.isArray(d.accel.tail)));
+  return anyForce || anyAccel;
+}
+
+const _sub = (a, b) => [a[0] - b[0], a[1] - b[1]];
+const _angleBetween = (u, v) => {
+  const um = Math.hypot(u[0], u[1]), vm = Math.hypot(v[0], v[1]);
+  if (um < 1e-9 || vm < 1e-9) return 999;
+  const c = (u[0] * v[0] + u[1] * v[1]) / (um * vm);
+  return (Math.acos(Math.max(-1, Math.min(1, c))) * 180) / Math.PI;
+};
+
+// Deterministic grade of an FBD. Matches drawn forces to the key as a multiset (type+direction),
+// counts prefilled forces as already satisfied, and grades the acceleration arrow by direction.
+// Returns { correct, reasons:[{type,...}], pass } where pass = { [forceId]:bool, _forces:bool, _accel:bool }.
+export function gradeFBD(raw, fbd) {
+  const data = parseFBDValue(raw);
+  const origin = fbd?.origin || [0, 0];
+  const reasons = [];
+  const pass = {};
+  const keyForces = (fbd?.forces || []).map((k, i) => ({ ...k, _i: i }));
+
+  const studentForces = Object.entries(data.forces || {})
+    .filter(([, v]) => Array.isArray(v?.tip) && Number.isFinite(v.tip[0]))
+    .map(([id, v]) => ({ id, type: v.type, dir: _sub(v.tip, v.tail || origin) }));
+
+  const matched = new Array(keyForces.length).fill(false);
+  const prefillLeft = (fbd?.prefill || []).map(p => ({ ...p })); // app-supplied forces satisfy their slot first
+  for (const kf of keyForces) {
+    const pi = prefillLeft.findIndex(p => p.type === kf.type && _angleBetween(p.dir, kf.dir) <= (kf.angleTol ?? 18));
+    if (pi >= 0) { matched[kf._i] = true; prefillLeft.splice(pi, 1); }
+  }
+  const usedStudent = new Set();
+  for (const kf of keyForces) {
+    if (matched[kf._i]) continue;
+    let best = null, bestAng = Infinity;
+    for (const sf of studentForces) {
+      if (usedStudent.has(sf.id) || sf.type !== kf.type) continue;
+      const a = _angleBetween(sf.dir, kf.dir);
+      if (a <= (kf.angleTol ?? 18) && a < bestAng) { best = sf; bestAng = a; }
+    }
+    if (best) { matched[kf._i] = true; usedStudent.add(best.id); pass[best.id] = true; }
+    else reasons.push({ type: "missing-force", forceType: kf.type });
+  }
+  for (const sf of studentForces) {
+    if (!usedStudent.has(sf.id)) { pass[sf.id] = false; reasons.push({ type: "extra-force", id: sf.id }); }
+  }
+  const forcesOk = matched.every(Boolean) && studentForces.every(sf => usedStudent.has(sf.id));
+  pass._forces = forcesOk;
+
+  // Acceleration: direction-only, or "no acceleration" for an equilibrium key. Omitting fbd.accel
+  // means the acceleration step isn't graded (treated as satisfied).
+  let accelOk = true;
+  if (fbd?.accel?.none) {
+    accelOk = !!data.accel?.none;
+    if (!accelOk) reasons.push({ type: "accel" });
+  } else if (fbd?.accel?.dir) {
+    const a = data.accel;
+    accelOk = !!(a && Array.isArray(a.tip) && Array.isArray(a.tail) &&
+      _angleBetween(_sub(a.tip, a.tail), fbd.accel.dir) <= (fbd.accel.angleTol ?? 20));
+    if (!accelOk) reasons.push({ type: "accel" });
+  }
+  pass._accel = accelOk;
+
+  return { correct: reasons.length === 0, reasons, pass };
+}
+
+// Build the renderable "correct diagram" from an FBD key (every required force once, plus the
+// acceleration arrow off to the lower-right). Used for the reveal and the gradebook.
+export function keyToFBDValue(fbd) {
+  const forces = {};
+  let i = 0;
+  // Skip forces that the field draws itself from `prefill` (so the reveal doesn't double them).
+  const prefillLeft = (fbd?.prefill || []).map(p => ({ ...p }));
+  for (const k of fbd?.forces || []) {
+    const pi = prefillLeft.findIndex(p => p.type === k.type && _angleBetween(p.dir, k.dir) <= (k.angleTol ?? 18));
+    if (pi >= 0) { prefillLeft.splice(pi, 1); continue; }
+    forces["k" + i++] = { type: k.type, tip: [k.dir[0], k.dir[1]] };
+  }
+  let accel = null;
+  if (fbd?.accel?.none) accel = { none: true };
+  else if (fbd?.accel?.dir) {
+    const base = [0.95, -1.15]; // off to the side, away from the origin-rooted force arrows
+    accel = { tail: base, tip: [base[0] + fbd.accel.dir[0] * 0.6, base[1] + fbd.accel.dir[1] * 0.6] };
+  }
+  return { forces, accel, axes: { angle: 0 } };
+}
+
+// Process-level hint for an FBD — guides the student through the drawing method without naming
+// the specific forces (so the diagram isn't given away). Mirrors the lecture FBD checklist.
+export function fbdHint(reason) {
+  if (!reason) return "Re-examine your free-body diagram.";
+  switch (reason.type) {
+    case "missing-force": return "You're missing at least one force. Go through every object touching the body — surfaces it rests against or pushes on, ropes or cords, applied pushes/pulls — and don't forget gravity (the weight). Each contact is a force.";
+    case "extra-force":   return "You've drawn a force that doesn't belong. Every force on the body must have a physical source actually touching it (or be gravity). If you can't name what's pushing or pulling, remove that arrow.";
+    case "accel":         return "Re-check your acceleration arrow (the one off to the side). Which way is the body's velocity changing? If the body isn't accelerating, mark “no acceleration (equilibrium)” instead of drawing an arrow.";
+    default:              return "Re-examine your free-body diagram.";
+  }
+}
+
+export { FORCE_TYPES };
 
 // ── Written-work integrity ───────────────────────────────────────────────────────
 // Resolve the integrity state of a homework submission given the instructor's review
@@ -448,6 +587,16 @@ export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, 
     if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct diagram.", _gradePass: res.pass };
     if (phase === "hint") return { correct: false, message: "💡 " + vectorHint(res.reasons[0]), _gradePass: res.pass };
     return { correct: false, message: "Not quite — re-check the direction (and length) of each vector, then try again.", _gradePass: res.pass };
+  }
+
+  if (item.answerType === "fbd") {
+    // Deterministic grade — no Claude call. Graphical items normally live-grade via the runner's
+    // onGraphicalChange (no Submit), but mirror the graph/vector branches for completeness.
+    const res = gradeFBD(studentAnswer, item.fbd);
+    if (res.correct) return { correct: true, message: "✓ Correct — your free-body diagram matches.", _gradePass: res.pass };
+    if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct free-body diagram.", _gradePass: res.pass };
+    if (phase === "hint") return { correct: false, message: "💡 " + fbdHint(res.reasons[0]), _gradePass: res.pass };
+    return { correct: false, message: "Not quite — re-check that every force on the body is drawn (and no extras), and that your acceleration arrow points the right way.", _gradePass: res.pass };
   }
 
   // text + math → Claude judges correctness and writes the reply.

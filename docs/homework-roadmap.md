@@ -106,7 +106,10 @@ not ground truth. The procedure:
 HW1 and HW2 were fully re-verified on 2026-06-18 (every numeric, graph key point, and text
 answer confirmed correct/complete). HW3 was authored and verified from scratch on 2026-06-18
 (every numeric recomputed by script against the figures; two instructor-key values corrected —
-3.22(c) → 15.9 m, 3.6(b) direction → 4.58°). When verifying a set, do it the same way and
+3.22(c) → 15.9 m, 3.6(b) direction → 4.58°). HW4 was authored and verified from scratch on
+2026-06-19 (every numeric recomputed by script against the figures and the source key, using
+$g = 9.80\text{ m/s}^2$; five key values differ — see answer-key-discrepancies.md — of which only
+4.37(a) 16.6 N vs. the key's 17 N exceeds ±2%). When verifying a set, do it the same way and
 record the date here.
 
 ## Remaining buildout steps
@@ -157,7 +160,30 @@ record the date here.
      tolerance band. So 3.54(b) is graded as a conceptual `text` explanation rather than a fixed
      numeric. (3.6(c) is `text` for a different reason: the sketch can't be captured by the
      curve-on-axes `GraphField`.)
-   The remaining `hw4…hw14` are still stubs to author.
+   - ✅ **`hw4` (Physics 1) is now real content** — "Homework 4: Newton's Laws of Motion",
+     10 Young & Freedman Ch. 4 problems (4.4, 4.12, 4.19, 4.23, 4.27, 4.34, 4.37, 4.38, 4.40,
+     4.57). Figures `figE4-4.png` (ramp) / `figE4-23.png` (boxes A,B) / `figP4-37.png` (cart
+     forces) / `figP4-38.png` (oil tanker) / `figP4-57.png` (boxes on a rope) in
+     `public/homeworkFigures/HW4/` (copied straight from the screenshots — figure-only, no
+     caption to crop). Deterministic numerics use $g = 9.80\text{ m/s}^2$ (the source key used
+     9.81 — five small discrepancies logged, only 4.37(a) exceeds ±2%). **This set is the first
+     use of the new `FBDField` free-body-diagram builder** (`answerType: "fbd"` — see § FBD
+     builder below): **4.27** has two fbd parts (one per crate) — the student draws forces from a
+     bank ($F$/$T$/$N$/$w$), so the contact force shows up as a second normal ($N_1$ ground, $N_2$
+     contact) — plus `text` parts for the action–reaction pair and part (b); **4.34** has one fbd
+     part for the box where the **friction arrow is prefilled** (drawn & locked forward, $+x$,
+     since friction is a HW5 topic) and the student adds $N$ and $w$, plus a `text` part describing
+     the truck's FBD and the box↔bed action–reaction pairs. Other text parts: 4.37(a) direction,
+     4.38(c) "will it hit / is the oil safe". 4.37 "magnitude and direction" is split into a
+     numeric magnitude + a `text` direction (the established pattern). 4.40(b) and 4.38(a) reveal
+     in plain decimal (`toSigFigString` never uses sci-notation: "3700000 N", "0.0022 m/s²");
+     students may type `3.7e6` (parseNumber accepts it). 4.57 is scaffolded: (a) find the
+     downward acceleration first, then (b) $m_B$, (c) $m_A$.
+   - ⚠️ **`hw4` 4.38(b) is a mildly rounding-sensitive numeric (kept numeric).** The impact speed
+     $0.17\text{ m/s}$ comes from $v^2 = 2.25 - 2.222 = 0.028$, a small difference of larger
+     numbers. Carrying full precision keeps the canonical 0.17 inside the ±2% band, so it stays a
+     numeric (unlike 3.54(b), whose value $\approx 0$ had no meaningful tolerance band).
+   The remaining `hw5…hw14` are still stubs to author.
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into
@@ -223,6 +249,25 @@ record the date here.
    - **Future extensions for FBDs:** optional per-vector fixed length (qualitative arrows),
      required labels/equilibrium checks, and endpoint magnetism (snap a free tail onto another
      arrow's tip automatically).
+6c. ~~**Dedicated free-body-diagram builder**~~ ✅ Done — `answerType: "fbd"` +
+   `FBDField` (`src/components/FBDField.jsx`) supersedes the ad-hoc `VectorField`-FBD approach for
+   real FBD problems. It teaches the full lecture method without giving away the answer: the
+   student draws forces from a **bank** of the basic types (generic $F$, tension $T$, normal $N$,
+   weight $w$, friction $f$) — **any number of each** — so they must decide which forces act;
+   repeats auto-number with true subscripts ($N_1, N_2$); all forces share one color (blue) with
+   the label disambiguating. The other process steps are built in: a separate **acceleration**
+   arrow placed off to the side (or a "no acceleration" equilibrium toggle) and a rotatable
+   **positive-axes** gizmo. Graded deterministically by `gradeFBD` (`homework.js`) — forces matched
+   as a **multiset by type+direction** (missing/extra flagged without naming them), acceleration by
+   direction; **axes orientation is a required step but ungraded** (per the instructor's choice). A
+   `prefill` config draws & locks forces the student shouldn't supply yet (friction in 4.34, before
+   friction is taught in HW5). Wired through the runner exactly like graph/vector (in the
+   `GRAPHICAL` set: no Submit, live-grade-and-freeze, free Hint via `fbdHint`, Show-answer reveal
+   via `keyToFBDValue`) and re-rendered read-only in `SubmissionView`. First used in `hw4`
+   (4.27, 4.34). **Angle grading** (a force off the axes, with a required numeric angle) is
+   speced in `gradeFBD` but not yet exercised by content — HW4's FBD forces are all axis-aligned;
+   first real use will be an incline problem (e.g. HW5). **Future:** richer per-force angle inputs,
+   optional required equilibrium/Newton's-second-law check, label text per force.
 6. **Image-answer problems** — homework supports `numeric` / `text` / `math` / `graph`. Add an
    `image` `answerType` reusing `compressImage` / `checkImageReadability` (`utils.js`) and
    the quiz upload UI.

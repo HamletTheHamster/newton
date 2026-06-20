@@ -48,6 +48,21 @@ export function axisLabelTspans(str) {
   return out;
 }
 
+// HTML counterpart of axisLabelTspans — renders `_x` / `_{xy}` as real <sub> elements for
+// use outside SVG (chips, the guide's vector name). Keeps "v_1" → v₁, "F_{AB}" → F-sub-AB.
+export function htmlSubscripts(str) {
+  const re = /_(\{[^}]+\}|[A-Za-z0-9]+)/g;
+  const out = [];
+  let last = 0, m, k = 0;
+  while ((m = re.exec(str))) {
+    if (m.index > last) out.push(str.slice(last, m.index));
+    out.push(<sub key={k++} style={{ fontSize: "0.72em" }}>{m[1].replace(/[{}]/g, "")}</sub>);
+    last = re.lastIndex;
+  }
+  if (last < str.length) out.push(str.slice(last));
+  return out;
+}
+
 export function VectorField({ config, value, onChange, disabled = false, readOnly = false, grade = null }) {
   const { border, text, muted, isLight } = useTheme();
   const { xMin, xMax, yMin, yMax, xTick, yTick, xLabel, yLabel } = config;
@@ -212,7 +227,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
           <text x={tx + 8 * Math.cos(ang)} y={ty + 8 * Math.sin(ang)} fill={color} fontSize={15.5} fontWeight={700}
             textAnchor={tx >= tailX ? "start" : "end"} dominantBaseline={ty >= tailY ? "hanging" : "auto"}
             style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
-            {label}
+            {axisLabelTspans(label)}
           </text>
         )}
       </g>
@@ -228,7 +243,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
             {vectors.map((c, i) => (
               <button key={c.id} type="button" onClick={() => setActive(c.id)} style={chip(activeId === c.id, colorOf(c, i))}>
                 <span style={{ width: 10, height: 10, borderRadius: 2, background: colorOf(c, i), display: "inline-block" }} />
-                {c.label}
+                {htmlSubscripts(c.label)}
                 {isFrozen(c.id) && <span style={{ color: "#4ade80", fontWeight: 900 }}>✓</span>}
               </button>
             ))}
@@ -332,7 +347,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
                 <li key={i} style={{ display: "flex", gap: 9, alignItems: "flex-start" }}>
                   <span style={{ flexShrink: 0, width: 18, height: 18, borderRadius: 4, marginTop: 1, border: box.border, background: box.background, color: box.glyphColor, fontSize: 12, fontWeight: 900, lineHeight: "15px", textAlign: "center" }}>{box.glyph}</span>
                   <div style={{ fontSize: 14, lineHeight: 1.5, color: state === "correct" ? muted : text }}>
-                    {cv && <span style={{ color: colorOf(cv, vectors.indexOf(cv)), fontWeight: 700 }}>{cv.label}: </span>}
+                    {cv && <span style={{ color: colorOf(cv, vectors.indexOf(cv)), fontWeight: 700 }}>{htmlSubscripts(cv.label)}: </span>}
                     <MathText>{step.label}</MathText>
                   </div>
                 </li>

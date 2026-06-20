@@ -6,6 +6,7 @@ import { MathField } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import { GraphField } from "../../components/GraphField.jsx";
 import { VectorField } from "../../components/VectorField.jsx";
+import { FBDField } from "../../components/FBDField.jsx";
 import { VectorBuildup } from "../../components/VectorBuildup.jsx";
 import {
   HW_GRADING_DEFAULTS,
@@ -18,13 +19,17 @@ import {
   keyToValue,
   vectorHasInput,
   keyToVectorValue,
+  fbdHasInput,
+  keyToFBDValue,
   gradeGraph,
   gradeVectors,
+  gradeFBD,
   graphHint,
   vectorHint,
+  fbdHint,
 } from "../../homework.js";
 
-const GRAPHICAL = new Set(["graph", "vector"]);
+const GRAPHICAL = new Set(["graph", "vector", "fbd"]);
 
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
 const HW_INTEGRITY_MODEL = "claude-opus-4-8";
@@ -228,7 +233,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // (the field locks pieces whose id is in `grade.pass`). When all pieces pass, the part resolves
   // at full credit. A stuck student uses "Show answer" (reveal at G.revealCredit) instead.
   const gradeGraphical = (item, raw) =>
-    item.answerType === "graph" ? gradeGraph(raw, item.graph) : gradeVectors(raw, item.vector);
+    item.answerType === "graph" ? gradeGraph(raw, item.graph)
+      : item.answerType === "fbd" ? gradeFBD(raw, item.fbd)
+      : gradeVectors(raw, item.vector);
+  const graphicalHasInput = (item, raw) =>
+    item.answerType === "graph" ? graphHasInput(raw)
+      : item.answerType === "fbd" ? fbdHasInput(raw)
+      : vectorHasInput(raw);
+  const graphicalNoun = item => item.answerType === "graph" ? "sketch" : item.answerType === "fbd" ? "free-body diagram" : "diagram";
 
   const onGraphicalChange = (item, v) => {
     setAnswers(a => ({ ...a, [item.id]: v }));
@@ -241,7 +253,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       const credit = hintUsed[item.id] ? G.hintCredit : 1;
       setEarned(e => ({ ...e, [item.id]: credit * item.weight }));
       setStatus(s2 => ({ ...s2, [item.id]: "correct" }));
-      setFeedback(f => ({ ...f, [item.id]: { text: (item.answerType === "graph" ? "Your sketch matches." : "Your diagram matches.") + (hintUsed[item.id] ? ` (Hint used — ${Math.round(G.hintCredit * 100)}% credit.)` : ""), kind: "correct" } }));
+      setFeedback(f => ({ ...f, [item.id]: { text: `Your ${graphicalNoun(item)} matches.` + (hintUsed[item.id] ? ` (Hint used — ${Math.round(G.hintCredit * 100)}% credit.)` : ""), kind: "correct" } }));
       setSubmitNonce(n => n + 1);                                       // scroll + unlock next part / play buildup
     }
   };
@@ -250,7 +262,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setHintUsed(h => ({ ...h, [item.id]: true }));                      // taking a hint caps this part at hintCredit
     const res = gradeGraphical(item, answers[item.id] || "");
     const r0 = res.reasons[0];
-    const text = r0 ? (item.answerType === "graph" ? graphHint(r0) : vectorHint(r0)) : "Place each piece where the steps describe — it locks in green when it's in the right spot.";
+    const text = r0 ? (item.answerType === "graph" ? graphHint(r0) : item.answerType === "fbd" ? fbdHint(r0) : vectorHint(r0)) : "Place each piece where the steps describe — it locks in green when it's in the right spot.";
     setFeedback(f => ({ ...f, [item.id]: { text: "💡 " + text, kind: "hint" } }));
   };
 
@@ -258,7 +270,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setConfirmReveal(null);
     setStatus(s2 => ({ ...s2, [item.id]: "revealed" }));
     setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
-    setFeedback(f => ({ ...f, [item.id]: { text: item.answerType === "graph" ? "Here is the correct sketch." : "Here is the correct diagram.", kind: "revealed" } }));
+    setFeedback(f => ({ ...f, [item.id]: { text: `Here is the correct ${graphicalNoun(item)}.`, kind: "revealed" } }));
     setSubmitNonce(n => n + 1);
   };
 
@@ -320,6 +332,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         max: it.weight, correctAnswer: revealAnswerFor(it),
         ...(it.answerType === "graph" ? { graph: it.graph } : {}),
         ...(it.answerType === "vector" ? { vector: it.vector } : {}),
+        ...(it.answerType === "fbd" ? { fbd: it.fbd } : {}),
       }));
       const pEarned = parseFloat(partRows.reduce((s2, r) => s2 + r.earned, 0).toFixed(3));
       if (p.parts && p.parts.length) {
@@ -445,6 +458,15 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
       );
     }
+    if (item.answerType === "fbd") {
+      const val = answers[item.id] || "";
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <FBDField config={item.fbd} value={val} onChange={v => onGraphicalChange(item, v)} disabled={locked || isBusy} grade={{ pass: gradePass[item.id] || null }} />
+          {!locked && graphicalControls(item)}
+        </div>
+      );
+    }
     if (item.answerType === "text") {
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -523,9 +545,15 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             Correct answer: <strong style={{ color: text }}>{revealAnswerFor(item)}</strong>
           </div>
         )}
-        {item.answerType !== "numeric" && item.answerType !== "graph" && item.answerType !== "vector" && st === "revealed" && revealed[item.id] != null && (
+        {!["numeric", "graph", "vector", "fbd"].includes(item.answerType) && st === "revealed" && revealed[item.id] != null && (
           <div style={{ color: muted, fontSize: 14 }}>
             Correct answer: {item.answerType === "math" ? <MathText>{`$${revealed[item.id]}$`}</MathText> : <strong style={{ color: text }}>{revealed[item.id]}</strong>}
+          </div>
+        )}
+        {item.answerType === "fbd" && st === "revealed" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div style={{ color: muted, fontSize: 13 }}>Correct free-body diagram:</div>
+            <FBDField config={item.fbd} value={JSON.stringify(keyToFBDValue(item.fbd))} readOnly />
           </div>
         )}
         {item.answerType === "graph" && st === "revealed" && (
@@ -720,7 +748,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     const st = status[it.id];
     if (st === "correct" || st === "revealed") return false;
     const v = answers[it.id] || "";
-    return it.answerType === "graph" ? graphHasInput(v) : vectorHasInput(v);
+    return graphicalHasInput(it, v);
   });
   const guardedNav = go => { if (hasUnfinishedDrawing) setNavWarn({ go }); else go(); };
   // Outline needs a transparent base so the keyframe's outline-color can animate in.

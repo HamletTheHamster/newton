@@ -420,7 +420,7 @@ export const HOMEWORKS_PHYSICS1 = [
               buildup: {
                 vectorId: "a", count: 10, base: ["v1", "v2"],
                 stepColor: "#eab308", runningColor: "#14b8a6",
-                caption: "Watch the average acceleration transform the velocity second-by-second over the ten-second interval. Each second it adds $\\textcolor{#10b981}{\\vec{a}}$ to the velocity, and after ten seconds of this applied acceleration $\\textcolor{#3b82f6}{\\vec{v}_1}$ $\\textit{becomes}$ $\\textcolor{#ef4444}{\\vec{v}_2}$! That is, $\\textcolor{#ef4444}{\\vec{v}_2} = \\textcolor{#3b82f6}{\\vec{v}_1} + \\textcolor{#10b981}{\\vec{a}}\\,\\Delta t$, or, $v = v_0 + at$.",
+                caption: "Watch the average acceleration transform the velocity second-by-second over the ten-second interval. Each second it adds $\\textcolor{#eab308}{\\vec{a}}$ to the velocity, and after ten seconds of this applied acceleration $\\textcolor{#3b82f6}{\\vec{v}_1}$ $\\textit{becomes}$ $\\textcolor{#ef4444}{\\vec{v}_2}$! That is, $\\textcolor{#ef4444}{\\vec{v}_2} = \\textcolor{#3b82f6}{\\vec{v}_1} + \\textcolor{#eab308}{\\vec{a}}\\,\\Delta t$.",
               },
               guide: {
                 title: "How to draw it",
@@ -519,6 +519,164 @@ export const HOMEWORKS_PHYSICS1 = [
         parts: [
           { id: "hw3_p10a", prompt: "(a) Find the initial speed of the grasshopper.", answerType: "numeric", answer: 1.5004, unit: "m/s", sigFigs: 3 },
           { id: "hw3_p10b", prompt: "(b) Find the height of the cliff.", answerType: "numeric", answer: 4.656, unit: "m", sigFigs: 3 },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hw4",
+    title: "Homework 4: Newton's Laws of Motion",
+    problems: [
+      // 4.4 — dragging a trunk up a ramp (force components along/perpendicular to the ramp)
+      {
+        id: "hw4_p1",
+        figure: "/homeworkFigures/HW4/figE4-4.png",
+        prompt: "A man is dragging a trunk up the loading ramp of a mover's truck. The ramp has a slope angle of $20.0°$, and the man pulls upward with a force $\\vec F$ whose direction makes an angle of $30.0°$ with the ramp (see figure). The components $F_x$ and $F_y$ here are taken parallel and perpendicular to the ramp surface, respectively.",
+        parts: [
+          { id: "hw4_p1a", prompt: "(a) How large a force $\\vec F$ is necessary for the component $F_x$ parallel to the ramp to be $60.0\\text{ N}$?", answerType: "numeric", answer: 69.282, unit: "N", sigFigs: 3 },
+          { id: "hw4_p1b", prompt: "(b) How large will the component $F_y$ perpendicular to the ramp then be?", answerType: "numeric", answer: 34.641, unit: "N", sigFigs: 3 },
+        ],
+      },
+      // 4.12 — crate pushed by a net horizontal force (Newton's second law + kinematics)
+      {
+        id: "hw4_p2",
+        prompt: "A crate with mass $32.5\\text{ kg}$ initially at rest on a warehouse floor is acted on by a net horizontal force of $140\\text{ N}$.",
+        parts: [
+          { id: "hw4_p2a", prompt: "(a) What acceleration is produced?", answerType: "numeric", answer: 4.3077, unit: "m/s²", sigFigs: 3 },
+          { id: "hw4_p2b", prompt: "(b) How far does the crate travel in $10.0\\text{ s}$?", answerType: "numeric", answer: 215.38, unit: "m", sigFigs: 3 },
+          { id: "hw4_p2c", prompt: "(c) What is its speed at the end of $10.0\\text{ s}$?", answerType: "numeric", answer: 43.077, unit: "m/s", sigFigs: 3 },
+        ],
+      },
+      // 4.19 — mass vs. weight on Io (distinguishing m and w)
+      {
+        id: "hw4_p3",
+        prompt: "At the surface of Jupiter's moon Io, the acceleration due to gravity is $g = 1.81\\text{ m/s}^2$. A watermelon weighs $44.0\\text{ N}$ at the surface of the earth. Use $g = 9.80\\text{ m/s}^2$ on earth.",
+        parts: [
+          { id: "hw4_p3a", prompt: "(a) What is the watermelon's mass on the earth's surface?", answerType: "numeric", answer: 4.4898, unit: "kg", sigFigs: 3 },
+          { id: "hw4_p3b_m", prompt: "(b) What is its mass on the surface of Io?", answerType: "numeric", answer: 4.4898, unit: "kg", sigFigs: 3 },
+          { id: "hw4_p3b_w", prompt: "(b) What is its weight on the surface of Io?", answerType: "numeric", answer: 8.1266, unit: "N", sigFigs: 3 },
+        ],
+      },
+      // 4.23 — two boxes in contact, contact force (system + single-body Newton's 2nd law)
+      {
+        id: "hw4_p4",
+        figure: "/homeworkFigures/HW4/figE4-23.png",
+        prompt: "Boxes $A$ and $B$ are in contact on a horizontal, frictionless surface, as shown in the figure. Box $A$ has mass $20.0\\text{ kg}$ and box $B$ has mass $5.0\\text{ kg}$. A horizontal force of $100\\text{ N}$ is exerted on box $A$. What is the magnitude of the force that box $A$ exerts on box $B$?",
+        answerType: "numeric",
+        answer: 20,
+        unit: "N",
+        sigFigs: 2,
+      },
+      // 4.27 — free-body diagrams for two crates pushed across a frictionless surface
+      {
+        id: "hw4_p5",
+        prompt: "Two crates, $A$ and $B$, sit at rest side by side on a frictionless horizontal surface. The crates have masses $m_A$ and $m_B$. A horizontal force $\\vec F$ is applied to crate $A$ (pushing toward the right, the $+x$-direction) and the two crates move off to the right.",
+        parts: [
+          {
+            id: "hw4_p5a_A",
+            prompt: "(a) Draw a complete, labeled free-body diagram for crate $A$. Use the force bank to add every force that acts on it, assign your positive axes, and show the direction of its acceleration. Think about what is touching crate $A$ (the floor, your hand/the applied push, and crate $B$).",
+            answerType: "fbd",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "A", bank: ["F", "T", "N", "w"],
+              // Forces on A: applied push F (right), normal from floor N (up), weight w (down),
+              // and the contact (normal) force from B pushing back on A (left).
+              forces: [
+                { type: "F", dir: [1, 0], angleTol: 18 },
+                { type: "N", dir: [0, 1], angleTol: 18 },
+                { type: "N", dir: [-1, 0], angleTol: 18 },
+                { type: "w", dir: [0, -1], angleTol: 18 },
+              ],
+              accel: { dir: [1, 0], angleTol: 20 }, // the crates accelerate to the right
+            },
+          },
+          {
+            id: "hw4_p5a_B",
+            prompt: "(a) Now draw a complete, labeled free-body diagram for crate $B$. Again add every force acting on it from the bank, assign your axes, and show its acceleration. Think about what is touching crate $B$ (the floor and crate $A$).",
+            answerType: "fbd",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "B", bank: ["F", "T", "N", "w"],
+              // Forces on B: normal from floor N (up), weight w (down), and the contact (normal)
+              // force from A pushing B forward (right). There is NO applied force directly on B.
+              forces: [
+                { type: "N", dir: [0, 1], angleTol: 18 },
+                { type: "N", dir: [1, 0], angleTol: 18 },
+                { type: "w", dir: [0, -1], angleTol: 18 },
+              ],
+              accel: { dir: [1, 0], angleTol: 20 },
+            },
+          },
+          { id: "hw4_p5a_pairs", prompt: "(a) Among the forces in your two diagrams, identify any third-law action–reaction pair.", answerType: "text", answer: "The contact forces between the crates form the only action–reaction pair shown: $\\vec F_{A\\,\\text{on}\\,B}$ (A pushing B to the right) and $\\vec F_{B\\,\\text{on}\\,A}$ (B pushing A to the left). They are equal in magnitude, opposite in direction, and act on different bodies. The applied force $\\vec F$, the weights, and the normal forces each have their third-law partners on bodies not drawn here (the hand/agent applying $\\vec F$, the earth, and the floor), so they are not pairs within these two diagrams." },
+          { id: "hw4_p5b", prompt: "(b) If the magnitude of force $\\vec F$ is less than the total weight of the two crates, will it cause the crates to move? Explain.", answerType: "text", answer: "Yes. The surface is frictionless, so there is no horizontal force opposing $\\vec F$. Newton's second law in the horizontal direction gives $a = F/(m_A+m_B)$, which is nonzero for any nonzero $F$ — no matter how small. The weight acts vertically and is fully balanced by the normal forces, so comparing $F$ to the total weight is irrelevant; the crates accelerate to the right regardless." },
+        ],
+      },
+      // 4.34 — free-body diagram for a box sliding on an accelerating truck bed
+      {
+        id: "hw4_p6",
+        prompt: "A large box containing your new computer sits on the bed of your pickup truck. You are stopped at a red light. The light turns green and you stomp on the gas and the truck accelerates forward (the $+x$-direction). To your horror, the box starts to slide toward the back of the truck. The bed of the truck is $\\textit{not}$ frictionless.",
+        parts: [
+          {
+            id: "hw4_p6a",
+            prompt: "(a) Draw a complete, labeled free-body diagram for the box. Add every force from the bank, assign your positive axes, and show the direction of the box's acceleration. The friction force $\\vec f$ from the bed has been drawn in for you in $\\textit{blue}$ (you'll study friction next assignment) — notice it points forward, in the direction the truck accelerates, because the bed slides forward beneath the box. Add the rest of the forces yourself.",
+            answerType: "fbd",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "box", bank: ["F", "T", "N", "w"],
+              // Forces on the box: normal from the bed N (up), weight w (down), and friction f
+              // (forward, +x). Friction is prefilled (given) since friction is a HW5 topic.
+              forces: [
+                { type: "N", dir: [0, 1], angleTol: 18 },
+                { type: "w", dir: [0, -1], angleTol: 18 },
+                { type: "f", dir: [1, 0], angleTol: 18 },
+              ],
+              prefill: [{ type: "f", dir: [1, 0] }], // app draws & locks the friction arrow
+              accel: { dir: [1, 0], angleTol: 20 },   // the box accelerates forward (with the truck, just less)
+            },
+          },
+          { id: "hw4_p6b", prompt: "(b) Describe the free-body diagram for the truck, and identify any third-law action–reaction pairs between the truck and the box. (You don't need to draw the truck — just list its forces and the pairs.)", answerType: "text", answer: "Forces on the truck: its weight (down); the normal force from the road (up); the forward driving (traction) force from the road on the drive wheels (forward, $+x$); the normal force the box exerts down on the bed; and the friction force the box exerts on the bed pointing backward ($-x$). Two third-law action–reaction pairs link the box and truck: (1) the normal force of the bed on the box (up) and the normal force of the box on the bed (down); and (2) the friction of the bed on the box (forward) and the friction of the box on the bed (backward). Each pair is equal in magnitude, opposite in direction, and acts on the two different bodies." },
+        ],
+      },
+      // 4.37 — smallest force for a cart to move along +x (equilibrium of the perpendicular component)
+      {
+        id: "hw4_p7",
+        figure: "/homeworkFigures/HW4/figP4-37.png",
+        prompt: "Two adults and a child want to push a wheeled cart in the direction of $+x$ in the figure. The two adults push with horizontal forces $\\vec F_1$ and $\\vec F_2$ as shown: $F_1 = 100\\text{ N}$ directed $60.0°$ above the $+x$-axis, and $F_2 = 140\\text{ N}$ directed $30.0°$ below the $+x$-axis.",
+        parts: [
+          { id: "hw4_p7a_m", prompt: "(a) Find the magnitude of the smallest force that the child should exert. (You can ignore the effects of friction.)", answerType: "numeric", answer: 16.603, unit: "N", sigFigs: 3 },
+          { id: "hw4_p7a_d", prompt: "(a) In what direction should the child push?", answerType: "text", answer: "Straight in the $-y$-direction (perpendicular to the intended direction of motion). For the cart to move along $+x$, the net $y$-component of force must be zero. The adults give a net $y$-component of $F_1\\sin 60° - F_2\\sin 30° = 86.6\\text{ N} - 70.0\\text{ N} = +16.6\\text{ N}$, so the child must supply $16.6\\text{ N}$ in the $-y$-direction to cancel it. Pushing purely along $-y$ (adding no unneeded $x$-component) makes the child's force as small as possible — its $x$-component is already in the desired direction and need not be opposed." },
+          { id: "hw4_p7b", prompt: "(b) If the child exerts the minimum force found in part (a), the cart accelerates at $2.0\\text{ m/s}^2$ in the $+x$-direction. What is the weight of the cart? Use $g = 9.80\\text{ m/s}^2$.", answerType: "numeric", answer: 839.09, unit: "N", sigFigs: 3 },
+        ],
+      },
+      // 4.38 — oil tanker decelerating toward a reef (kinematics with no time)
+      {
+        id: "hw4_p8",
+        figure: "/homeworkFigures/HW4/figP4-38.png",
+        prompt: "An oil tanker's engines have broken down, and the wind is blowing the tanker straight toward a reef at a constant speed of $1.5\\text{ m/s}$ (see figure). When the tanker is $500\\text{ m}$ from the reef, the wind dies down just as the engineer gets the engines going again. The rudder is stuck, so the only choice is to try to accelerate straight backward away from the reef. The mass of the tanker and cargo is $3.6\\times10^7\\text{ kg}$, and the engines produce a net horizontal force of $8.0\\times10^4\\text{ N}$ on the tanker. The hull can withstand an impact at a speed of $0.2\\text{ m/s}$ or less. You can ignore the retarding force of the water on the tanker's hull.",
+        parts: [
+          { id: "hw4_p8a", prompt: "(a) What is the magnitude of the tanker's acceleration?", answerType: "numeric", answer: 0.0022222, unit: "m/s²", sigFigs: 2 },
+          { id: "hw4_p8b", prompt: "(b) How fast is the tanker moving when it reaches the reef?", answerType: "numeric", answer: 0.16667, unit: "m/s", sigFigs: 2 },
+          { id: "hw4_p8c", prompt: "(c) Will the ship hit the reef? If it does, will the oil be safe? Explain.", answerType: "text", answer: "The ship does reach the reef: even decelerating the whole 500 m, its speed only drops from $1.5\\text{ m/s}$ to about $0.17\\text{ m/s}$ (it never reaches zero over that distance), so it is still moving when it arrives and strikes the reef. However, $0.17\\text{ m/s}$ is less than the $0.2\\text{ m/s}$ the hull can withstand, so the impact does not breach the hull — the oil is safe." },
+        ],
+      },
+      // 4.40 — net force to "stop on a dime" (kinematics with no time + Newton's 2nd law)
+      {
+        id: "hw4_p9",
+        prompt: "An advertisement claims that a particular automobile can \"stop on a dime.\" What net force would actually be necessary to stop a $850\\text{-kg}$ automobile traveling initially at $45.0\\text{ km/h}$ in a distance equal to the diameter of a dime, which is $1.8\\text{ cm}$?",
+        parts: [
+          { id: "hw4_p9a", prompt: "(a) What is the magnitude of the car's acceleration? (Hint: first convert the speed to m/s.)", answerType: "numeric", answer: 4340.3, unit: "m/s²", sigFigs: 2 },
+          { id: "hw4_p9b", prompt: "(b) What is the magnitude of the net force required? (You may enter it in scientific notation, e.g. 3.7e6.)", answerType: "numeric", answer: 3689236, unit: "N", sigFigs: 2 },
+        ],
+      },
+      // 4.57 — two boxes on a vertical rope (kinematics → acceleration → two single-body 2nd-law equations)
+      {
+        id: "hw4_p10",
+        figure: "/homeworkFigures/HW4/figP4-57.png",
+        prompt: "Two boxes, $A$ and $B$, are connected to each end of a light vertical rope, as shown in the figure. A constant upward force $F = 80.0\\text{ N}$ is applied to box $A$. Starting from rest, box $B$ descends $12.0\\text{ m}$ in $4.00\\text{ s}$. The tension in the rope connecting the two boxes is $36.0\\text{ N}$. Use $g = 9.80\\text{ m/s}^2$.",
+        parts: [
+          { id: "hw4_p10a", prompt: "(a) What is the magnitude of the system's acceleration? (Box $B$ falls $12.0\\text{ m}$ from rest in $4.00\\text{ s}$.)", answerType: "numeric", answer: 1.50, unit: "m/s²", sigFigs: 3 },
+          { id: "hw4_p10b", prompt: "(b) What is the mass of box $B$?", answerType: "numeric", answer: 4.3373, unit: "kg", sigFigs: 3 },
+          { id: "hw4_p10c", prompt: "(c) What is the mass of box $A$?", answerType: "numeric", answer: 5.3012, unit: "kg", sigFigs: 3 },
         ],
       },
     ],

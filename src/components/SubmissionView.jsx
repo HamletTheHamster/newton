@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { useTheme } from "../theme.js";
-import { keyToValue, keyToVectorValue } from "../homework.js";
+import { keyToValue, keyToVectorValue, keyToFBDValue } from "../homework.js";
 import { ChatMessages } from "./ChatMessages.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
 import { VectorField } from "./VectorField.jsx";
+import { FBDField } from "./FBDField.jsx";
 
 // One gradable item (a whole problem or a part) in a homework submission breakdown.
 // When `onEditChange` is provided the earned value becomes an editable number input
@@ -17,7 +18,8 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
   const isOverridden = !isNaN(parsedEdit) && Math.abs(parsedEdit - (row.earned ?? 0)) > 0.0001;
   const isGraph = row.answerType === "graph";
   const isVector = row.answerType === "vector";
-  const isPlot = isGraph || isVector;
+  const isFBD = row.answerType === "fbd";
+  const isPlot = isGraph || isVector || isFBD;
   return (
     <div style={{ paddingTop: label ? 10 : 0, borderTop: label ? `1px solid ${border}` : "none", marginTop: label ? 10 : 0 }}>
       {label && <div style={{ color: text, fontWeight: 700, fontSize: 13, marginBottom: 4 }}>Part ({label})</div>}
@@ -46,6 +48,20 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
             <div style={{ maxWidth: 360 }}>
               <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Expected</div>
               <VectorField config={row.vector} value={JSON.stringify(keyToVectorValue(row.vector))} readOnly />
+            </div>
+          )}
+        </div>
+      )}
+      {isFBD && row.fbd && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 18, marginBottom: 8 }}>
+          <div style={{ maxWidth: 460 }}>
+            <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Student's free-body diagram</div>
+            <FBDField config={row.fbd} value={row.studentAnswer} readOnly />
+          </div>
+          {!correct && (
+            <div style={{ maxWidth: 460 }}>
+              <div style={{ color: muted, fontSize: 12, marginBottom: 4 }}>Expected</div>
+              <FBDField config={row.fbd} value={JSON.stringify(keyToFBDValue(row.fbd))} readOnly />
             </div>
           )}
         </div>
