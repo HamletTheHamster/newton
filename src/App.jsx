@@ -2,7 +2,7 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import QRCode from "qrcode";
 
 import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext } from "./theme.js";
-import { fbGet, fbSet, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage } from "./firebase.js";
+import { fbGet, fbSet, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage, fbListStorage } from "./firebase.js";
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
   ACCEPTED_IMG,
@@ -488,7 +488,24 @@ export default function App() {
   const updateClassCache = (classId, key, value) => {
     setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), [key]: value } }));
   };
-  const saveRoster = async r => { const cid = requireClass(); setRoster(r); updateClassCache(cid, 'roster', r); await fbSave(classPath(cid, 'roster'), r); };
+  const saveRoster = async r => {
+    const cid = requireClass();
+    // INVARIANT: studentId is the unique key for ALL of a student's per-class data
+    // (submissions, grades/overrides, homework drafts & attempts, uploaded work). Two roster
+    // entries sharing an ID would therefore share that data, so removing one would delete the
+    // other's. Enforce uniqueness at this single chokepoint — every roster write (manual add,
+    // CSV upload, backup import) flows through here — by collapsing duplicate/blank IDs
+    // (keeping the first occurrence) before persisting.
+    const seen = new Set();
+    const unique = (Array.isArray(r) ? r : []).filter(st => {
+      const id = st?.studentId;
+      if (!id || seen.has(id)) return false;
+      seen.add(id); return true;
+    });
+    const dropped = (Array.isArray(r) ? r.length : 0) - unique.length;
+    if (dropped > 0) console.warn(`saveRoster: collapsed ${dropped} duplicate/blank student ID(s) to preserve the one-student-per-ID invariant.`);
+    setRoster(unique); updateClassCache(cid, 'roster', unique); await fbSave(classPath(cid, 'roster'), unique);
+  };
   const saveAltName = async stu => { const val = altNameInput.trim(); const updated = roster.map(r => r.studentId === stu.studentId ? { ...r, altName: val || undefined } : r); await saveRoster(updated); setEditingAltName(null); };
   const isValidEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const saveEmail = async stu => {
@@ -696,6 +713,60 @@ export default function App() {
       }
       await saveSubs(newSubs, studentId);
     });
+  };
+
+  // Remove a student from the roster AND delete everything attached to them FOR THIS
+  // CLASS ONLY. Every per-student node lives under classes/{cid}/…/{studentId}, so scoping
+  // each delete to the current class leaves the same student's data in any OTHER class they
+  // are enrolled in fully intact. Covers: roster entry, password, submissions, grade
+  // overrides (incl. deadline extensions & integrity reviews), homework drafts, homework
+  // attempt counts, gradebook check-marks for their submissions, and uploaded written work
+  // in Storage. Throws on RTDB failure so the caller surfaces it; Storage cleanup is
+  // best-effort (never blocks the grade-data removal).
+  const removeStudentData = async studentId => {
+    const cid = requireClass();
+    // Local recomputation for in-memory state + class cache.
+    const newRoster = roster.filter(r => r.studentId !== studentId);
+    const newPws = { ...studentPws }; delete newPws[studentId];
+    const newSubs = submissions.filter(s => s.studentId !== studentId);
+    const removedSubIds = submissions.filter(s => s.studentId === studentId).map(s => s.id);
+    const newChecked = { ...checkedSubs };
+    let checkedChanged = false;
+    removedSubIds.forEach(id => { if (id in newChecked) { delete newChecked[id]; checkedChanged = true; } });
+    const newOverrides = { ...gradeOverrides }; delete newOverrides[studentId];
+    const newSubsByStudent = {};
+    newSubs.forEach(sub => { (newSubsByStudent[sub.studentId] ||= []).push(sub); });
+
+    // RTDB deletes — null removes the node entirely. Scoped to this class.
+    await fbSave(classPath(cid, 'roster'), newRoster, 'remove student');
+    await fbSave(classPath(cid, 'studentPws'), newPws);
+    await fbSave(classPath(cid, `submissions/${studentId}`), null);
+    await fbSave(classPath(cid, `gradeOverrides/${studentId}`), null);
+    await fbSave(classPath(cid, `hwDrafts/${studentId}`), null);
+    await fbSave(classPath(cid, `hwAttempts/${studentId}`), null);
+    if (checkedChanged) await fbSave(classPath(cid, 'checkedSubs'), newChecked);
+
+    // In-memory state + class cache.
+    setRoster(newRoster); updateClassCache(cid, 'roster', newRoster);
+    setStudentPws(newPws); updateClassCache(cid, 'studentPws', newPws);
+    setSubmissions(newSubs); updateClassCache(cid, 'submissions', newSubsByStudent);
+    setGradeOverrides(newOverrides); updateClassCache(cid, 'gradeOverrides', newOverrides);
+    if (checkedChanged) { setCheckedSubs(newChecked); updateClassCache(cid, 'checkedSubs', newChecked); }
+
+    // Storage: delete every uploaded written-work file under this student's folder. Combine
+    // a prefix-list (catches any orphaned uploads) with the storagePaths recorded on their
+    // submissions (a reliable fallback if the list ever fails). Best-effort — never blocks
+    // the grade-data removal above.
+    try {
+      const fromSubs = submissions
+        .filter(s => s.studentId === studentId)
+        .flatMap(s => (s.workFiles || []).map(w => w.storagePath).filter(Boolean));
+      let listed = [];
+      try { listed = await fbListStorage(`${classPath(cid, 'hwWork')}/${studentId}/`); }
+      catch (e) { console.warn("Work-file listing failed; falling back to recorded paths:", e?.message || e); }
+      const paths = [...new Set([...listed, ...fromSubs])];
+      await Promise.all(paths.map(p => fbDeleteStorage(p)));
+    } catch (e) { console.warn("Student work-file cleanup failed (grade data already removed):", e?.message || e); }
   };
 
   // ── Class management ──────────────────────────────────────────────────────
@@ -1063,7 +1134,7 @@ export default function App() {
     await saveChecked(nc);
   };
   const toggleQuizOpen = qid => setOpenQuizzes(o => ({ ...o, [qid]: !o[qid] }));
-  const onRosterUpload = e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = async ev => { const parsed = parseRoster(ev.target.result); await saveRoster(parsed); setRosterMsg("✅ " + parsed.length + " students loaded."); }; r.readAsText(file); e.target.value = ""; };
+  const onRosterUpload = e => { const file = e.target.files[0]; if (!file) return; const r = new FileReader(); r.onload = async ev => { const parsed = parseRoster(ev.target.result); const uniqueIds = new Set(parsed.map(s => s.studentId)); const dups = parsed.length - uniqueIds.size; await saveRoster(parsed); setRosterMsg("✅ " + uniqueIds.size + " students loaded." + (dups ? ` (${dups} duplicate ID${dups > 1 ? "s" : ""} skipped)` : "")); }; r.readAsText(file); e.target.value = ""; };
 
   const handleSelectStudent = async st => {
     setSelectedStudent(st); setPwInput(""); setPwError(""); setNameQuery("");
@@ -1638,7 +1709,7 @@ export default function App() {
                       <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Remove Student</h3>
                       <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 4px" }}>{removeStudent.fullName}</p>
                       <p style={{ color: MUTED, fontFamily: "monospace", fontSize: 13, margin: "0 0 16px" }}>ID: {removeStudent.studentId}</p>
-                      <p style={{ ...s.muted, fontSize: 13, marginBottom: 16 }}>This removes them from the roster only. Their submissions will remain.</p>
+                      <p style={{ ...s.muted, fontSize: 13, marginBottom: 16 }}>This permanently deletes everything attached to them <strong>in this class</strong> — submissions, grades, overrides, homework progress, and uploaded work. Their data in any other class is untouched. This cannot be undone.</p>
                       <input type="password" style={{ ...s.input, marginBottom: 8 }} placeholder="Instructor password" value={removePw} onChange={e => setRemovePw(e.target.value)} autoFocus />
                       {removeErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 8px" }}>{removeErr}</p>}
                       <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -1647,7 +1718,9 @@ export default function App() {
                           if (!settings.passwordHash) { setRemoveErr("Settings not loaded."); return; }
                           const ok = await verifyPw(removePw, settings.passwordHash, settings.passwordSalt);
                           if (!ok) { setRemoveErr("Incorrect password."); return; }
-                          saveRoster(roster.filter(r => r.studentId !== removeStudent.studentId));
+                          try {
+                            await removeStudentData(removeStudent.studentId);
+                          } catch (e) { setRemoveErr(`Removal failed: ${e?.message || e}`); return; }
                           setRemoveStudent(null); setRemovePw(""); setRemoveErr("");
                         }} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Remove</button>
                       </div>

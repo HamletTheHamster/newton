@@ -185,6 +185,26 @@ export async function fbDeleteStorage(storagePath) {
   if (!r.ok && r.status !== 404) throw new Error(`DELETE ${storagePath} → HTTP ${r.status}`);
 }
 
+// List every object whose name starts with `prefix` (recursive — no delimiter), paging
+// until exhausted. Returns an array of full storage object names (paths).
+export async function fbListStorage(prefix) {
+  const [acToken, authToken] = await Promise.all([getAppCheckToken(), getAuthToken()]);
+  const names = [];
+  let pageToken = "";
+  do {
+    const params = new URLSearchParams({ prefix });
+    if (pageToken) params.set("pageToken", pageToken);
+    const r = await fetch(`${STORAGE_BASE}?${params.toString()}`, {
+      headers: { "Authorization": `Firebase ${authToken}`, "X-Firebase-AppCheck": acToken },
+    });
+    if (!r.ok) throw new Error(`LIST ${prefix} → HTTP ${r.status}`);
+    const data = await r.json();
+    (data.items || []).forEach(it => { if (it?.name) names.push(it.name); });
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return names;
+}
+
 export function slugifyClassId(name) {
   const base = (name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40);
   return base || "class";
