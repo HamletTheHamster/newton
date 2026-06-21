@@ -13,6 +13,7 @@ import {
   creditForAttempt,
   phaseForAttempt,
   evaluateHomeworkAnswer,
+  revealHomeworkAnswers,
   revealAnswerFor,
   checkWorkIntegrity,
   graphHasInput,
@@ -48,8 +49,8 @@ function itemsOf(p) {
     }));
   }
   return [{
-    id: p.id, prompt: p.prompt, answerType: p.answerType, answer: p.answer,
-    unit: p.unit, sigFigs: p.sigFigs, tolerance: p.tolerance, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
+    id: p.id, prompt: p.prompt, answerType: p.answerType,
+    unit: p.unit, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
     _figure: p.figure || null, _problemPrompt: null,
   }];
 }
@@ -295,10 +296,13 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     }
     try {
       const result = await evaluateHomeworkAnswer({
-        item, studentAnswer: ans, attemptNum, phase,
+        item, hwId: homework.id, studentAnswer: ans, attemptNum, phase,
         history: history[item.id] || [], courseType,
         grading: G, diagramContext,
       });
+      // The server returns the formatted correct answer once the item is resolved (correct OR
+      // revealed) — store it so the "Correct answer:" line and the submission key have it.
+      if (result.revealedAnswer != null) setRevealed(r => ({ ...r, [item.id]: result.revealedAnswer }));
       if (result._historyUser) {
         setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));
       }
@@ -331,7 +335,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setSubmitNonce(n => n + 1);
   };
 
-  const buildSubmission = (workFilesMeta = [], integrity = null) => {
+  const buildSubmission = (workFilesMeta = [], integrity = null, serverAnswers = {}) => {
     const rawScore = parseFloat(runningScore.toFixed(2));
     const pct = total > 0 ? rawScore / total : 0;
     const score = parseFloat((pct * 10 * (late ? 0.5 : 1)).toFixed(2));
@@ -341,7 +345,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         id: it.id, prompt: it.prompt, answerType: it.answerType,
         studentAnswer: answers[it.id] || "", attempts: attempts[it.id] || 0,
         status: status[it.id] || "open", earned: parseFloat((earned[it.id] || 0).toFixed(3)),
-        max: it.weight, correctAnswer: revealAnswerFor(it),
+        max: it.weight,
+        // Graphical answers are graded locally (placeholder string). Numeric/text/math correct
+        // answers live server-side — use the value the grader returned, or the submit-time reveal.
+        correctAnswer: GRAPHICAL.has(it.answerType) ? revealAnswerFor(it) : (revealed[it.id] ?? serverAnswers[it.id] ?? null),
         ...(it.answerType === "graph" ? { graph: it.graph } : {}),
         ...(it.answerType === "vector" ? { vector: it.vector } : {}),
         ...(it.answerType === "fbd" ? { fbd: it.fbd } : {}),
@@ -411,7 +418,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         integ = { ...verdict, checkedAt: new Date().toISOString(), model: HW_INTEGRITY_MODEL };
         setIntegrityResult(integ);
       }
-      await onFinish(buildSubmission(uploaded, integ));
+      // Fetch the correct answers for numeric/text/math items (server-held) to bake into the
+      // submission's gradebook key — including items the student never resolved. Best-effort.
+      const revealIds = allItems.filter(it => !GRAPHICAL.has(it.answerType)).map(it => it.id);
+      const serverAnswers = await revealHomeworkAnswers({ courseType, hwId: homework.id, itemIds: revealIds }).catch(() => ({}));
+      await onFinish(buildSubmission(uploaded, integ, serverAnswers));
       clearDraft();
       if (attemptsPath) fbSet(attemptsPath, null).catch(() => {});
       setSaveError(false); setSubmitStep(false); setDone(true);
@@ -552,9 +563,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         )}
         {/* Numeric: always show the correct answer in proper sig figs once resolved
             (whether the student was right or wrong), in case their value differed. */}
-        {item.answerType === "numeric" && (st === "correct" || st === "revealed") && (
+        {item.answerType === "numeric" && (st === "correct" || st === "revealed") && revealed[item.id] != null && (
           <div style={{ color: muted, fontSize: 14 }}>
-            Correct answer: <strong style={{ color: text }}>{revealAnswerFor(item)}</strong>
+            Correct answer: <strong style={{ color: text }}>{revealed[item.id]}</strong>
           </div>
         )}
         {!["numeric", "graph", "vector", "fbd"].includes(item.answerType) && st === "revealed" && revealed[item.id] != null && (

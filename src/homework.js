@@ -11,20 +11,17 @@
 // Each problem is worth 1 point; multipart `parts` split that point equally.
 import { COURSE_LABELS } from "./courses/index.js";
 import { compressImage } from "./utils.js";
+import { formatNumeric, parseJsonReply } from "./grading-core.js";
+
+// Re-export the shared pure grading helpers so existing importers of homework.js keep working.
+// The actual numeric/text/math grading now happens server-side (netlify/functions/grade.js) so the
+// answer key is never shipped to the client; these primitives stay available for any other caller.
+export { parseNumber, sigFigsOf, numericMatch, toSigFigString } from "./grading-core.js";
 
 const HW_MODEL = "claude-opus-4-8";
 
 // Penalty applied to a homework score when its written-work integrity flag is upheld.
 export const WORK_INTEGRITY_PENALTY = 0.5;
-
-// Shared rules for hint phrasing. The line a hint must not cross is the ANSWER, not numbers:
-// method numbers (factors, constants, exponents) are useful and allowed; revealing, stating,
-// contrasting, or hand-computing the result is not.
-const HINT_RULES = `RULES:
-- Do NOT reveal or imply the answer. Never state it, and never contrast it with their value (no "X instead of Y", no "you got X but it should be Y").
-- Do NOT spell out the exact operation that turns their answer into the correct one.
-- You MAY mention numbers that belong to the METHOD (a factor, a constant like g=9.8, an exponent) when it points at the mistake — as long as that number is not the answer and doesn't let them reconstruct it.
-- Focus on the wrong concept or step, not the result.`;
 
 // Configurable defaults. The per-problem/per-homework shape is designed so an instructor
 // settings UI can later override these without touching the engine.
@@ -51,74 +48,21 @@ export function phaseForAttempt(n, grading = HW_GRADING_DEFAULTS) {
   return "normal";
 }
 
-// ── Numeric grading ────────────────────────────────────────────────────────────
-export function parseNumber(raw) {
-  if (raw == null) return NaN;
-  const cleaned = String(raw).replace(/,/g, "").trim();
-  const m = cleaned.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/);
-  return m ? parseFloat(m[0]) : NaN;
-}
-
-// Count the significant figures in a student's raw entry. Leading zeros are never
-// significant; trailing zeros count only when a decimal point is present (so "20" → 1,
-// "20." → 2, "20.0" → 3, "16.6" → 3, "0.00500" → 3). Used to grade sig-fig-agnostically.
-export function sigFigsOf(raw) {
-  const cleaned = String(raw ?? "").replace(/,/g, "").trim();
-  const m = cleaned.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/);
-  if (!m) return 0;
-  let token = m[0].replace(/^[-+]/, "");
-  const eIdx = token.search(/[eE]/);
-  if (eIdx >= 0) token = token.slice(0, eIdx);          // drop exponent
-  const hasDot = token.includes(".");
-  let digits = token.replace(".", "").replace(/^0+/, ""); // strip dot + leading zeros
-  if (digits === "") return 1;                            // all zeros (e.g. "0", "0.00")
-  if (hasDot) return digits.length;                       // trailing zeros after a dot are significant
-  return digits.replace(/0+$/, "").length || 1;           // bare integer: trailing zeros ambiguous → drop
-}
-
-export function numericMatch(studentRaw, answer, tol = HW_GRADING_DEFAULTS.numericTolerance) {
-  const s = parseNumber(studentRaw);
-  if (Number.isNaN(s)) return false;
-  const a = Number(answer);
-  if (a === 0) return Math.abs(s) <= (tol || 1e-9);
-  if (Math.abs(s - a) <= tol * Math.abs(a)) return true;
-  // Sig-fig leniency: accept the true answer correctly rounded to however many sig figs
-  // the student typed (so 16.603 → "17" at 2 sf is right), but not 1-sf coarsening like
-  // "20", which can otherwise round-match a leading-1 answer well outside the tolerance.
-  const sf = sigFigsOf(studentRaw);
-  if (sf >= 2) {
-    const aRounded = Number(toSigFigString(a, sf));
-    if (Math.abs(aRounded - s) <= Math.abs(a) * 1e-9) return true;
-  }
-  return false;
-}
-
-// Render x with `sf` significant figures in plain decimal notation, preserving
-// significant trailing zeros (e.g. 9 @3sf → "9.00", 40 @3sf → "40.0", 0.6 @3sf → "0.600").
-// Unlike Number.prototype.toPrecision, this never emits scientific notation for the
-// normal-magnitude values used in this course ((1000).toPrecision(2) === "1.0e+3" → "1000").
-export function toSigFigString(x, sf) {
-  const n = Number(x);
-  if (!Number.isFinite(n) || !sf) return String(x);
-  if (n === 0) return (0).toFixed(Math.max(0, sf - 1));
-  const rounded = Number(n.toPrecision(sf)); // correctly rounded to sf sig figs (e.g. 1796 @3 → 1800)
-  const exp = parseInt(Math.abs(rounded).toExponential().split("e")[1], 10); // order of magnitude
-  const decimals = Math.max(0, sf - 1 - exp);
-  return rounded.toFixed(decimals);
-}
-
-// Display the correct numeric answer in its proper sig figs (when specified), with unit.
+// ── Numeric formatting ───────────────────────────────────────────────────────────
+// Numeric grading itself (numericMatch) lives in grading-core.js and runs server-side.
+// formatNumericAnswer is kept for any caller that still has a full item with its answer
+// (e.g. a stored submission row); the live runner gets the formatted answer from the server.
 export function formatNumericAnswer(item) {
-  const val = item.sigFigs ? toSigFigString(item.answer, item.sigFigs) : String(item.answer);
-  return item.unit ? `${val} ${item.unit}` : val;
+  return formatNumeric(item.answer, item.sigFigs, item.unit);
 }
 
-// The canonical correct-answer string to reveal (numeric formatted, text as-is, math LaTeX).
+// The canonical correct-answer string to reveal. Numeric/text/math answers are no longer present
+// on the client (they live server-side), so those return null and callers use the value the
+// grading function returns. Graph/vector/fbd are graded locally, so their placeholders stay.
 export function revealAnswerFor(item) {
-  if (item.answerType === "numeric") return formatNumericAnswer(item);
   if (item.answerType === "graph" || item.answerType === "vector") return "See plotted solution.";
   if (item.answerType === "fbd") return "See the free-body diagram solution.";
-  return String(item.answer);
+  return null;
 }
 
 // ── Graph / sketch grading ─────────────────────────────────────────────────────
@@ -625,34 +569,6 @@ async function callClaude({ system, messages, maxTokens = 600 }) {
   return text;
 }
 
-// Extract the first balanced {...} object from a string, ignoring braces inside strings, so we
-// can recover the JSON even when the model wraps it in reasoning prose (despite "reply ONLY JSON").
-function extractJsonObject(text) {
-  const start = text.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0, inStr = false, esc = false;
-  for (let i = start; i < text.length; i++) {
-    const ch = text[i];
-    if (inStr) {
-      if (esc) esc = false;
-      else if (ch === "\\") esc = true;
-      else if (ch === '"') inStr = false;
-    } else if (ch === '"') inStr = true;
-    else if (ch === "{") depth++;
-    else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
-  }
-  return null;
-}
-
-function parseJsonReply(text, fallback) {
-  const cleaned = text.replace(/```json\n?|```/g, "").trim();
-  try { return JSON.parse(cleaned); }
-  catch { /* try to recover an embedded object below */ }
-  const obj = extractJsonObject(cleaned);
-  if (obj) { try { return JSON.parse(obj); } catch { /* fall through */ } }
-  return fallback;
-}
-
 // Fetch a problem figure (a same-origin static asset like "/homeworkFigures/HW1/fig1.png")
 // and return it as a Claude image content block, so the grader sees the full problem including
 // the figure. Best-effort: returns null if there's no figure or it can't be loaded, so a
@@ -681,38 +597,36 @@ function fullPromptFor(item) {
   return [item._problemPrompt, item.prompt].filter(Boolean).join("\n\n");
 }
 
-// Compose a Claude user message, attaching the figure image block when one is available.
-function userContentWith(figureBlock, text) {
-  return figureBlock ? [figureBlock, { type: "text", text }] : text;
+// POST to the server-side grading function (numeric/text/math). The answer key lives there, so the
+// client never receives it. Mirrors callClaude's error handling so a grader outage surfaces clearly
+// (and the runner doesn't consume an attempt).
+async function gradeViaServer(payload) {
+  const res = await fetch("/.netlify/functions/grade", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  let data;
+  try { data = await res.json(); }
+  catch { throw new Error("The grader returned a non-JSON response. Run the app with `netlify dev` so the grading function is available."); }
+  if (!res.ok || data?.error) throw new Error("Grader error: " + (data?.error || `HTTP ${res.status}`));
+  return data;
+}
+
+// Fetch the correct answers for a homework's numeric/text/math items (used at final submit to fill
+// in the gradebook key, including items the student never attempted). Post-submission, so fine.
+export async function revealHomeworkAnswers({ courseType, hwId, itemIds }) {
+  if (!itemIds || !itemIds.length) return {};
+  const data = await gradeViaServer({ action: "reveal", courseType, hwId, items: itemIds });
+  return data.answers || {};
 }
 
 // Evaluate one item (a problem, or a single part of a multipart problem).
 // phase ∈ "normal" | "hint" | "reveal" — the intent IF the answer is wrong.
 // Returns { correct, message, revealedAnswer? }.
-export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, phase, history = [], courseType = "physics1", grading = HW_GRADING_DEFAULTS, diagramContext = null }) {
-  const courseLabel = COURSE_LABELS[courseType] || "Physics";
-  const fullPrompt = fullPromptFor(item);
-  const figureBlock = await figureToImageBlock(item._figure);
-
-  if (item.answerType === "numeric") {
-    const correct = numericMatch(studentAnswer, item.answer, item.tolerance ?? grading.numericTolerance);
-    if (correct) return { correct: true, message: "✓ Correct." };
-    if (phase === "reveal") {
-      return { correct: false, revealedAnswer: revealAnswerFor(item), message: `Not quite. The correct answer is ${revealAnswerFor(item)}.` };
-    }
-    if (phase === "hint") {
-      // Ask Claude to diagnose the likely mistake and give a targeted hint WITHOUT revealing
-      // the answer (see HINT_RULES). Best-effort: if the grader is unreachable, fall back to a
-      // generic hint rather than failing the submission.
-      const system = `You are an encouraging ${courseLabel} tutor. The full problem and any figure are provided. The student has answered this numeric problem incorrectly several times.\n\nYou are given the correct answer ONLY to help you diagnose their mistake — treat it as CONFIDENTIAL.\n\nInfer the single most likely error (a missing/extra factor, a squared-vs-linear term, a sign error, a unit conversion, the wrong formula, a misread value) and give ONE short hint pointing to that specific step.\n\n${HINT_RULES}\n\nReply with ONLY the hint sentence, no preamble.`;
-      const user = `Problem: ${fullPrompt}\nCorrect answer (confidential): ${item.answer}${item.unit ? " " + item.unit : ""}\nStudent's (incorrect) answer: ${studentAnswer}`;
-      let text = "";
-      try { text = await callClaude({ system, messages: [{ role: "user", content: userContentWith(figureBlock, user) }], maxTokens: 200 }); } catch { /* fall through to generic hint */ }
-      return { correct: false, message: "💡 " + (text.trim() || "Re-check your setup — look carefully at your formula and units.") };
-    }
-    return { correct: false, message: "That's not correct. Re-check your calculation and try again." };
-  }
-
+export async function evaluateHomeworkAnswer({ item, hwId, studentAnswer, attemptNum, phase, history = [], courseType = "physics1", grading = HW_GRADING_DEFAULTS, diagramContext = null }) {
+  // ── Graph / vector / fbd: graded deterministically and locally (no Claude, no answer leaves
+  // the client — their key geometry is in the course config). ──────────────────────────────────
   if (item.answerType === "graph") {
     // Deterministic grade — no Claude call needed. `_gradePass` lets the runner green only the
     // curves that actually passed (so a drawn-but-unverified curve never looks "correct").
@@ -743,30 +657,14 @@ export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, 
     return { correct: false, message: "Not quite — re-check that every force on the body is drawn (and no extras), and that your acceleration arrow points the right way.", _gradePass: res.pass };
   }
 
-  // text + math → Claude judges correctness and writes the reply.
-  const isMath = item.answerType === "math";
-  let system = `You are an encouraging ${courseLabel} tutor grading a homework problem. The full problem and any figure are provided.\n\n` +
-    (isMath
-      ? `The student enters a math/LaTeX expression. Mark CORRECT if it is mathematically equivalent to the reference answer (accept any algebraically/notationally equivalent form, including reordered vector components, equivalent unit-vector notation like \\hat{i} vs \\mathbf{i} vs î, and equivalent magnitudes/directions). Reference answer (LaTeX, confidential): ${item.answer}`
-      : `Grade the student's written answer GENEROUSLY — accept any answer that conveys the correct idea, even if informal or differently worded. Reference answer (confidential): "${item.answer}"`) +
-    `\n\nWhen the student is wrong, make a genuine effort to figure out what misconception or mistake led to their answer.`;
-
-  if (diagramContext) {
-    system += `\n\nIMPORTANT — earlier in this problem the student drew and labeled their OWN free-body diagram(s). Interpret any force labels in their answer (e.g. F, T, N, N_1, N_2, w, f) by what those labels refer to in THEIR diagram below, NOT by conventional defaults. For example, if their N_1 is the contact (normal) force between two bodies, accept "N_1" as naming that contact force. Their diagram(s):\n${diagramContext}`;
-  }
-
-  if (phase === "hint") {
-    system += `\n\nThis is the student's 3rd failed attempt. Diagnose their likely mistake and give ONE targeted hint that guides them toward it.\n\n${HINT_RULES}`;
-  } else if (phase === "reveal") {
-    system += `\n\nThe student has now used all their attempts. If still incorrect, kindly state the correct answer directly and briefly explain it.`;
-  }
-  system += `\n\nReply with ONLY a single JSON object and nothing else — no reasoning, preamble, or text before or after it. Do all your thinking silently; emit only the JSON:\n- If correct: {"status":"correct","message":"1-2 sentences confirming what they got right"}\n- If incorrect: {"status":"incorrect","message":"${phase === "reveal" ? "state the correct answer and a one-line explanation" : phase === "hint" ? "one targeted hint about their likely mistake" : "one short Socratic nudge"}"}`;
-
-  const userText = `Problem: ${fullPrompt}\n\nStudent Answer: ${studentAnswer}`;
-  const text = await callClaude({ system, messages: [...history, { role: "user", content: userContentWith(figureBlock, userText) }], maxTokens: 600 });
-  const parsed = parseJsonReply(text, { status: "incorrect", message: text || "Can you elaborate a bit more?" });
-  const correct = parsed.status === "correct";
-  const out = { correct, message: parsed.message || (correct ? "✓ Correct." : "Not quite — try again.") };
-  if (!correct && phase === "reveal") out.revealedAnswer = revealAnswerFor(item);
-  return { ...out, _historyUser: userText, _historyAssistant: JSON.stringify(parsed) };
+  // ── numeric / text / math → server-side grading. The answer key is never shipped to the client;
+  // the figure (a public asset), the full prompt, the chat history, and the FBD diagram context are
+  // all student-visible and are sent along so the function can compose the Claude call. ───────────
+  const fullPrompt = fullPromptFor(item);
+  const figureBlock = await figureToImageBlock(item._figure);
+  return gradeViaServer({
+    action: "grade",
+    courseType, hwId, itemId: item.id, answerType: item.answerType,
+    studentAnswer, attemptNum, phase, fullPrompt, figureBlock, history, diagramContext,
+  });
 }

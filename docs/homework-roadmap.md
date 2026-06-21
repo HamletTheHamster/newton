@@ -75,7 +75,20 @@ chat dialogue, and uploaded work the same way instructors do.
 Before any new homework is authored or an existing answer is changed, **independently
 solve every problem and confirm each baked-in answer is correct AND complete.** Instructor
 answer keys are known to contain errors and omissions, so the source key is a starting point,
-not ground truth. The procedure:
+not ground truth.
+
+> **Where answers live (changed):** numeric / text / math answers are NO LONGER inline in
+> `src/courses/<course>.js`. They are graded server-side, so the answer (plus its `sigFigs`,
+> `unit`, optional `tolerance`) goes in **`netlify/functions/_answerKeys.js`** under
+> `ANSWER_KEYS[courseType][hwId][itemId]`, while the prompt, `figure`, `answerType`, `unit`
+> (for the input-field label), and any `graph`/`vector`/`fbd` config stay in the course file.
+> The two are joined by item id, so **the id in `_answerKeys.js` must exactly match the id in the
+> course file.** Graph/vector/fbd are still graded on the client and keep their full `key` in the
+> course file (no `_answerKeys.js` entry). After authoring, sanity-check coverage by confirming
+> every non-graphical item id has a key entry (a quick Node import of both modules, or just test
+> the homework under `netlify dev` — a missing key returns a clear grader error).
+
+The procedure:
 
 1. **Solve from scratch.** Compute every numeric with a script (e.g. a quick `python3`
    heredoc), never by hand — last-digit arithmetic slips are the common failure. Keep the
@@ -89,8 +102,8 @@ not ground truth. The procedure:
 4. **Check completeness of prose.** A `text`/`math` answer is incomplete unless it states the
    full reasoning/expression a student is expected to give (e.g. a direction stated *and*
    justified, not just "out of the page").
-5. **Set `sigFigs` on every numeric answer/part.** The revealed correct answer is formatted to
-   the item's `sigFigs` (via `toSigFigString`); without it the reveal shows `String(answer)`,
+5. **Set `sigFigs` on every numeric answer/part** (in its `_answerKeys.js` entry). The revealed
+   correct answer is formatted to the item's `sigFigs` (via `toSigFigString`); without it the reveal shows `String(answer)`,
    which silently drops significant trailing zeros (`9.00` → "9", `40.0` → "40", `3.30` → "3.3").
    Choose the count from the precision of the problem's given data. `sigFigs` is display-only
    and does not feed grading — but grading is **sig-fig-agnostic** regardless: `numericMatch`
@@ -118,8 +131,9 @@ record the date here.
 ## Remaining buildout steps
 1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
    `src/courses/physics{1,2}.js` (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems,
-   figures under `public/homeworkFigures/HWn/`, multipart `parts`, and per-problem
-   `unit` / `sigFigs` / `tolerance`. **Verify all solutions first — see § Authoring above.**
+   figures under `public/homeworkFigures/HWn/`, multipart `parts`, and per-problem `unit` (the
+   answer + `sigFigs` / `tolerance` go in `netlify/functions/_answerKeys.js` — see § Authoring).
+   **Verify all solutions first — see § Authoring above.**
    - ✅ **`hw1` (Physics 1) is now real content** — "Homework 1: Units & Vectors", 10
      Young & Freedman Ch. 1 problems (1.10, 1.33, 1.35, 1.36, 1.37, 1.51, 1.53, 1.73,
      1.87, 1.89). Figures `figE1-28.png` / `figE1-43.png` / `figP1-73.png` in
