@@ -507,10 +507,17 @@ export function integrityAdjustedScore(baseScore, penalized) {
 export function scoreFromPartOverrides(submission, partScores) {
   const rawScore = (submission.problems || []).reduce((total, p) => {
     const items = p.parts || [p];
-    return total + items.reduce((sum, item) => {
+    // Round at the PROBLEM level (its natural 1-point unit) before aggregating:
+    // each part stores `earned` rounded to 3 decimals, so a fractional part weight
+    // (1/3, 1/9, …) doesn't sum back to the problem's full credit (3×0.333 = 0.999).
+    // Left un-rounded those 0.001 errors compound across the whole assignment and can
+    // cost (or gift) the student a 0.01 on the final /10 even on full-credit problems —
+    // so collapse each problem to 2 decimals here, matching the submitted-score path.
+    const pEarned = items.reduce((sum, item) => {
       const ov = (partScores || {})[item.id];
       return sum + (ov != null ? Number(ov) : (item.earned ?? 0));
     }, 0);
+    return total + parseFloat(pEarned.toFixed(2));
   }, 0);
   const pct = (submission.nativeTotal || 1) > 0 ? rawScore / submission.nativeTotal : 0;
   return parseFloat((pct * 10 * (submission.late ? 0.5 : 1)).toFixed(2));

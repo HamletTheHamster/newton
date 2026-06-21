@@ -36,7 +36,12 @@ The **effective base score** for a cell is:
 This order is implemented **once**, in `resolveScore` (`src/homework.js`), the single
 source of truth shared by the instructor Gradebook, the student StudentGrades page, and
 the shared `SubViewModal`. Its companion `scoreFromPartOverrides` does the homework
-per-part recompute (step 3).
+per-part recompute (step 3). That recompute **rounds each problem's earned subtotal to 2
+decimals (its natural 1-point unit) before aggregating** — each part stores `earned`
+rounded to 3 decimals, so a fractional part weight (1/3, 1/9, …) doesn't sum back to the
+problem's full credit (3 × 0.333 = 0.999); rounding per problem stops those 0.001 errors
+from compounding across the assignment and shaving (or gifting) a 0.01 on the final /10,
+keeping a no-change part override exactly equal to the submitted `submission.score`.
 
 ```js
 // homework.js (pure, no React)
