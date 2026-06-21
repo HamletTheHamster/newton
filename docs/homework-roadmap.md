@@ -92,8 +92,11 @@ not ground truth. The procedure:
 5. **Set `sigFigs` on every numeric answer/part.** The revealed correct answer is formatted to
    the item's `sigFigs` (via `toSigFigString`); without it the reveal shows `String(answer)`,
    which silently drops significant trailing zeros (`9.00` → "9", `40.0` → "40", `3.30` → "3.3").
-   Choose the count from the precision of the problem's given data. Grading is unaffected
-   (`sigFigs` is display-only) — answers stay within the ±2% numeric tolerance.
+   Choose the count from the precision of the problem's given data. `sigFigs` is display-only
+   and does not feed grading — but grading is **sig-fig-agnostic** regardless: `numericMatch`
+   accepts a value within the ±2% band OR one equal to the true answer correctly rounded to the
+   sig figs the student typed (≥2 sf), so an honest rounding like `17` for `16.603` is accepted
+   even though it's 2.39% off — just outside the band.
 6. **Log every key-vs-verified discrepancy** in
    [answer-key-discrepancies.md](answer-key-discrepancies.md). Any time your verified value
    differs from the instructor's source key — *even within the ±2% tolerance* — add a row
@@ -170,15 +173,22 @@ record the date here.
      use of the new `FBDField` free-body-diagram builder** (`answerType: "fbd"` — see § FBD
      builder below): **4.27** has two fbd parts (one per crate) — the student draws forces from a
      bank ($F$/$T$/$N$/$w$), so the contact force shows up as a second normal ($N_1$ ground, $N_2$
-     contact) — plus `text` parts for the action–reaction pair and part (b); **4.34** has one fbd
-     part for the box where the **friction arrow is prefilled** (drawn & locked forward, $+x$,
-     since friction is a HW5 topic) and the student adds $N$ and $w$, plus a `text` part describing
-     the truck's FBD and the box↔bed action–reaction pairs. Other text parts: 4.37(a) direction,
+     contact) — plus `text` parts for the action–reaction pair and part (b). **The written action–reaction / FBD-description parts are graded with `diagramContext`** — the runner feeds Claude a `describeFBDDiagram` summary of the FBD(s) the student actually drew (their own `N_1`/`N_2` labels and directions), so a student who labels the box-box contact force `N_1` in their diagram and answers "N_1" is graded against their own labeling, not a conventional default. **4.34** has **two fbd
+     parts** — (a) the box, where the **friction arrow is prefilled** (drawn & locked forward,
+     $+x$, since friction is a HW5 topic) and the student adds $N$ and $w$; and (b) the truck,
+     where **both friction forces are prefilled** (road traction forward $+x$, box's drag backward
+     $-x$) and the student adds the truck's weight, the road's normal (up), and the box's normal
+     pressing down on the bed — then a (c) `text` part asks the student to identify the box↔bed
+     action–reaction pairs across their two diagrams (graded with `diagramContext`, which now spans
+     both FBDs so the student's own labels on either diagram are honored). Other text parts: 4.37(a) direction,
      4.38(c) "will it hit / is the oil safe". 4.37 "magnitude and direction" is split into a
      numeric magnitude + a `text` direction (the established pattern). 4.40(b) and 4.38(a) reveal
      in plain decimal (`toSigFigString` never uses sci-notation: "3700000 N", "0.0022 m/s²");
      students may type `3.7e6` (parseNumber accepts it). 4.57 is scaffolded: (a) find the
-     downward acceleration first, then (b) $m_B$, (c) $m_A$.
+     downward acceleration first, then **two `fbd` parts** — (b) box $A$ (applied force $\vec F$
+     up, rope tension $T$ down, weight $w$ down; acceleration down) and (c) box $B$ (tension $T$
+     up, weight $w$ down; acceleration down), both with no normal force since the boxes hang on
+     the rope — then (d) $m_B$, (e) $m_A$.
    - ⚠️ **`hw4` 4.38(b) is a mildly rounding-sensitive numeric (kept numeric).** The impact speed
      $0.17\text{ m/s}$ comes from $v^2 = 2.25 - 2.222 = 0.028$, a small difference of larger
      numbers. Carrying full precision keeps the canonical 0.17 inside the ±2% band, so it stays a
@@ -264,7 +274,7 @@ record the date here.
    friction is taught in HW5). Wired through the runner exactly like graph/vector (in the
    `GRAPHICAL` set: no Submit, live-grade-and-freeze, free Hint via `fbdHint`, Show-answer reveal
    via `keyToFBDValue`) and re-rendered read-only in `SubmissionView`. First used in `hw4`
-   (4.27, 4.34). **Angle grading** (a force off the axes, with a required numeric angle) is
+   (4.27, 4.34, 4.57 — two boxes on a vertical rope, one FBD per box, no normal force). **Angle grading** (a force off the axes, with a required numeric angle) is
    speced in `gradeFBD` but not yet exercised by content — HW4's FBD forces are all axis-aligned;
    first real use will be an incline problem (e.g. HW5). **Future:** richer per-force angle inputs,
    optional required equilibrium/Newton's-second-law check, label text per force.

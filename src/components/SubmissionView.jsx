@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../theme.js";
-import { keyToValue, keyToVectorValue, keyToFBDValue } from "../homework.js";
+import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore } from "../homework.js";
 import { ChatMessages } from "./ChatMessages.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
@@ -10,7 +10,7 @@ import { FBDField } from "./FBDField.jsx";
 // One gradable item (a whole problem or a part) in a homework submission breakdown.
 // When `onEditChange` is provided the earned value becomes an editable number input
 // (instructor-only); otherwise it renders as a read-only badge.
-function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
+function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }) {
   const { s, muted, border, text } = useTheme();
   const correct = row.status === "correct";
   const color = correct ? "#4ade80" : row.status === "revealed" ? "#60a5fa" : "#f87171";
@@ -84,7 +84,7 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
             <span style={{ color: muted, fontSize: 11 }}>/ {(row.max ?? 1).toFixed(2)} pt</span>
           </div>
         ) : (
-          <span style={{ ...s.badge(color), fontSize: 11 }}>{(row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
+          <span style={{ ...s.badge(color), fontSize: 11 }}>{(displayEarned ?? row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
         )}
         {!correct && !isPlot && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
       </div>
@@ -97,12 +97,19 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange }) {
 // (read-only — no edit/review callbacks, and `showIntegrity={false}` hides the AI verdict).
 // Renders the per-problem/per-part breakdown for homework (`submission.type === "homework"`)
 // or the graded chat dialogue for quizzes.
-export function SubViewModal({ submission, studentName, assignmentTitle, onClose, partOverrides = {}, onSavePartScores, integrityReview = null, onSetIntegrityReview, showIntegrity = true }) {
+export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true }) {
   const { s, muted, border, text, card, bg } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
   const canEdit = isHomework && !!onSavePartScores;
+  // Derived from the instructor's override so the score the student sees here matches
+  // their grades list exactly (whole-assignment score > per-part scores > submission).
+  const partOverrides = override.partScores || {};
+  const integrityReview = override.integrityReview || null;
+  const resolved = resolveScore(submission, override);
   const hasOverrides = Object.keys(partOverrides).length > 0;
+  // Per-item earned to display read-only (instructor edit mode uses the draft inputs instead).
+  const earnedFor = row => (partOverrides[row.id] != null ? Number(partOverrides[row.id]) : (row.earned ?? 0));
   const integrity = submission.integrity || null;
   const workFiles = submission.workFiles || [];
   const [reviewSaving, setReviewSaving] = useState(false);
@@ -159,7 +166,9 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
         <div>
           <div style={{ color: text, fontWeight: 700, fontSize: 15 }}>{studentName} — {assignmentTitle}</div>
           <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
-            Score: {submission.score}/10{isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
+            Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
+            {!resolved.excused && resolved.effective != null && Math.abs(resolved.effective - submission.score) > 0.0001 ? " · adjusted by instructor" : ""}
+            {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -241,7 +250,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
                   const val = raw !== undefined ? parseFloat(raw) : NaN;
                   return sum + (!isNaN(val) ? Math.max(0, Math.min(row.max ?? 1, val)) : (row.earned ?? 0));
                 }, 0)
-              : (p.earned ?? 0);
+              : parts.reduce((sum, row) => sum + earnedFor(row), 0);
             return (
               <div key={p.id || i} style={{ ...s.card, padding: 16 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
@@ -256,6 +265,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
                     label={labels[j]}
                     editEarned={canEdit ? (draftParts[row.id] !== undefined ? draftParts[row.id] : String(row.earned ?? 0)) : undefined}
                     onEditChange={canEdit ? val => setItemDraft(row.id, val) : undefined}
+                    displayEarned={canEdit ? undefined : earnedFor(row)}
                   />
                 ))}
               </div>

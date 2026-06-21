@@ -20,6 +20,7 @@ import {
   vectorHasInput,
   keyToVectorValue,
   fbdHasInput,
+  describeFBDDiagram,
   keyToFBDValue,
   gradeGraph,
   gradeVectors,
@@ -281,11 +282,22 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setBusy(item.id);
     const attemptNum = (attempts[item.id] || 0) + 1;
     const phase = phaseForAttempt(attemptNum, G);
+    // For a written part (text/math), tell Claude how the student labeled the FBD(s) they drew
+    // earlier in this same problem, so labels like "N_1" are read by the student's own diagram
+    // (e.g. their box-box contact normal) rather than by a conventional default.
+    let diagramContext = null;
+    if (item.answerType === "text" || item.answerType === "math") {
+      const descs = allItems
+        .filter(it => it._problemId === item._problemId && it.answerType === "fbd" && fbdHasInput(answers[it.id] || ""))
+        .map(it => describeFBDDiagram(answers[it.id] || "", it.fbd, it.fbd?.bodyLabel))
+        .filter(Boolean);
+      if (descs.length) diagramContext = descs.join("\n");
+    }
     try {
       const result = await evaluateHomeworkAnswer({
         item, studentAnswer: ans, attemptNum, phase,
         history: history[item.id] || [], courseType,
-        grading: G,
+        grading: G, diagramContext,
       });
       if (result._historyUser) {
         setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));

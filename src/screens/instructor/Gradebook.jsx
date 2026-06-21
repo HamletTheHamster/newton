@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
-import { integrityState, integrityAdjustedScore } from "../../homework.js";
+import { integrityState, resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 
@@ -38,18 +38,6 @@ function cellFg(score, isExcused, isMissing) {
 
 // Recompute a homework submission's /10 score using per-part earned overrides.
 // partScores: { [itemId]: earnedValue } — only overridden items need be present.
-function computeScoreFromPartOverrides(submission, partScores) {
-  const rawScore = (submission.problems || []).reduce((total, p) => {
-    const items = p.parts || [p];
-    return total + items.reduce((s, item) => {
-      const ov = partScores[item.id];
-      return s + (ov != null ? Number(ov) : (item.earned ?? 0));
-    }, 0);
-  }, 0);
-  const pct = (submission.nativeTotal || 1) > 0 ? rawScore / submission.nativeTotal : 0;
-  return parseFloat((pct * 10 * (submission.late ? 0.5 : 1)).toFixed(2));
-}
-
 // cellBorder is computed inside each component from useTheme().border
 
 // ── EditCell ──────────────────────────────────────────────────────────────────
@@ -526,18 +514,13 @@ export function Gradebook({
     for (const a of assignments) {
       const ov = (gradeOverrides[stu.studentId] || {})[a.id];
       const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
-      if (ov?.excused) {
+      const r = resolveScore(sub, ov);
+      if (r.excused) {
         excusedMap[stu.studentId][a.id] = true;
         continue;
       }
-      let base;
-      if (ov?.score != null) base = ov.score;
-      else if (ov?.partScores && sub?.type === "homework") base = computeScoreFromPartOverrides(sub, ov.partScores);
-      else base = sub != null ? sub.score : null;
-
-      const ist = integrityState(sub, ov);
-      if (ist.flagged) flaggedMap[stu.studentId][a.id] = true;
-      scoreMap[stu.studentId][a.id] = integrityAdjustedScore(base, ist.penalized);
+      if (r.flagged) flaggedMap[stu.studentId][a.id] = true;
+      scoreMap[stu.studentId][a.id] = r.effective;
     }
   }
 
@@ -1045,11 +1028,10 @@ export function Gradebook({
           studentName={viewSubModal.studentName}
           assignmentTitle={viewSubModal.assignmentTitle}
           onClose={() => setViewSubModal(null)}
-          partOverrides={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId]?.partScores || {}}
+          override={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId] || {}}
           onSavePartScores={viewSubModal.submission.type === "homework"
             ? ps => savePartScoresForCell(viewSubModal.studentId, viewSubModal.assignmentId, ps)
             : undefined}
-          integrityReview={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId]?.integrityReview || null}
           onSetIntegrityReview={viewSubModal.submission.type === "homework"
             ? decision => saveIntegrityReview(viewSubModal.studentId, viewSubModal.assignmentId, decision)
             : undefined}

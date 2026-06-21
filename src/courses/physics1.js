@@ -634,7 +634,29 @@ export const HOMEWORKS_PHYSICS1 = [
               accel: { dir: [1, 0], angleTol: 20 },   // the box accelerates forward (with the truck, just less)
             },
           },
-          { id: "hw4_p6b", prompt: "(b) Describe the free-body diagram for the truck, and identify any third-law action–reaction pairs between the truck and the box. (You don't need to draw the truck — just list its forces and the pairs.)", answerType: "text", answer: "Forces on the truck: its weight (down); the normal force from the road (up); the forward driving (traction) force from the road on the drive wheels (forward, $+x$); the normal force the box exerts down on the bed; and the friction force the box exerts on the bed pointing backward ($-x$). Two third-law action–reaction pairs link the box and truck: (1) the normal force of the bed on the box (up) and the normal force of the box on the bed (down); and (2) the friction of the bed on the box (forward) and the friction of the box on the bed (backward). Each pair is equal in magnitude, opposite in direction, and acts on the two different bodies." },
+          {
+            id: "hw4_p6b",
+            prompt: "(b) Now draw a complete, labeled free-body diagram for the truck. Add every force from the bank, assign your positive axes, and show the direction of the truck's acceleration. Think about everything touching the truck — the road (under its tires) and the box (sitting on the bed) — plus gravity. The two friction forces are drawn in for you in $\\textit{blue}$ (friction is next assignment's topic): the road's forward driving (traction) force on the drive wheels ($+x$), and the box's backward drag on the bed ($-x$, the reaction to the bed pushing the box forward). Add the remaining forces yourself — and remember the box presses $\\textit{down}$ on the bed with its own normal force, separate from the truck's weight.",
+            answerType: "fbd",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "truck", bank: ["F", "T", "N", "w"],
+              // Forces on the truck: weight w (down); normal from the road N (up); the normal the
+              // box presses down on the bed N (down); the road's traction friction f (forward, +x)
+              // and the box's friction on the bed f (backward, -x). Both frictions are prefilled
+              // (friction is a HW5 topic). Student supplies w (down), N-road (up), N-box (down).
+              forces: [
+                { type: "N", dir: [0, 1], angleTol: 18 },   // road pushes truck up
+                { type: "N", dir: [0, -1], angleTol: 18 },  // box presses down on the bed
+                { type: "w", dir: [0, -1], angleTol: 18 },  // truck's weight
+                { type: "f", dir: [1, 0], angleTol: 18 },   // road traction (prefilled)
+                { type: "f", dir: [-1, 0], angleTol: 18 },  // box drags bed backward (prefilled)
+              ],
+              prefill: [{ type: "f", dir: [1, 0] }, { type: "f", dir: [-1, 0] }],
+              accel: { dir: [1, 0], angleTol: 20 },          // truck accelerates forward
+            },
+          },
+          { id: "hw4_p6c", prompt: "(c) Among the forces in your two diagrams — the box and the truck — identify any third-law action–reaction pairs.", answerType: "text", answer: "Two action–reaction pairs link the box and the truck. (1) The normal force the bed exerts $\\textit{up}$ on the box (in the box diagram) and the normal force the box exerts $\\textit{down}$ on the bed (in the truck diagram). (2) The friction force the bed exerts $\\textit{forward}$ on the box (the given blue arrow in the box diagram) and the friction force the box exerts $\\textit{backward}$ on the bed (the blue arrow in the truck diagram). Each pair is equal in magnitude, opposite in direction, and acts on two different bodies. The truck's weight, the road's normal force, and the road's traction force each have their third-law partners on bodies not drawn here (the earth and the road), so they are not pairs within these two diagrams." },
         ],
       },
       // 4.37 — smallest force for a cart to move along +x (equilibrium of the perpendicular component)
@@ -675,8 +697,41 @@ export const HOMEWORKS_PHYSICS1 = [
         prompt: "Two boxes, $A$ and $B$, are connected to each end of a light vertical rope, as shown in the figure. A constant upward force $F = 80.0\\text{ N}$ is applied to box $A$. Starting from rest, box $B$ descends $12.0\\text{ m}$ in $4.00\\text{ s}$. The tension in the rope connecting the two boxes is $36.0\\text{ N}$. Use $g = 9.80\\text{ m/s}^2$.",
         parts: [
           { id: "hw4_p10a", prompt: "(a) What is the magnitude of the system's acceleration? (Box $B$ falls $12.0\\text{ m}$ from rest in $4.00\\text{ s}$.)", answerType: "numeric", answer: 1.50, unit: "m/s²", sigFigs: 3 },
-          { id: "hw4_p10b", prompt: "(b) What is the mass of box $B$?", answerType: "numeric", answer: 4.3373, unit: "kg", sigFigs: 3 },
-          { id: "hw4_p10c", prompt: "(c) What is the mass of box $A$?", answerType: "numeric", answer: 5.3012, unit: "kg", sigFigs: 3 },
+          {
+            id: "hw4_p10b_fbdA",
+            prompt: "(b) Draw a complete, labeled free-body diagram for box $A$ (the upper box). Use the force bank to add every force that acts on it, assign your positive axes, and show the direction of its acceleration. Think about what touches box $A$: the applied force $\\vec F$ pulling up, and the rope below connecting it to box $B$. (There is no surface and no normal force — the boxes hang on the rope.)",
+            answerType: "fbd",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "A", bank: ["F", "T", "N", "w"],
+              // Forces on A: applied force F up (+y), rope tension T down (-y, rope runs down to B),
+              // and weight w down (-y). The system accelerates downward (B descends), so a is down.
+              forces: [
+                { type: "F", dir: [0, 1], angleTol: 18 },
+                { type: "T", dir: [0, -1], angleTol: 18 },
+                { type: "w", dir: [0, -1], angleTol: 18 },
+              ],
+              accel: { dir: [0, -1], angleTol: 20 },
+            },
+          },
+          {
+            id: "hw4_p10c_fbdB",
+            prompt: "(c) Now draw a complete, labeled free-body diagram for box $B$ (the lower box). Add every force acting on it from the bank, assign your axes, and show its acceleration. Think about what touches box $B$: only the rope above, connecting it to box $A$. (No force $\\vec F$ acts directly on $B$.)",
+            answerType: "fbd",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "B", bank: ["F", "T", "N", "w"],
+              // Forces on B: rope tension T up (+y, rope runs up to A) and weight w down (-y).
+              // B descends, so its acceleration is downward.
+              forces: [
+                { type: "T", dir: [0, 1], angleTol: 18 },
+                { type: "w", dir: [0, -1], angleTol: 18 },
+              ],
+              accel: { dir: [0, -1], angleTol: 20 },
+            },
+          },
+          { id: "hw4_p10d", prompt: "(d) What is the mass of box $B$?", answerType: "numeric", answer: 4.3373, unit: "kg", sigFigs: 3 },
+          { id: "hw4_p10e", prompt: "(e) What is the mass of box $A$?", answerType: "numeric", answer: 5.3012, unit: "kg", sigFigs: 3 },
         ],
       },
     ],

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
-import { integrityState, integrityAdjustedScore } from "../../homework.js";
+import { resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 
 const CAT_COLORS = {
@@ -56,11 +56,12 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
   for (const a of assignments) {
     const ov = (gradeOverrides[myId] || {})[a.id];
     const sub = (submissions || []).find(s => s.studentId === myId && s.quizId === a.id);
-    if (ov?.excused) { excused[a.id] = true; continue; }
-    const base = ov?.score != null ? ov.score : (sub != null ? sub.score : null);
-    // A flag never withholds credit — the score counts in full unless the instructor upheld it.
-    const ist = integrityState(sub, ov);
-    scores[a.id] = integrityAdjustedScore(base, ist.penalized);
+    // Shared resolver: whole-assignment override > per-part overrides > submission score,
+    // then the upheld-integrity penalty — identical to the instructor Gradebook so what the
+    // instructor sets is exactly what the student sees here. A flag alone never withholds credit.
+    const r = resolveScore(sub, ov);
+    if (r.excused) { excused[a.id] = true; continue; }
+    scores[a.id] = r.effective;
   }
 
   const { overall, byCategory } = calcGrades({ assignments, categories: gradeCategories, scores, excused });
@@ -83,7 +84,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
         submission={viewSub.submission}
         studentName={loggedInStudent?.fullName}
         assignmentTitle={viewSub.title}
-        integrityReview={(gradeOverrides[myId] || {})[viewSub.id]?.integrityReview || null}
+        override={(gradeOverrides[myId] || {})[viewSub.id] || {}}
         showIntegrity={false}
         onClose={() => setViewSub(null)}
       />

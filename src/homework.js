@@ -1,5 +1,7 @@
 // Homework grading engine. Mirrors the quiz Claude-call pattern in utils.js (`evaluateAnswer`)
-// but adds: deterministic numeric grading (±2%, sig-fig agnostic), generous Claude word grading,
+// but adds: deterministic numeric grading (±2% relative band, OR the true answer correctly
+// rounded to the student's sig figs — see numericMatch — so honest rounding never penalizes),
+// generous Claude word grading,
 // Claude math/vector-equivalence grading, and attempt-based hints/reveal with penalties.
 //
 // Attempt/penalty schedule (defaults — see HW_GRADING_DEFAULTS):
@@ -57,12 +59,38 @@ export function parseNumber(raw) {
   return m ? parseFloat(m[0]) : NaN;
 }
 
+// Count the significant figures in a student's raw entry. Leading zeros are never
+// significant; trailing zeros count only when a decimal point is present (so "20" → 1,
+// "20." → 2, "20.0" → 3, "16.6" → 3, "0.00500" → 3). Used to grade sig-fig-agnostically.
+export function sigFigsOf(raw) {
+  const cleaned = String(raw ?? "").replace(/,/g, "").trim();
+  const m = cleaned.match(/[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?/);
+  if (!m) return 0;
+  let token = m[0].replace(/^[-+]/, "");
+  const eIdx = token.search(/[eE]/);
+  if (eIdx >= 0) token = token.slice(0, eIdx);          // drop exponent
+  const hasDot = token.includes(".");
+  let digits = token.replace(".", "").replace(/^0+/, ""); // strip dot + leading zeros
+  if (digits === "") return 1;                            // all zeros (e.g. "0", "0.00")
+  if (hasDot) return digits.length;                       // trailing zeros after a dot are significant
+  return digits.replace(/0+$/, "").length || 1;           // bare integer: trailing zeros ambiguous → drop
+}
+
 export function numericMatch(studentRaw, answer, tol = HW_GRADING_DEFAULTS.numericTolerance) {
   const s = parseNumber(studentRaw);
   if (Number.isNaN(s)) return false;
   const a = Number(answer);
   if (a === 0) return Math.abs(s) <= (tol || 1e-9);
-  return Math.abs(s - a) <= tol * Math.abs(a);
+  if (Math.abs(s - a) <= tol * Math.abs(a)) return true;
+  // Sig-fig leniency: accept the true answer correctly rounded to however many sig figs
+  // the student typed (so 16.603 → "17" at 2 sf is right), but not 1-sf coarsening like
+  // "20", which can otherwise round-match a leading-1 answer well outside the tolerance.
+  const sf = sigFigsOf(studentRaw);
+  if (sf >= 2) {
+    const aRounded = Number(toSigFigString(a, sf));
+    if (Math.abs(aRounded - s) <= Math.abs(a) * 1e-9) return true;
+  }
+  return false;
 }
 
 // Render x with `sf` significant figures in plain decimal notation, preserving
@@ -403,6 +431,52 @@ export function fbdHint(reason) {
   }
 }
 
+// Name a 2-D direction the way a student reads it off the diagram (+y is up). Snaps to the four
+// axis directions within a tolerance; otherwise describes the diagonal with its angle.
+function _dirName(d) {
+  if (!Array.isArray(d) || (Math.abs(d[0]) < 1e-9 && Math.abs(d[1]) < 1e-9)) return "no direction";
+  const ang = (Math.atan2(d[1], d[0]) * 180) / Math.PI; // +x = 0°, up = +90°
+  const near = (t) => Math.abs(((ang - t + 540) % 360) - 180) < 14;
+  if (near(0)) return "right (+x)";
+  if (near(180)) return "left (−x)";
+  if (near(90)) return "up (+y)";
+  if (near(-90)) return "down (−y)";
+  const deg = Math.round((Math.atan2(Math.abs(d[1]), Math.abs(d[0])) * 180) / Math.PI);
+  return `${d[0] > 0 ? "right" : "left"}-and-${d[1] > 0 ? "up" : "down"} (about ${deg}° from horizontal)`;
+}
+
+// Describe the FBD the student actually drew, using THEIR labels (same ordering/auto-subscripting
+// as FBDField: prefilled forces first, then student forces by id; repeats of a type get N₁, N₂…).
+// Fed to Claude when grading a later text/math part so it interprets the student's force labels by
+// their own diagram (e.g. their N₁ may be the box-box contact, not the ground normal). Returns null
+// when nothing was drawn.
+export function describeFBDDiagram(raw, fbd, bodyLabel) {
+  const data = parseFBDValue(raw);
+  const origin = fbd?.origin || [0, 0];
+  const studentIds = Object.keys(data.forces || {})
+    .filter(id => Array.isArray(data.forces[id]?.tip))
+    .sort((a, b) => (parseInt(a.replace(/\D/g, ""), 10) || 0) - (parseInt(b.replace(/\D/g, ""), 10) || 0));
+  const rendered = [
+    ...(fbd?.prefill || []).map(p => ({ type: p.type, dir: p.dir, prefill: true })),
+    ...studentIds.map(id => ({ type: data.forces[id].type, dir: _sub(data.forces[id].tip, data.forces[id].tail || origin), prefill: false })),
+  ];
+  if (!rendered.length) return null;
+  const typeCounts = {};
+  rendered.forEach(r => { typeCounts[r.type] = (typeCounts[r.type] || 0) + 1; });
+  const typeSeen = {};
+  const lines = rendered.map(r => {
+    typeSeen[r.type] = (typeSeen[r.type] || 0) + 1;
+    const sym = FORCE_TYPES[r.type] || r.type;
+    const label = typeCounts[r.type] > 1 ? `${sym}_${typeSeen[r.type]}` : sym;
+    return `${label} pointing ${_dirName(r.dir)}${r.prefill ? " (given/pre-drawn)" : ""}`;
+  });
+  let acc = "";
+  if (data.accel?.none) acc = "; acceleration: marked none (equilibrium)";
+  else if (Array.isArray(data.accel?.tip) && Array.isArray(data.accel?.tail)) acc = `; acceleration pointing ${_dirName(_sub(data.accel.tip, data.accel.tail))}`;
+  const head = bodyLabel ? `Free-body diagram the student drew for body ${bodyLabel}` : "Free-body diagram the student drew";
+  return `${head}: ${lines.join(", ")}${acc}.`;
+}
+
 export { FORCE_TYPES };
 
 // ── Written-work integrity ───────────────────────────────────────────────────────
@@ -425,6 +499,46 @@ export function integrityState(sub, ov) {
 export function integrityAdjustedScore(baseScore, penalized) {
   if (baseScore == null) return baseScore;
   return penalized ? parseFloat((baseScore * WORK_INTEGRITY_PENALTY).toFixed(2)) : baseScore;
+}
+
+// Recompute a homework /10 score from instructor per-part overrides
+// (partScores: { [itemId]: earnedValue }). Items without an override keep their
+// submitted `earned`. Mirrors the late penalty baked into the original score.
+export function scoreFromPartOverrides(submission, partScores) {
+  const rawScore = (submission.problems || []).reduce((total, p) => {
+    const items = p.parts || [p];
+    return total + items.reduce((sum, item) => {
+      const ov = (partScores || {})[item.id];
+      return sum + (ov != null ? Number(ov) : (item.earned ?? 0));
+    }, 0);
+  }, 0);
+  const pct = (submission.nativeTotal || 1) > 0 ? rawScore / submission.nativeTotal : 0;
+  return parseFloat((pct * 10 * (submission.late ? 0.5 : 1)).toFixed(2));
+}
+
+// Canonical effective-score resolver — THE single source of truth shared by the
+// instructor Gradebook, the student StudentGrades page, and the shared SubViewModal,
+// so the score the instructor sets is always exactly what the student sees (grades
+// list AND submission view), for quizzes and homework alike. Resolution order:
+//   1. ov.excused                        → excluded from the grade (no score)
+//   2. ov.score (whole-assignment)       → wins over everything below
+//   3. ov.partScores (homework only)     → recompute via scoreFromPartOverrides
+//   4. submission.score                  → the auto-graded score
+// then the upheld-integrity 50% penalty applies. Returns:
+//   { excused, base, penalized, flagged, effective }
+//   base      = /10 score before the integrity penalty (null = no score yet)
+//   effective = the integrity-adjusted /10 score to display & feed into calcGrades
+//               (null when excused or no score exists)
+export function resolveScore(submission, override) {
+  const ov = override || {};
+  const sub = submission || null;
+  const ist = integrityState(sub, ov);
+  if (ov.excused) return { excused: true, base: null, penalized: ist.penalized, flagged: ist.flagged, effective: null };
+  let base;
+  if (ov.score != null) base = ov.score;
+  else if (ov.partScores && sub && sub.type === "homework") base = scoreFromPartOverrides(sub, ov.partScores);
+  else base = sub != null ? sub.score : null;
+  return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, effective: integrityAdjustedScore(base, ist.penalized) };
 }
 
 // Turn a student-uploaded work File into a Claude content block: images are compressed and
@@ -504,9 +618,32 @@ async function callClaude({ system, messages, maxTokens = 600 }) {
   return text;
 }
 
+// Extract the first balanced {...} object from a string, ignoring braces inside strings, so we
+// can recover the JSON even when the model wraps it in reasoning prose (despite "reply ONLY JSON").
+function extractJsonObject(text) {
+  const start = text.indexOf("{");
+  if (start < 0) return null;
+  let depth = 0, inStr = false, esc = false;
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i];
+    if (inStr) {
+      if (esc) esc = false;
+      else if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+    } else if (ch === '"') inStr = true;
+    else if (ch === "{") depth++;
+    else if (ch === "}") { depth--; if (depth === 0) return text.slice(start, i + 1); }
+  }
+  return null;
+}
+
 function parseJsonReply(text, fallback) {
-  try { return JSON.parse(text.replace(/```json\n?|```/g, "").trim()); }
-  catch { return fallback; }
+  const cleaned = text.replace(/```json\n?|```/g, "").trim();
+  try { return JSON.parse(cleaned); }
+  catch { /* try to recover an embedded object below */ }
+  const obj = extractJsonObject(cleaned);
+  if (obj) { try { return JSON.parse(obj); } catch { /* fall through */ } }
+  return fallback;
 }
 
 // Fetch a problem figure (a same-origin static asset like "/homeworkFigures/HW1/fig1.png")
@@ -545,7 +682,7 @@ function userContentWith(figureBlock, text) {
 // Evaluate one item (a problem, or a single part of a multipart problem).
 // phase ∈ "normal" | "hint" | "reveal" — the intent IF the answer is wrong.
 // Returns { correct, message, revealedAnswer? }.
-export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, phase, history = [], courseType = "physics1", grading = HW_GRADING_DEFAULTS }) {
+export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, phase, history = [], courseType = "physics1", grading = HW_GRADING_DEFAULTS, diagramContext = null }) {
   const courseLabel = COURSE_LABELS[courseType] || "Physics";
   const fullPrompt = fullPromptFor(item);
   const figureBlock = await figureToImageBlock(item._figure);
@@ -607,12 +744,16 @@ export async function evaluateHomeworkAnswer({ item, studentAnswer, attemptNum, 
       : `Grade the student's written answer GENEROUSLY — accept any answer that conveys the correct idea, even if informal or differently worded. Reference answer (confidential): "${item.answer}"`) +
     `\n\nWhen the student is wrong, make a genuine effort to figure out what misconception or mistake led to their answer.`;
 
+  if (diagramContext) {
+    system += `\n\nIMPORTANT — earlier in this problem the student drew and labeled their OWN free-body diagram(s). Interpret any force labels in their answer (e.g. F, T, N, N_1, N_2, w, f) by what those labels refer to in THEIR diagram below, NOT by conventional defaults. For example, if their N_1 is the contact (normal) force between two bodies, accept "N_1" as naming that contact force. Their diagram(s):\n${diagramContext}`;
+  }
+
   if (phase === "hint") {
     system += `\n\nThis is the student's 3rd failed attempt. Diagnose their likely mistake and give ONE targeted hint that guides them toward it.\n\n${HINT_RULES}`;
   } else if (phase === "reveal") {
     system += `\n\nThe student has now used all their attempts. If still incorrect, kindly state the correct answer directly and briefly explain it.`;
   }
-  system += `\n\nReply ONLY with valid JSON:\n- If correct: {"status":"correct","message":"1-2 sentences confirming what they got right"}\n- If incorrect: {"status":"incorrect","message":"${phase === "reveal" ? "state the correct answer and a one-line explanation" : phase === "hint" ? "one targeted hint about their likely mistake" : "one short Socratic nudge"}"}`;
+  system += `\n\nReply with ONLY a single JSON object and nothing else — no reasoning, preamble, or text before or after it. Do all your thinking silently; emit only the JSON:\n- If correct: {"status":"correct","message":"1-2 sentences confirming what they got right"}\n- If incorrect: {"status":"incorrect","message":"${phase === "reveal" ? "state the correct answer and a one-line explanation" : phase === "hint" ? "one targeted hint about their likely mistake" : "one short Socratic nudge"}"}`;
 
   const userText = `Problem: ${fullPrompt}\n\nStudent Answer: ${studentAnswer}`;
   const text = await callClaude({ system, messages: [...history, { role: "user", content: userContentWith(figureBlock, userText) }], maxTokens: 600 });
