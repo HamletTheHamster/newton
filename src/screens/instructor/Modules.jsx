@@ -35,7 +35,7 @@ export function Modules({
   classId, modules, moduleConfig, pages, uploads, quizzes, homeworks = [], customQuizzes,
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
-  onSaveUpload, onDeleteUpload, onUploadFile, onOpenPageEditor,
+  onSaveUpload, onDeleteUpload, onUploadFile, onDeleteStorage, onOpenPageEditor,
   onOpenCustomQuizEditor, onDeleteCustomQuiz,
 }) {
   const { s, muted, border, text, teal, bg } = useTheme();
@@ -67,6 +67,15 @@ export function Modules({
   const [addProgress, setAddProgress] = useState(0);
   const [addBusy, setAddBusy] = useState(false);
   const [addErr, setAddErr] = useState("");
+  // Hidden input opened straight from the "File" menu click, so picking a file
+  // takes one gesture instead of menu → Choose file… → picker.
+  const addFileInputRef = useRef(null);
+
+  // Replace-file flow (swap an existing item's file in place)
+  const replaceInputRef = useRef(null);
+  const replaceTargetRef = useRef(null);              // { modId, item } captured at click time
+  const [replacing, setReplacing] = useState(null);   // { itemKey, name, progress }
+  const [replaceErr, setReplaceErr] = useState(null); // { itemKey, msg }
 
   // New-module form
   const [creatingModule, setCreatingModule] = useState(false);
@@ -286,11 +295,80 @@ export function Modules({
     }
   };
 
+  const pickAddFile = (f) => {
+    if (!f) return;
+    setAddFile(f);
+    setAddErr("");
+    setAddTitle(t => t || f.name);
+  };
+
+  // ── Replace an item's file in place ──────────────────────────────────────
+  // Keeps the same uploadId (and therefore the module item, its title and any
+  // student-facing link) — only the stored file and its metadata change.
+  const startReplaceFile = (mod, item) => {
+    replaceTargetRef.current = { modId: mod.id, item };
+    replaceInputRef.current?.click();
+  };
+
+  const onReplaceFilePicked = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";                       // allow re-picking the same file later
+    const target = replaceTargetRef.current;
+    replaceTargetRef.current = null;
+    if (!file || !target) return;
+
+    const { modId, item } = target;
+    const itemKey = `${modId}::${item.id}`;
+    setReplaceErr(null);
+    if (file.size >= 50 * 1024 * 1024) { setReplaceErr({ itemKey, msg: "File is too large (50 MB max)." }); return; }
+
+    const prev = uploads[item.uploadId] || null;
+    const uploadId = item.uploadId || newId("u");
+    setReplacing({ itemKey, name: file.name, progress: 0 });
+    try {
+      const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+      const storagePath = `classes/${classId}/uploads/${uploadId}/${safeName}`;
+      const result = await onUploadFile(storagePath, file, p =>
+        setReplacing(r => (r && r.itemKey === itemKey ? { ...r, progress: p } : r))
+      );
+      await onSaveUpload(uploadId, {
+        name: file.name, size: result.size, mime: result.mime,
+        storagePath: result.storagePath, downloadUrl: result.downloadUrl,
+        createdAt: prev?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      // Repoint the item (no-op when reusing the id) and refresh a title that
+      // was only ever the old filename; a title the instructor typed is kept.
+      await updateItem(modId, item.id, it => ({
+        ...it,
+        uploadId,
+        title: (!it.title || it.title === prev?.name) ? file.name : it.title,
+      }));
+      // Drop the superseded object, unless the new upload overwrote that path.
+      if (prev?.storagePath && prev.storagePath !== result.storagePath && onDeleteStorage) {
+        try { await onDeleteStorage(prev.storagePath); } catch (err) { console.warn("Old file cleanup failed:", err?.message || err); }
+      }
+      setReplacing(r => (r?.itemKey === itemKey ? null : r));
+    } catch (err) {
+      setReplacing(r => (r?.itemKey === itemKey ? null : r));
+      setReplaceErr({ itemKey, msg: err?.message || "Upload failed." });
+    }
+  };
+
   // ── Render ───────────────────────────────────────────────────────────────
   const list = modules || [];
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {/* Always-mounted pickers so a menu click can open the OS dialog synchronously */}
+      <input
+        ref={addFileInputRef}
+        type="file"
+        onChange={e => { pickAddFile(e.target.files?.[0]); e.target.value = ""; }}
+        style={{ display: "none" }}
+      />
+      <input ref={replaceInputRef} type="file" onChange={onReplaceFilePicked} style={{ display: "none" }} />
+
       <TopBar
         creating={creatingModule}
         title={newModuleTitle}
@@ -394,6 +472,8 @@ export function Modules({
                         resetAddState();
                         setAddingTo(mod.id);
                         setAddType(type);
+                        // Still inside the click gesture → the OS picker opens right away.
+                        if (type === "file") addFileInputRef.current?.click();
                       }}
                       onOpenPageEditor={() => {
                         setModuleMenuFor(null);
@@ -411,8 +491,11 @@ export function Modules({
                 {items.map((item, itemIdx) => {
                   const isHidden = !!hidden[item.id];
                   const upload = item.type === "file" ? uploads[item.uploadId] : null;
-                  const subtitle =
-                    item.type === "link" ? item.url :
+                  const itemKey = `${mod.id}::${item.id}`;
+                  const replacingThis = replacing?.itemKey === itemKey ? replacing : null;
+                  const subtitle = replacingThis
+                    ? `Uploading ${replacingThis.name}… ${Math.round(replacingThis.progress * 100)}%`
+                    : item.type === "link" ? item.url :
                     item.type === "page" ? "Page" :
                     item.type === "file" ? (upload ? `${upload.name || "file"}${upload.size ? " · " + fmtBytes(upload.size) : ""}` : "File (missing)") :
                     null;
@@ -429,7 +512,6 @@ export function Modules({
                   const quizTimeVal = quizDueDate && quizDueDate.length === 16 && quizDueDate[10] === ' ' ? quizDueDate.slice(11) : "23:59";
                   const quizLate = quizDueDate ? dueToDate(quizDueDate) < new Date() : false;
 
-                  const itemKey = `${mod.id}::${item.id}`;
                   const isItemDropTarget = dragItemOverKey === itemKey && dragItemKey !== itemKey;
 
                   return (
@@ -438,6 +520,7 @@ export function Modules({
                         typeIcon={TYPE_ICON[item.type] || <FileIcon />}
                         title={displayTitle}
                         subtitle={subtitle}
+                        error={replaceErr?.itemKey === itemKey ? replaceErr.msg : null}
                         isHidden={isHidden}
                         isDropTarget={isItemDropTarget}
                         renameMode={renamingItemKey === itemKey}
@@ -494,6 +577,7 @@ export function Modules({
                             onEditPage={item.type === "page" ? () => { setItemMenuFor(null); onOpenPageEditor(mod.id, item.id, item.pageId); } : undefined}
                             onEditQuiz={item.type === "quiz" && customQuizzes?.[item.refId] ? () => { setItemMenuFor(null); onOpenCustomQuizEditor?.(mod.id, item.refId); } : undefined}
                             onRename={item.type === "file" ? () => { setItemMenuFor(null); setRenamingItemKey(itemKey); setRenamingItemDraft(item.title || upload?.name || ""); } : undefined}
+                            onReplaceFile={item.type === "file" && !replacingThis ? () => { setItemMenuFor(null); startReplaceFile(mod, item); } : undefined}
                             dueField={schedulable ? (
                               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                                 <input
@@ -589,7 +673,7 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel }) {
+function ItemRow({ typeIcon, title, subtitle, error, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel }) {
   const { s, muted, border, text, teal } = useTheme();
   const activeDragProps = renameMode ? { ...dragProps, draggable: false } : (dragProps || {});
   return (
@@ -613,6 +697,7 @@ function ItemRow({ typeIcon, title, subtitle, isHidden, urlField, actions, dragP
           <>
             <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
             {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
+            {error && <div style={{ color: "#f87171", fontSize: 11 }}>{error}</div>}
           </>
         )}
       </div>
@@ -862,9 +947,9 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
   );
 }
 
-function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, onEditQuiz, onRename }) {
+function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, onEditQuiz, onRename, onReplaceFile }) {
   const { s, muted, border, bg } = useTheme();
-  const hasEditAction = onEditPage || onEditQuiz || onRename;
+  const hasEditAction = onEditPage || onEditQuiz || onRename || onReplaceFile;
   return (
     <div style={{ position: "absolute", right: 0, top: "calc(100% + 4px)", zIndex: 200, background: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "14px", minWidth: 220, boxShadow: "0 8px 32px rgba(0,0,0,0.5)" }}>
       {dueField && (
@@ -882,7 +967,10 @@ function ItemMenu({ dueField, isHidden, onToggleHidden, onDelete, onEditPage, on
             <button onClick={onEditQuiz} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: onRename ? 6 : 0 }}>✎ Edit quiz</button>
           )}
           {onRename && (
-            <button onClick={onRename} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Rename</button>
+            <button onClick={onRename} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left", marginBottom: onReplaceFile ? 6 : 0 }}>✎ Rename</button>
+          )}
+          {onReplaceFile && (
+            <button onClick={onReplaceFile} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>⇄ Replace file…</button>
           )}
         </div>
       )}

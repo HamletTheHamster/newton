@@ -29,7 +29,7 @@ classes/
     modules/                       ordered array of {id, title, items: [...]}
     moduleConfig/                  {[moduleId]: {releaseDate?, hiddenItems: {[itemId]: true}}}
     pages/                         {[pageId]: {title, body, createdAt}}
-    uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt}}
+    uploads/                       {[uploadId]: {name, size, mime, storagePath, downloadUrl, createdAt, updatedAt?}}  — updatedAt set when the file is replaced in place
     announcements/                 {[annId]: {id, title, body, createdAt}}
     announcementReads/             {[studentId]: {[annId]: true}}  — orphaned; no longer read or written (notification feature removed in 6.9)
     customQuizzes/                 {[quizId]: {id, title, text, createdAt, updatedAt}}  — instructor-created text-prompt quizzes; merged into the quizzes array at runtime alongside hardcoded course quizzes; also auto-added to manualAssignments for gradebook column. Must be included in the startup class-cache restore (App.jsx startup block) and in the setClasses call at the end of loadClassData, otherwise students whose class matches currentClassId skip loadClassData and see "Not yet linked" for custom quiz items.

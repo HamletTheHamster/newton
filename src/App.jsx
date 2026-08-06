@@ -1791,6 +1791,7 @@ export default function App() {
             onSaveUpload={saveUpload}
             onDeleteUpload={deleteUpload}
             onUploadFile={fbUpload}
+            onDeleteStorage={fbDeleteStorage}
             onOpenPageEditor={(moduleId, itemId, pageId) => {
               const existing = pageId ? pages[pageId] : null;
               setEditingPage({
