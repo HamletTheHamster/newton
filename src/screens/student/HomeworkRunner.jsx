@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
 import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
-import { MathField } from "../../components/MathField.jsx";
+import { MathField, hideMathKeyboard } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import { GraphField } from "../../components/GraphField.jsx";
 import { VectorField } from "../../components/VectorField.jsx";
@@ -26,9 +26,13 @@ import {
   gradeGraph,
   gradeVectors,
   gradeFBD,
+  snapVectorMagnitudes,
   graphHint,
   vectorHint,
   fbdHint,
+  parseNumber,
+  sigFigsOf,
+  toSciString,
 } from "../../homework.js";
 
 const GRAPHICAL = new Set(["graph", "vector", "fbd"]);
@@ -245,8 +249,13 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const graphicalNoun = item => item.answerType === "graph" ? "sketch" : item.answerType === "fbd" ? "free-body diagram" : "diagram";
 
   const onGraphicalChange = (item, v) => {
-    setAnswers(a => ({ ...a, [item.id]: v }));
     const res = gradeGraphical(item, v);
+    // Direction-graded vector questions may opt into `snapMagnitude`: an arrow that lands in the
+    // right direction is rescaled to the key's length (angle untouched), so the finished diagram
+    // shows the relative magnitudes the question never asked them to measure. Grading runs on
+    // what they drew; only the stored/redisplayed value is corrected.
+    const stored = item.answerType === "vector" ? snapVectorMagnitudes(v, item.vector, res.pass) : v;
+    setAnswers(a => ({ ...a, [item.id]: stored }));
     setGradePass(g => ({ ...g, [item.id]: res.pass }));
     const st = status[item.id];
     if (res.correct && st !== "correct" && st !== "revealed") {
@@ -255,7 +264,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       const credit = hintUsed[item.id] ? G.hintCredit : 1;
       setEarned(e => ({ ...e, [item.id]: credit * item.weight }));
       setStatus(s2 => ({ ...s2, [item.id]: "correct" }));
-      setFeedback(f => ({ ...f, [item.id]: { text: `Your ${graphicalNoun(item)} matches.` + (hintUsed[item.id] ? ` (Hint used — ${Math.round(G.hintCredit * 100)}% credit.)` : ""), kind: "correct" } }));
+      setFeedback(f => ({ ...f, [item.id]: { text: `Your ${graphicalNoun(item)} matches.` + (hintUsed[item.id] ? ` (Hint used, ${Math.round(G.hintCredit * 100)}% credit.)` : ""), kind: "correct" } }));
       setSubmitNonce(n => n + 1);                                       // scroll + unlock next part / play buildup
     }
   };
@@ -264,7 +273,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setHintUsed(h => ({ ...h, [item.id]: true }));                      // taking a hint caps this part at hintCredit
     const res = gradeGraphical(item, answers[item.id] || "");
     const r0 = res.reasons[0];
-    const text = r0 ? (item.answerType === "graph" ? graphHint(r0) : item.answerType === "fbd" ? fbdHint(r0) : vectorHint(r0)) : "Place each piece where the steps describe — it locks in green when it's in the right spot.";
+    const text = r0 ? (item.answerType === "graph" ? graphHint(r0) : item.answerType === "fbd" ? fbdHint(r0) : vectorHint(r0)) : "Place each piece where the steps describe. It locks in green when it's in the right spot.";
     setFeedback(f => ({ ...f, [item.id]: { text: "💡 " + text, kind: "hint" } }));
   };
 
@@ -280,6 +289,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     if (busy) return;
     const ans = (answers[item.id] || "").trim();
     if (!ans) return;
+    // MathLive's virtual keyboard is a page-level singleton that nothing closes on its own; a
+    // submitted answer means the student is done typing it, so dismiss it rather than leaving
+    // it covering the next part.
+    if (item.answerType === "math") hideMathKeyboard();
     setBusy(item.id);
     const attemptNum = (attempts[item.id] || 0) + 1;
     const phase = phaseForAttempt(attemptNum, G);
@@ -300,34 +313,42 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         history: history[item.id] || [], courseType,
         grading: G, diagramContext,
       });
-      // The server returns the formatted correct answer once the item is resolved (correct OR
-      // revealed) — store it so the "Correct answer:" line and the submission key have it.
-      if (result.revealedAnswer != null) setRevealed(r => ({ ...r, [item.id]: result.revealedAnswer }));
-      if (result._historyUser) {
-        setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));
-      }
-      // Per-piece verdict (graph curves / vector arrows) — drives the checklist greening so a
-      // drawn-but-unverified piece never shows as correct until it's actually been submitted right.
-      if (result._gradePass) setGradePass(g => ({ ...g, [item.id]: result._gradePass }));
-      setAttempts(a => ({ ...a, [item.id]: attemptNum }));
-      // Persist attempt count immediately — written even for wrong-but-still-open items so
-      // the count survives a logout or leaving without resuming.
-      if (attemptsPath) fbSet(attemptsPath, { ...attempts, [item.id]: attemptNum }).catch(() => {});
-      if (result.correct) {
-        setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum, G) * item.weight }));
-        setStatus(st => ({ ...st, [item.id]: "correct" }));
-        setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "correct" } }));
-      } else if (attemptNum >= G.maxAttempts) {
-        setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
-        setStatus(st => ({ ...st, [item.id]: "revealed" }));
-        setRevealed(r => ({ ...r, [item.id]: result.revealedAnswer || revealAnswerFor(item) }));
-        setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "revealed" } }));
+      if (result.retry) {
+        // A no-cost nudge, not a verdict: the entry was malformed for what the question asks
+        // (e.g. a negative value in a magnitude blank) rather than physically wrong, so it
+        // leaves the attempt counter and status untouched. The message is deliberately
+        // independent of whether their number was right, so it reveals nothing.
+        setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "retry" } }));
       } else {
-        setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: attemptNum >= G.hintAfterAttempt ? "hint" : "wrong" } }));
+        // The server returns the formatted correct answer once the item is resolved (correct OR
+        // revealed) — store it so the "Correct answer:" line and the submission key have it.
+        if (result.revealedAnswer != null) setRevealed(r => ({ ...r, [item.id]: result.revealedAnswer }));
+        if (result._historyUser) {
+          setHistory(h => ({ ...h, [item.id]: [...(h[item.id] || []), { role: "user", content: result._historyUser }, { role: "assistant", content: result._historyAssistant }] }));
+        }
+        // Per-piece verdict (graph curves / vector arrows) — drives the checklist greening so a
+        // drawn-but-unverified piece never shows as correct until it's actually been submitted right.
+        if (result._gradePass) setGradePass(g => ({ ...g, [item.id]: result._gradePass }));
+        setAttempts(a => ({ ...a, [item.id]: attemptNum }));
+        // Persist attempt count immediately — written even for wrong-but-still-open items so
+        // the count survives a logout or leaving without resuming.
+        if (attemptsPath) fbSet(attemptsPath, { ...attempts, [item.id]: attemptNum }).catch(() => {});
+        if (result.correct) {
+          setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum, G) * item.weight }));
+          setStatus(st => ({ ...st, [item.id]: "correct" }));
+          setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "correct" } }));
+        } else if (attemptNum >= G.maxAttempts) {
+          setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
+          setStatus(st => ({ ...st, [item.id]: "revealed" }));
+          setRevealed(r => ({ ...r, [item.id]: result.revealedAnswer || revealAnswerFor(item) }));
+          setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "revealed" } }));
+        } else {
+          setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: attemptNum >= G.hintAfterAttempt ? "hint" : "wrong" } }));
+        }
       }
     } catch (err) {
       // Grader unreachable/errored — surface the reason and DON'T consume an attempt.
-      setFeedback(f => ({ ...f, [item.id]: { text: "⚠️ " + (err?.message || "Couldn't reach the grader.") + " Your attempt was not counted — please try again.", kind: "wrong" } }));
+      setFeedback(f => ({ ...f, [item.id]: { text: "⚠️ " + (err?.message || "Couldn't reach the grader.") + " Your attempt was not counted, so please try again.", kind: "wrong" } }));
     }
     setBusy(null);
     // Bump after the feedback/status updates above so the scroll effect runs once the
@@ -448,6 +469,21 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     </div>
   );
 
+  // Quiet echo of what a numeric entry parsed to, shown only once the entry uses an exponent
+  // form (an `e`, a caret, a ×, or a unicode superscript). Deliberately not an instruction:
+  // every scientific-notation spelling already just works, so this is only the confirmation a
+  // student can't get any other way before spending an attempt. A plain "3.7" shows nothing.
+  const numericEcho = raw => {
+    const t = (raw || "").trim();
+    if (!t || !/[eE]\s*[-+]?\d|\^|[⁰¹²³⁴⁵⁶⁷⁸⁹]|[×·⋅]/.test(t)) return null;
+    const v = parseNumber(t);
+    return (
+      <div style={{ color: muted, fontSize: 12.5, fontFamily: "monospace" }}>
+        {Number.isFinite(v) ? `= ${toSciString(v, Math.max(sigFigsOf(t), 1))}` : "= ?"}
+      </div>
+    );
+  };
+
   // ── Render an answer input for an item ────────────────────────────────────────
   // `focusable` (true only for the deepest visible item) wires inputRef so the cursor can be
   // auto-advanced into it. Only numeric/text inputs accept the ref.
@@ -508,26 +544,34 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       );
     }
     // numeric
+    const raw = answers[item.id] || "";
     return (
-      <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <input
-          ref={focusable ? inputRef : undefined}
-          type="text"
-          inputMode="decimal"
-          value={answers[item.id] || ""}
-          onChange={e => setAns(item.id, e.target.value)}
-          disabled={locked || isBusy}
-          placeholder="Enter a number…"
-          style={{ ...s.input, width: 200 }}
-          onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitItem(item); } }}
-        />
-        {item.unit && <span style={{ color: muted, fontSize: 14 }}>{item.unit}</span>}
-        {!locked && <button onClick={() => submitItem(item)} disabled={isBusy || !(answers[item.id] || "").trim()} style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: isBusy || !(answers[item.id] || "").trim() ? 0.4 : 1 }}>{isBusy ? "Checking…" : "Submit"}</button>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <input
+            ref={focusable ? inputRef : undefined}
+            type="text"
+            inputMode="decimal"
+            value={raw}
+            onChange={e => setAns(item.id, e.target.value)}
+            disabled={locked || isBusy}
+            placeholder="Enter a number…"
+            style={{ ...s.input, width: 200 }}
+            onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitItem(item); } }}
+          />
+          {item.unit && <span style={{ color: muted, fontSize: 14 }}>{item.unit}</span>}
+          {!locked && <button onClick={() => submitItem(item)} disabled={isBusy || !raw.trim()} style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: isBusy || !raw.trim() ? 0.4 : 1 }}>{isBusy ? "Checking…" : "Submit"}</button>}
+        </div>
+        {/* Echo the parsed value whenever the entry uses an exponent form, so a student
+            typing "1.25x10^19" can see it was understood before spending an attempt. */}
+        {!locked && numericEcho(raw)}
       </div>
     );
   };
 
-  const FB_COLOR = { correct: "#4ade80", hint: "#fbbf24", revealed: "#60a5fa", wrong: "#f87171" };
+  // `retry` is a no-cost nudge (blue, like `revealed`) — deliberately NOT the red of a wrong
+  // answer, since it costs the student nothing.
+  const FB_COLOR = { correct: "#4ade80", hint: "#fbbf24", revealed: "#60a5fa", wrong: "#f87171", retry: "#60a5fa" };
 
   const renderItem = (item, partLabel, rootRef, focusable = false) => {
     const st = status[item.id];
@@ -615,9 +659,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
-            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete — not submitted for a grade" : "Homework complete"}</div>
+            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete, not submitted for a grade" : "Homework complete"}</div>
             <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
-            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late — 50% penalty applied to your recorded grade.</div>}
+            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late: 50% penalty applied to your recorded grade.</div>}
           </div>
           {problems.map((p, i) => {
             const its = itemsOf(p);
@@ -632,9 +676,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           {!practice && saveError && (
             <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
               <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission couldn't be sent</p>
-              <p style={{ color: muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>Don't worry — <strong style={{ color: text }}>your work is saved</strong>. All your answers and progress are stored, so you can tap Retry now, or leave and come back later to finish submitting. If it keeps failing, contact your instructor and show them this screen.</p>
+              <p style={{ color: muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>Don't worry, <strong style={{ color: text }}>your work is saved</strong>. All your answers and progress are stored, so you can tap Retry now, or leave and come back later to finish submitting. If it keeps failing, contact your instructor and show them this screen.</p>
               <button onClick={retrySave} disabled={saving} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>{saving ? "Retrying…" : "Retry saving"}</button>
-              <button onClick={async () => { await persistDraft(); onLeave(); }} disabled={saving} style={{ ...s.btnSec, opacity: saving ? 0.4 : 1 }}>Leave — my work is saved</button>
+              <button onClick={async () => { await persistDraft(); onLeave(); }} disabled={saving} style={{ ...s.btnSec, opacity: saving ? 0.4 : 1 }}>Leave, my work is saved</button>
             </div>
           )}
           {(practice || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>Back to Course</button>}
@@ -692,7 +736,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ ...s.card, padding: 20, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ color: text, fontWeight: 700, fontSize: 16 }}>Upload your handwritten work</div>
             <div style={{ color: muted, fontSize: 14, lineHeight: 1.6 }}>
-              Upload photos or a PDF of your handwritten work for these problems — your proof that you solved them yourself.
+              Upload photos or a PDF of your handwritten work for these problems, your proof that you solved them yourself.
             </div>
 
             <label style={{ ...s.btnSec, width: "auto", alignSelf: "flex-start", padding: "8px 18px", cursor: saving ? "default" : "pointer", opacity: saving ? 0.4 : 1 }}>
@@ -744,7 +788,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         <div style={{ ...s.card, background: solidBg, padding: 28, width: "100%", maxWidth: 440, boxShadow: "0 20px 60px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 18 }}>
           <div style={{ color: text, fontWeight: 700, fontSize: 18 }}>{homework.title}</div>
           <div style={{ borderLeft: `3px solid ${teal}`, background: isLight ? "rgba(0,0,0,0.03)" : "rgba(255,255,255,0.04)", borderRadius: 8, padding: "14px 16px", color: text, fontSize: 14, lineHeight: 1.6 }}>
-            <strong>Keep your written work.</strong> To finish and submit this assignment you'll upload photos or a PDF of your handwritten work for these problems — your proof that you solved them yourself. Hold onto your scratch paper as you work through the problems.
+            <strong>Keep your written work.</strong> To finish and submit this assignment you'll upload photos or a PDF of your handwritten work for these problems, your proof that you solved them yourself. Hold onto your scratch paper as you work through the problems.
           </div>
           <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", color: text, fontSize: 14, lineHeight: 1.5 }}>
             <input type="checkbox" checked={ackChecked} onChange={e => setAckChecked(e.target.checked)} style={{ marginTop: 3, width: 18, height: 18, cursor: "pointer", flexShrink: 0 }} />
@@ -795,7 +839,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
             <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave homework?</h3>
-            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "This is a practice session — nothing is graded, and you can start it again anytime. Your practice progress won't be saved." : "Your progress will be saved — you can resume later."}</p>
+            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "This is a practice session. Nothing is graded, and you can start it again anytime. Your practice progress won't be saved." : "Your progress will be saved, so you can resume later."}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeave(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
               <button onClick={handleLeaveConfirm} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
@@ -821,7 +865,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 380, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
             <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Show the answer?</h3>
-            <p style={{ ...s.muted, marginBottom: 20, lineHeight: 1.5 }}>This will reveal the correct {confirmReveal.answerType === "graph" ? "sketch" : "diagram"} and mark this part at <strong style={{ color: "#f87171" }}>{G.revealCredit === 0 ? "no credit" : `${Math.round(G.revealCredit * 100)}%`}</strong> — you won't be able to earn full credit on it.</p>
+            <p style={{ ...s.muted, marginBottom: 20, lineHeight: 1.5 }}>This will reveal the correct {confirmReveal.answerType === "graph" ? "sketch" : "diagram"} and mark this part at <strong style={{ color: "#f87171" }}>{G.revealCredit === 0 ? "no credit" : `${Math.round(G.revealCredit * 100)}%`}</strong>. You won't be able to earn full credit on it.</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setConfirmReveal(null)} style={{ ...s.btnPri, flex: 1 }}>Keep trying</button>
               <button onClick={() => revealGraphical(confirmReveal)} style={{ ...s.btnSec, flex: 1 }}>Show answer</button>
@@ -873,12 +917,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
                   <li>After <C color={FB_COLOR.wrong}>{G.maxAttempts}</C> incorrect attempts the answer is shown and that part earns <C color={FB_COLOR.wrong}>{pct(G.revealCredit)}</C>.</li>
                   <li>Numeric answers count as correct within <C color={FB_COLOR.revealed}>±{+(G.numericTolerance * 100).toFixed(2)}%</C> of the exact value.</li>
                   {allItems.some(it => GRAPHICAL.has(it.answerType)) && (
-                    <li><C color={text}>Sketch / diagram parts</C> are different: each piece <C color={FB_COLOR.correct}>locks in green</C> the moment it's in the right place — <C color={FB_COLOR.correct}>full credit</C> when you complete it yourself, <C color={FB_COLOR.hint}>{pct(G.hintCredit)}</C> if you take a hint, or <C color={FB_COLOR.wrong}>{G.revealCredit === 0 ? "no credit" : pct(G.revealCredit)}</C> with “Show answer”.</li>
+                    <li><C color={text}>Sketch / diagram parts</C> are different: each piece <C color={FB_COLOR.correct}>locks in green</C> the moment it's in the right place: <C color={FB_COLOR.correct}>full credit</C> when you complete it yourself, <C color={FB_COLOR.hint}>{pct(G.hintCredit)}</C> if you take a hint, or <C color={FB_COLOR.wrong}>{G.revealCredit === 0 ? "no credit" : pct(G.revealCredit)}</C> with “Show answer”.</li>
                   )}
                 </ul>
                 {!practice && (
                   <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${border}`, color: muted, fontSize: 13, lineHeight: 1.6 }}>
-                    <strong style={{ color: text }}>Before you submit</strong>, you'll upload a photo or PDF of your handwritten work for these problems — your proof that you solved them yourself.
+                    <strong style={{ color: text }}>Before you submit</strong>, you'll upload a photo or PDF of your handwritten work for these problems, your proof that you solved them yourself.
                   </div>
                 )}
               </>
@@ -888,7 +932,21 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
         <div style={{ ...s.card, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
           {problem.figure && (
-            <img src={problem.figure} alt="Problem figure" style={{ maxWidth: "100%", borderRadius: 10, border: `1px solid ${border}`, alignSelf: "center" }} />
+            // `figureWidth` (CSS px) scales a figure whose natural pixel size reads too
+            // large on the page — e.g. a 2x screenshot from the textbook. Without it the
+            // image renders at natural size, capped only by the 960px column.
+            <img
+              src={problem.figure}
+              alt="Problem figure"
+              style={{
+                width: problem.figureWidth || "auto",
+                maxWidth: "100%",
+                height: "auto",
+                borderRadius: 10,
+                border: `1px solid ${border}`,
+                alignSelf: "center",
+              }}
+            />
           )}
           {/* For multipart, render the shared prompt above the parts */}
           {problem.parts && problem.parts.length > 0 && problem.prompt && (

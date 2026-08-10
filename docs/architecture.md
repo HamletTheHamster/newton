@@ -44,6 +44,17 @@ courseEvals/                       {id: {id, type, classId, message?, responses?
 _test/                             scratch node for connectivity check on startup
 ```
 
+### Data freshness — student portal polling
+
+There is **no realtime listener**: reads go through `fbGet` (REST + an `X-Firebase-AppCheck` header), and the RTDB REST stream is an `EventSource`, which cannot set headers — so streaming is not available under App Check. Class data is therefore a snapshot taken when the page loads (startup `fbGet('classes')` → cache restore, or `loadClassData`).
+
+To keep an already-open student session from going stale, `refreshClassContent(classId)` (App.jsx, right after `loadClassData`) re-pulls **only instructor-owned nodes** — `modules`, `moduleConfig`, `pages`, `uploads`, `customQuizzes`, `dueDates`, `homeworkSettings`, `announcements`, `gradeOverrides`, `syllabus` — and updates both React state and the `classes` cache. Without it, an instructor's module **reorder** (or rename / added item / hidden toggle / due-date change) never reaches a student who already has the portal open.
+
+- **Runs only in the student portal** (`screen === "student-portal"`), on entering it, on tab focus/`visibilitychange`, and every 60 s while visible. Not on the instructor side: instructor writes are optimistic (state is set before the PUT resolves), so a poll could momentarily revert an in-flight edit.
+- **Never touches per-student state** — `submissions`, `hwDrafts`, `hwAttempts`, `roster`, `studentPws` are excluded so a poll can't clobber the student's own in-flight work.
+- A failed fetch yields `undefined` and that node is **skipped** (not blanked); `null` means the node genuinely doesn't exist and normalizes to `{}`. `modules` is adopted only when RTDB returns an array — an absent `modules` node means "not seeded yet", which is `loadClassData`'s job (seeding here would race it).
+- **When adding a new instructor-authored node**, add it here too (a fourth place alongside the three in CLAUDE.md § *Adding new Firebase per-class state*) if students consume it.
+
 `metadata.courseType` (`"physics1"` = PHY 115, `"physics2"` = PHY 215, …) selects which course content is used at runtime via `quizzesForCourse(courseType)` and `modulesForCourse(courseType)` in `src/courses/index.js` (course files in the same directory). It is the canonical course identifier everywhere: it also keys the server-side answer key (`ANSWER_KEYS[courseType]` in `netlify/functions/_answerKeys.js`) and names the per-course figure directory (`public/homeworkFigures/<courseType>/HWn/`). Course *identity* (the user-facing label, which also feeds Claude as grading context) lives in `src/course-meta.js` — a content-free module so the Netlify grading function can import it without bundling course content. Instructor source material (quiz documents, homework screenshots, answer keys, lecture notes) stays out of the repo in `source/<courseCode>/{quizzes,hw/HWn,lectures}/` (gitignored); see [courses/phy115.md](courses/phy115.md) and [courses/phy215.md](courses/phy215.md). `metadata.active` controls whether students see the class in name search. The single instructor login (in `settings/`) accesses all classes through a switcher dropdown in the instructor header; each class's roster, submissions, due dates, and gradebook are isolated.
 
 ## Authentication

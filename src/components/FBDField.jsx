@@ -224,7 +224,7 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
               <span style={{ color: muted, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
                 Force bank:
                 <InfoDot title="Drawing forces">
-                  Pick a force type, then click in the diagram to draw its arrow from the body (the dot at the center). Draw as many of each type as the body actually feels — repeats are numbered automatically (e.g. <MathText>{"$N_1, N_2$"}</MathText>). Drag a tip to move it; click a tip to delete it.
+                  Pick a force type, then click in the diagram to draw its arrow from the body (the dot at the center). Draw as many of each type as the body actually feels. Repeats are numbered automatically (e.g. <MathText>{"$N_1, N_2$"}</MathText>). Drag a tip to move it; click a tip to delete it.
                 </InfoDot>
               </span>
               {bank.map(t => (
@@ -238,7 +238,7 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
               <span style={{ color: muted, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
                 Acceleration:
                 <InfoDot title="Acceleration arrow">
-                  After your forces, show the direction of the body's acceleration with a small arrow placed <em>off to the side</em> (two clicks: tail, then tip) — not from the body like the forces. If the body is in equilibrium (not accelerating), press “No acceleration” instead.
+                  After your forces, show the direction of the body's acceleration with a small arrow placed <em>off to the side</em> (two clicks: tail, then tip), not from the body like the forces. If the body is in equilibrium (not accelerating), press “No acceleration” instead.
                 </InfoDot>
               </span>
               <button type="button" onClick={() => setTool(accelArmed ? null : "accel")} style={toolBtn(accelArmed, ACCEL_COLOR)}>
@@ -317,16 +317,16 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
 
       {interactive && (
         <aside style={{ flex: "1 1 250px", minWidth: 220, maxWidth: 330, border: `1px solid ${border}`, borderRadius: 10, padding: "13px 15px", background: isLight ? "#f8fafc" : "#202122" }}>
-          <div style={{ color: text, fontWeight: 700, fontSize: 15, marginBottom: 9 }}>Free-body diagram — the method</div>
+          <div style={{ color: text, fontWeight: 700, fontSize: 15, marginBottom: 9 }}>Free-body diagram: the method</div>
           <ol style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 12 }}>
             <GuideStep n={1} state={forcesState} text={text} muted={muted} border={border}
-              label="Draw & label every force acting on the body" note="One arrow per push or pull the body actually feels (contact forces, ropes, applied pushes) — plus gravity. Pick each from the bank; repeats auto-number." />
+              label="Draw & label every force acting on the body" note="One arrow per push or pull the body actually feels (contact forces, ropes, applied pushes), plus gravity. Pick each from the bank; repeats auto-number." />
             <GuideStep n={2} state={axesState} text={text} muted={muted} border={border} info
               label="Assign your positive axes" note="Choose which way is $+x$ and $+y$ (rotate for inclines). Required step, not graded." />
             <GuideStep n={3} state="drawn" text={text} muted={muted} border={border} info
               label="Describe any angles" note="If a force doesn't lie along an axis, note the angle it makes with one. (Here every force lies along an axis, so there's nothing to label.)" />
             <GuideStep n={4} state={accelState} text={text} muted={muted} border={border}
-              label="Show the acceleration direction" note="A small arrow off to the side for the body's acceleration — or mark “no acceleration” if it's in equilibrium." />
+              label="Show the acceleration direction" note="A small arrow off to the side for the body's acceleration, or mark “no acceleration” if it's in equilibrium." />
           </ol>
           <div style={{ marginTop: 11, paddingTop: 9, borderTop: `1px solid ${border}`, color: muted, fontSize: 12.5, lineHeight: 1.45 }}>
             Steps turn <span style={{ color: "#4ade80", fontWeight: 700 }}>green ✓</span> as you get the forces and acceleration right; the part scores when all are correct.

@@ -61,7 +61,7 @@ export function DragDropQuestion({ q, onSubmit, busy }) {
         style={{ border: `2px dashed ${dot === "bank" ? teal : border}`, borderRadius: 12, padding: "14px 16px", minHeight: 56, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "center", background: dot === "bank" ? tealDim : bankBg, transition: "all 0.15s" }}
       >
         {bankWords.length === 0
-          ? <span style={{ ...s.muted, fontSize: 12 }}>Word bank — drag words back here to swap</span>
+          ? <span style={{ ...s.muted, fontSize: 12 }}>Word bank: drag words back here to swap</span>
           : bankWords.map((w, i) => (
               <span key={w + i} draggable onDragStart={() => ds(w, "bank")}
                 style={{ background: TEAL, color: "#fff", borderRadius: 8, padding: "6px 16px", fontWeight: 600, fontSize: 13, cursor: "grab", userSelect: "none" }}>

@@ -12,8 +12,8 @@
 // Claude as grading context in src/utils.js, src/homework.js, and netlify/functions/grade.js — so
 // it should read as the course a student would recognize.
 export const COURSE_META = {
-  physics1: { label: "PHY 115 — Physics I", code: "phy115" },
-  physics2: { label: "PHY 215 — Physics II", code: "phy215" },
+  physics1: { label: "PHY 115: Physics I", code: "phy115" },
+  physics2: { label: "PHY 215: Physics II", code: "phy215" },
 };
 
 // Label for a courseType, with a safe fallback for an unknown/missing value. Named `courseLabelFor`

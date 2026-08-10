@@ -17,7 +17,10 @@ import { lookupAnswer } from "./_answerKeys.js";
 import { courseLabelFor } from "../../src/course-meta.js";
 import {
   numericMatch,
+  angleMatch,
+  parseNumber,
   formatNumeric,
+  normalizeLatexForGrading,
   parseJsonReply,
   HINT_RULES,
   DEFAULT_NUMERIC_TOL,
@@ -64,7 +67,23 @@ export default async (req) => {
   // ── Numeric: deterministic match (server owns the tolerance — never trust a client-sent one) ──
   if (key.answerType === "numeric") {
     const revealed = formatNumeric(key.answer, key.sigFigs, key.unit, key.sci);
-    const correct = numericMatch(studentAnswer, key.answer, key.tolerance ?? DEFAULT_NUMERIC_TOL);
+    // This blank can't take a negative value (a magnitude, speed, distance, time, mass…), but
+    // students routinely compute the signed quantity and type what they got — e.g. -2.72 μm for
+    // a downward displacement whose direction the NEXT part asks for. That's a convention slip,
+    // not a physics error, so nudge and don't burn an attempt. The message is identical whether
+    // or not their value was right, so it leaks nothing and can't be used to probe.
+    // `angle` items are exempt: there a negative is a correct coterminal answer, not a slip.
+    if (key.nonNegative && !key.angle && parseNumber(studentAnswer) < 0) {
+      return json({
+        correct: false,
+        retry: true,
+        message: "This quantity can't be negative — enter it as a positive number. (This didn't count as an attempt.)",
+      });
+    }
+    const tol = key.tolerance ?? DEFAULT_NUMERIC_TOL;
+    const correct = key.angle
+      ? angleMatch(studentAnswer, key.answer, tol)
+      : numericMatch(studentAnswer, key.answer, tol);
     if (correct) return json({ correct: true, message: "✓ Correct.", revealedAnswer: revealed });
     if (phase === "reveal") {
       return json({ correct: false, revealedAnswer: revealed, message: `Not quite. The correct answer is ${revealed}.` });
@@ -101,7 +120,11 @@ export default async (req) => {
   }
   system += `\n\nReply with ONLY a single JSON object and nothing else — no reasoning, preamble, or text before or after it. Do all your thinking silently; emit only the JSON:\n- If correct: {"status":"correct","message":"1-2 sentences confirming what they got right"}\n- If incorrect: {"status":"incorrect","message":"${phase === "reveal" ? "state the correct answer and a one-line explanation" : phase === "hint" ? "one targeted hint about their likely mistake" : "one short Socratic nudge"}"}`;
 
-  const userText = `Problem: ${fullPrompt}\n\nStudent Answer: ${studentAnswer}`;
+  // Re-brace MathLive's compact \frac serialization so the grader reads the expression the
+  // student actually sees rendered (see normalizeLatexForGrading). Only the copy sent to Claude
+  // is normalized — the raw LaTeX stays on the draft and submission.
+  const shownAnswer = isMath ? normalizeLatexForGrading(studentAnswer) : studentAnswer;
+  const userText = `Problem: ${fullPrompt}\n\nStudent Answer: ${shownAnswer}`;
   let text;
   try {
     text = await callClaude({ system, messages: [...history, { role: "user", content: contentWith(figureBlock, userText) }], maxTokens: 600 });

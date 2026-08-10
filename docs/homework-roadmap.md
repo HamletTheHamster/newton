@@ -75,6 +75,63 @@ has submitted is clickable ("View ›") and opens that modal read-only — no ed
 callbacks and `showIntegrity={false}` — so students review their own submitted answers, sketches,
 chat dialogue, and uploaded work the same way instructors do.
 
+## UX principle — it should "just work"
+
+The homework experience should need **as few instructions as possible**. When a student could
+plausibly enter something a different way, make the app accept it rather than telling them the
+one accepted form. Prefer, in order:
+
+1. **Accept every reasonable input** (e.g. `normalizeSciNotation` takes `1.25e19`, `1.25x10^19`,
+   `1.25×10¹⁹` and friends; `numericMatch` is sig-fig-agnostic; `angleMatch` accepts any
+   coterminal angle, so `-19` grades the same as `341`; `gradeVectors` grades an arrow by its
+   displacement so it can be drawn anywhere).
+2. **Never charge an attempt for a convention slip.** Where an entry is malformed for what the
+   question asks rather than physically wrong, return `{ correct:false, retry:true }` from
+   `grade.js` — the runner shows a blue nudge and leaves the attempt counter alone. First use:
+   `nonNegative: true` items, where a negative entry is nudged instead of marked wrong. Keep the
+   nudge text independent of whether their value was right, so it leaks nothing.
+3. **Show state rather than explain it** (a piece that turns green and locks; the `= 1.25 × 10¹⁹`
+   echo; the attempt/credit indicator).
+4. **Only then** write a sentence — and if you're about to, first check whether the behavior
+   could just be made more forgiving instead.
+
+### Angular tolerance: ±5°, and check the grid before you tighten
+
+Every drawn direction (vector arrows, FBD forces, the acceleration arrow, symmetry axes) grades at
+**±5°**, a 10°-wide window. This is the chosen alternative to snapping a correct arrow onto the key
+direction: the diagram ends up clean because the student drew it right, not because the app
+rewrote the very attribute being graded. Graphical parts grade live and consume no attempts, so a
+tight tolerance costs a nudge of the mouse, never credit.
+
+**A tolerance is only meaningful relative to what the input grid can hit.** Tips snap to a lattice
+of step `xTick / snapDiv`, so the worst-case aiming error at radius `r` is
+`atan(step / r) / 2`. Before tightening anything, check that against the *shortest arrow a student
+would plausibly draw* — for the clock this forced `snapDiv` 4 → 20, since at step 0.5 an arrow of
+length 0.75 has a 16.8° worst case and simply cannot be placed within 5° of the key. Cardinal
+directions are always exactly reachable; tilted ones (an incline normal, a string tension) are the
+ones to verify.
+
+### Prose style for prompts and answers
+
+`MathText` renders KaTeX (`$…$`, `\(…\)`, `\[…\]`) and nothing else — there is **no markdown
+pass**. `**bold**` and `*italic*` therefore reach the student as literal asterisks, which is how a
+batch of them shipped before being caught. House style:
+
+- **No emphasis at all** — not `**`, not `*`, not `$\textit{…}$`. If a word needs stressing,
+  restructure the sentence.
+- **No em-dashes** (—). Use a comma, colon, semicolon, or a new sentence. En-dashes in compounds
+  (`action–reaction`) are fine.
+- Applies to homework prompts, `guide` labels and notes, quiz text/replies/`feedback` maps, the
+  `answer` strings in `_answerKeys.js` (students see those on reveal), and all app UI copy on
+  both sides of the app. Exempt: code comments and Claude-facing prompt
+  text. The no-data glyph in empty cells is a plain hyphen `"-"`.
+- **When auditing for this, walk nested objects.** A first pass that only checked top-level
+  string fields missed a quiz's `feedback` map, which had both asterisks and em-dashes in it.
+
+Do not add explanatory copy, tooltips, or help popovers to the numeric/answer flow. Help text
+that exists (the collapsible grading-policy card) covers *scoring*, which a student genuinely
+cannot infer, not *how to type*.
+
 ## Authoring — verify solutions first (REQUIRED)
 
 Before any new homework is authored or an existing answer is changed, **independently
@@ -107,7 +164,16 @@ The procedure:
 4. **Check completeness of prose.** A `text`/`math` answer is incomplete unless it states the
    full reasoning/expression a student is expected to give (e.g. a direction stated *and*
    justified, not just "out of the page").
-5. **Set `sigFigs` on every numeric answer/part** (in its `_answerKeys.js` entry). The revealed
+5. **Set `nonNegative: true` on every numeric part whose quantity can't be negative** — a
+   magnitude, speed, distance/height, elapsed time, mass, weight, density, count, or ratio — so
+   a negative entry is nudged rather than penalized. Skip it wherever the sign is the physics:
+   vector components, signed accelerations, and any item whose `answer` is negative. Test:
+   *could a correct solution ever produce a negative number in this blank?* If yes, leave it off.
+6. **Set `angle: true` on every degree-valued numeric part.** It grades with `angleMatch`, which
+   accepts any coterminal spelling of the direction (`-19` ≡ `341` ≡ `701`), since those name the
+   same direction the prompt asks for. Mutually exclusive with `nonNegative` — a negative angle
+   is *correct*, not a slip.
+7. **Set `sigFigs` on every numeric answer/part** (in its `_answerKeys.js` entry). The revealed
    correct answer is formatted to the item's `sigFigs` (via `toSigFigString`); without it the reveal shows `String(answer)`,
    which silently drops significant trailing zeros (`9.00` → "9", `40.0` → "40", `3.30` → "3.3").
    Choose the count from the precision of the problem's given data. `sigFigs` is display-only
@@ -115,14 +181,42 @@ The procedure:
    accepts a value within the ±2% band OR one equal to the true answer correctly rounded to the
    sig figs the student typed (≥2 sf), so an honest rounding like `17` for `16.603` is accepted
    even though it's 2.39% off — just outside the band.
-6. **Log every key-vs-verified discrepancy** in
+8. **Log every key-vs-verified discrepancy** in
    [answer-key-discrepancies.md](answer-key-discrepancies.md). Any time your verified value
    differs from the instructor's source key — *even within the ±2% tolerance* — add a row
    (noting whether the gap exceeds ±2%). The app uses your verified value, so this log is the
    instructor's to-do list for fixing the printed key documents.
-7. **Flag questions that a deterministic numeric doesn't serve well** (ill-conditioned numerics,
+9. **Flag questions that a deterministic numeric doesn't serve well** (ill-conditioned numerics,
    diagram/sketch/direction questions, expression/reasoning answers) and choose a fitting
    `answerType` (`text`/`graph`/`vector`/`math`) — see the Workflow Rules in `CLAUDE.md`.
+10. **Size every figure** — see below.
+
+### Figures — always scale to the page
+
+A `figure` with no `figureWidth` renders at its **natural pixel size** (capped only by the
+960px problem column). Source images are textbook screenshots at whatever zoom they were
+captured, so natural size is almost never the right size on the page — a 2x-captured figure
+dwarfs the prompt text next to it.
+
+**For every problem with a `figure`, set `figureWidth`** (rendered width in CSS px, on the
+problem object beside `figure`). Procedure:
+
+```bash
+sips -g pixelWidth -g pixelHeight public/homeworkFigures/<courseType>/HWn/<fig>.png
+```
+
+Then pick a width appropriate for the page and note the natural size in a trailing comment:
+
+```js
+figure: "/homeworkFigures/physics2/HW1/figE21-30.png", figureWidth: 400,  // natural 518×522
+```
+
+Rules of thumb — **~360–440px** for a typical square-ish or landscape diagram, **~160–200px**
+for a tall/narrow one (a hanging-ball or vertical-plate figure at full width becomes a column
+of image the student has to scroll past), and up to ~560px only when fine detail (dense
+labels, a multi-panel figure) genuinely needs it. Scale to the figure's *content*, not its
+pixel count. The image keeps `maxWidth: 100%` and `height: auto`, so an explicit width never
+breaks the mobile layout or distorts the aspect ratio.
 
 Per-course verification history — which sets have been verified, on what date, and what was
 corrected — lives in the course docs: [courses/phy115.md](courses/phy115.md) and
@@ -237,12 +331,40 @@ date there.
   `gradeGraph` / `parseGraphValue` / `graphHasInput` / `keyToValue` / `graphHint` (graph).
 - Runner: `src/screens/student/HomeworkRunner.jsx`; math I/O: `MathField` (MathLive),
   `MathText` (KaTeX); graph I/O: `GraphField` (`src/components/GraphField.jsx`).
+  MathLive's virtual keyboard never closes itself — `hideMathKeyboard()` is wired to focusout,
+  disable, unmount, and submit so it can't sit over the page (see CLAUDE.md's `MathField` row).
 - Content: `HOMEWORKS_PHYSICS1` / `HOMEWORKS_PHYSICS2` in `src/courses/physics{1,2}.js`;
   `homeworksForCourse()` in `src/courses/index.js`; course identity (labels) in
   `src/course-meta.js`.
 - Answers: `netlify/functions/_answerKeys.js` (`ANSWER_KEYS[courseType][hwId][itemId]`),
   graded by `netlify/functions/grade.js`.
 - Figures: `public/homeworkFigures/<courseType>/HWn/`; instructor source material (gitignored)
-  in `source/<courseCode>/{quizzes,hw/HWn,lectures}/`.
+  in `source/<courseCode>/{quizzes,hw/HWn,lectures}/`. Set `figureWidth` on every one (§ Authoring
+  → Figures).
+- **`math` answers are re-braced before grading.** MathLive serializes single-token arguments
+  compactly, so `\frac{3}{5}` round-trips as `\frac35` and a student's "(4/5)(1.08×10⁴)" becomes
+  `\frac451.08\times10^4`. It renders correctly but reads as ambiguous text, and the grader
+  marked a correct unit-vector answer wrong because of it (0/4 runs correct; 8/8 after
+  re-bracing). `normalizeLatexForGrading` (`src/grading-core.js`) is applied in `grade.js` to the
+  copy sent to Claude only — the raw LaTeX stays on the draft/submission for KaTeX to render.
+  **When debugging a "why was this marked wrong?" report, always look at the stored draft LaTeX
+  (`hwDrafts/{studentId}/{hwId}`) rather than the rendered field** — they can differ in ways that
+  matter, and `history[itemId]` holds the exact text the grader saw.
+- **The grader's JSON reply is parsed defensively.** Two bugs used to convert a *correct* verdict
+  into "incorrect" silently: a message quoting LaTeX (`\left(`, `\hat{}`) is an invalid JSON
+  escape so `JSON.parse` threw on the whole reply, and reasoning prose containing `\frac{4}{5}`
+  had its `{4}` picked up as "the object". `parseJsonReply` now repairs illegal escapes and scans
+  every balanced candidate, preferring one with a `status` key. Keep it that way — the failure is
+  invisible from the outside, it just looks like the model being wrong.
+- **Numeric entry accepts scientific notation.** `normalizeSciNotation` (`src/grading-core.js`)
+  rewrites `1.25e19`, `1.25 e 19`, `1.25x10^19`, `1.25*10^19`, `1.25×10^19`, `1.25·10^19`,
+  `1.25×10¹⁹`, and bare `10^19` / `×10⁻¹⁹` into JS exponential form before `parseNumber` and
+  `sigFigsOf` see them — so an answer like "how many electrons?" (~1.25×10¹⁹) is actually
+  enterable. It runs in the shared core, so the server grader and the client agree. There are
+  **no instructions for this in the UI** — it just works; the only affordance is a quiet
+  `= 1.25 × 10¹⁹` echo under the box whenever the entry contains an exponent form (see § UX
+  principle). **Authoring implication:** never reword a problem to dodge a large
+  or tiny answer, and pair any such answer with `sci: true` in `_answerKeys.js` so the *reveal*
+  is exponential too.
 - Grading proxy: `netlify/functions/claude.js` reads `CLAUDE_API_KEY` (see
   [environment.md](environment.md) for why not `ANTHROPIC_API_KEY`).

@@ -144,7 +144,7 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
       {ist.flagged && (
         <div style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.35)", borderRadius: 6, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 4 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: "#fbbf24" }}>
-            {ist.review === "upheld" ? "Flag upheld — 50% penalty" : ist.review === "cleared" ? "Flag cleared — full credit" : "Work flagged — full credit (review to uphold)"}
+            {ist.review === "upheld" ? "Flag upheld: 50% penalty" : ist.review === "cleared" ? "Flag cleared: full credit" : "Work flagged: full credit (review to uphold)"}
           </div>
           {sub?.integrity?.reason && <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>{sub.integrity.reason}</div>}
           <div style={{ fontSize: 10, color: muted }}>Open the submission to review the work and clear or uphold the flag.</div>
@@ -221,7 +221,7 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
               {[
                 { val: localHour, set: setLocalHour, opts: ["Hr", ...Array.from({length:12},(_,i)=>String(12-i))], key: "h" },
                 { val: localMinute, set: setLocalMinute, opts: ["Min", ...Array.from({length:60},(_,i)=>String(59-i).padStart(2,"0"))], key: "m" },
-                { val: localAmPm, set: setLocalAmPm, opts: ["—","PM","AM"], key: "ap" },
+                { val: localAmPm, set: setLocalAmPm, opts: ["-","PM","AM"], key: "ap" },
               ].map(({ val, set, opts, key }) => (
                 <select
                   key={key}
@@ -623,7 +623,7 @@ export function Gradebook({
       else delete current[assignmentId];
     }
     await onSaveOverrideForStudent(studentId, current,
-      decision === "cleared" ? "✓ Integrity flag cleared — full credit" : "✓ Integrity flag upheld — 50% penalty");
+      decision === "cleared" ? "✓ Integrity flag cleared: full credit" : "✓ Integrity flag upheld: 50% penalty");
   };
 
   const saveDueDate = async (studentId, assignmentId, dateStr) => {
@@ -860,7 +860,7 @@ export function Gradebook({
                       <span
                         onClick={() => setCatDropdownFor(a.id)}
                         style={{ ...s.badge(catColor(a.catId)), cursor: "pointer", fontSize: 9, padding: "1px 5px", display: "inline-block", whiteSpace: "nowrap" }}
-                        title={`${gradeCategories[a.catId]?.name || a.catId} — click to change`}
+                        title={`${gradeCategories[a.catId]?.name || a.catId} · click to change`}
                       >
                         {gradeCategories[a.catId]?.name || a.catId}
                       </span>
@@ -934,10 +934,10 @@ export function Gradebook({
                       );
                     }
 
-                    const cellTitle = isFlagged ? "Integrity flag — full credit. Click to review the submitted work."
-                      : isExcused ? "Excused — click to edit"
-                      : isMissing ? "No submission — click to override"
-                      : `${score}/10 — click to edit`;
+                    const cellTitle = isFlagged ? "Integrity flag: full credit. Click to review the submitted work."
+                      : isExcused ? "Excused · click to edit"
+                      : isMissing ? "No submission · click to override"
+                      : `${score}/10 · click to edit`;
                     return (
                       <td
                         key={a.id}
@@ -965,7 +965,7 @@ export function Gradebook({
                     fontFamily: "monospace", fontWeight: 700, fontSize: 13, color: oc,
                     borderLeft: cellBorder, borderBottom: cellBorder,
                   }}>
-                    {overall != null ? overall.toFixed(1) + "%" : "—"}
+                    {overall != null ? overall.toFixed(1) + "%" : "-"}
                   </td>
                 </tr>
               );

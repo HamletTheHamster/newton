@@ -25,6 +25,8 @@
 //   { id, text, requiresImage: true, formatLabel, acceptedFormats: [...] }   // upload a drawing
 //   { id, text, dragDrop: true, displaySentence, blanksLabel: [...],
 //     wordBank: [...], correctBlanks: [...] }           // fill-in-the-blank drag & drop
+import { clockPoint } from "../clock-geometry.js";
+
 export const QUIZZES_PHYSICS2 = [
   // Week 1 quiz — pure survey/logistics (nothing has been taught yet, and quizzes look backward).
   {
@@ -34,23 +36,23 @@ export const QUIZZES_PHYSICS2 = [
       {
         id: "q1_1", survey: true,
         text: "What interests you most about this course?",
-        reply: "Thanks for sharing — I'll keep that in mind as I plan the semester.",
+        reply: "Thanks for sharing.",
       },
       {
         id: "q1_2", survey: true,
-        text: "What's something I (Joel, your instructor) can do to make this course more enjoyable for you?",
-        reply: "Noted, and thank you — I read every one of these.",
+        text: "What's something I can do to make this course more enjoyable for you?",
+        reply: "Noted, and thank you.",
       },
       {
         id: "q1_3", survey: true,
         text: "What is the highest math class you've completed?",
-        reply: "Good to know — this helps me pitch the math in lecture at the right level.",
+        reply: "Good to know.",
       },
       {
         id: "q1_4", yesNo: true,
         text: "Have you purchased the course lab manual from the bookstore?",
-        yesReply: "Great — you're all set. Bring it with you to every lab session.",
-        noReply: "No problem — please pick one up from the bookstore before your first lab, since you'll need it to complete the lab activities.",
+        yesReply: "Great, you're all set. Bring it with you to every lab session.",
+        noReply: "No problem. Please pick one up from the bookstore before your first lab, since you'll need it to complete the lab activities.",
       },
     ],
   },
@@ -68,10 +70,10 @@ export const QUIZZES_PHYSICS2 = [
           { key: "C", label: "Exert no force on each other" },
         ],
         correct: "A",
-        correctReply: "The charged sphere polarizes the neutral one — it pulls the neutral sphere's mobile electrons to the far side, leaving the near side positive. The near, opposite charge is closer than the far, like charge, so the attraction wins.",
+        correctReply: "The charged sphere polarizes the neutral one: it pulls the neutral sphere's mobile electrons to the far side, leaving the near side positive. The near, opposite charge is closer than the far, like charge, so the attraction wins.",
         feedback: {
-          B: "Repulsion needs two like net charges, and one of these spheres has no net charge at all. Think about what the charged sphere does to the mobile charges *inside* the neutral metal sphere.",
-          C: "Careful — zero *net* charge doesn't mean the charges inside can't move. These are metal spheres, so their electrons are free to rearrange when another charge comes near. What happens to the near side of the neutral sphere?",
+          B: "Repulsion needs two like net charges, and one of these spheres has no net charge at all. Think about what the charged sphere does to the mobile charges inside the neutral metal sphere.",
+          C: "Careful: zero net charge doesn't mean the charges inside can't move. These are metal spheres, so their electrons are free to rearrange when another charge comes near. What happens to the near side of the neutral sphere?",
         },
       },
       {
@@ -85,8 +87,8 @@ export const QUIZZES_PHYSICS2 = [
         correct: "B",
         correctReply: "On contact the two metal spheres act as one conductor, so the excess negative charge spreads across both. Each sphere now carries a net negative charge, and like charges repel.",
         feedback: {
-          A: "Attraction was the answer *before* they touched, when one sphere was neutral and merely polarized. Contact changes things: these are conductors, so what happens to the excess charge when they touch?",
-          C: "That would require at least one sphere to end up neutral. But the excess electrons are free to move across both spheres once they touch — where do they end up?",
+          A: "Attraction was the answer before they touched, when one sphere was neutral and merely polarized. Contact changes things: these are conductors, so what happens to the excess charge when they touch?",
+          C: "That would require at least one sphere to end up neutral. But the excess electrons are free to move across both spheres once they touch. Where do they end up?",
         },
       },
     ],
@@ -119,8 +121,8 @@ const M = (n, ch, topic) => ({
   title: `Lecture ${n} | ${topic}`,
   items: [
     { type: "quiz",     refId: `q${n}` },
-    { type: "file",     title: `Assigned Reading: Ch. ${ch} — ${topic}`, uploadId: null },
-    { type: "file",     title: `Lecture ${n} Notes — ${topic}`, uploadId: null },
+    { type: "file",     title: `Assigned Reading: Ch. ${ch} · ${topic}`, uploadId: null },
+    { type: "file",     title: `Lecture ${n} Notes: ${topic}`, uploadId: null },
     { type: "homework", refId: `hw${n}` },
   ],
 });
@@ -133,10 +135,15 @@ export const MODULES_PHYSICS2 = [];
 // equally).
 //
 // Problem shape:
-//   { id, prompt, figure?, answerType,
+//   { id, prompt, figure?, figureWidth?, answerType,
 //     unit?,                                       // numeric: shown next to the input field
 //     graph?, vector?, fbd?,                       // graphical options (see below)
 //     parts?: [{ id, prompt, answerType, unit?, ... }] }   // multipart
+//
+// `figureWidth` is the rendered width in CSS px. A figure with no `figureWidth` renders at its
+// natural pixel size (capped at the 960px column), which is almost never right for a textbook
+// screenshot — always check the figure's natural size and set a width appropriate for the page.
+// See docs/homework-roadmap.md § Authoring → Figures.
 //
 // IMPORTANT — for numeric / text / math problems the ANSWER does NOT live here. Answers (and
 // their sigFigs / tolerance) are stored server-side in netlify/functions/_answerKeys.js, keyed
@@ -186,6 +193,24 @@ export const MODULES_PHYSICS2 = [];
 // $m_p = 1.673\times10^{-27}\ \text{kg}$, $g = 9.81\ \text{m/s}^2$. Answers whose magnitude is
 // inherently exponential carry `sci: true` in _answerKeys.js so the revealed value reads as
 // "1.25 × 10¹⁹" rather than a twenty-digit integer.
+// ── Clock problem (hw1_p8) shared config ─────────────────────────────────────
+// A scale-free square plane with a clockface backdrop. `square` keeps the dial round; the grid,
+// ticks and axes are hidden because the dial itself is the reference frame.
+const FIELD_BLUE = "#3b82f6";
+const CLOCK_NUMERALS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+const CLOCK_PAIRS = [[12, 6], [11, 5], [10, 4], [9, 3], [8, 2], [7, 1]];  // [larger, smaller]
+// Plot units per unit of charge. Every charge sits the same distance from the center, so
+// E_n = k(nq)/r^2 is exactly PROPORTIONAL to n — and since correct arrows are auto-scaled to
+// these lengths (`snapMagnitude`), the drawing asserts that ratio and must get it right:
+// E_12 has to come out twice E_6, not merely longer. One shared scale across (a) and (b) also
+// makes each pair's net field the same length as E_6, which is the 6q result made visible.
+const CLOCK_SCALE = 0.75;
+const CLOCK_PLANE = {
+  xMin: -14, xMax: 14, yMin: -14, yMax: 14, xTick: 2, yTick: 2, snapDiv: 20,
+  square: true, hideGrid: true, hideTicks: true,
+  dial: { radius: 10, labelRadius: 11.9, labels: CLOCK_NUMERALS.map(n => `${n}q`) },
+};
+
 export const HOMEWORKS_PHYSICS2 = [
   {
     id: "hw1",
@@ -206,8 +231,8 @@ export const HOMEWORKS_PHYSICS2 = [
         prompt: "Two small plastic spheres are given positive electrical charges. When they are $15.0\\text{ cm}$ apart, the repulsive force between them has magnitude $0.220\\text{ N}$. Give each charge in microcoulombs ($\\mu\\text{C}$).",
         parts: [
           { id: "hw1_p2a", prompt: "(a) What is the charge on each sphere if the two charges are equal?", answerType: "numeric", unit: "μC" },
-          { id: "hw1_p2b_small", prompt: "(b) If one sphere has four times the charge of the other, what is the *smaller* of the two charges?", answerType: "numeric", unit: "μC" },
-          { id: "hw1_p2b_large", prompt: "(b) And what is the *larger* of the two charges?", answerType: "numeric", unit: "μC" },
+          { id: "hw1_p2b_small", prompt: "(b) If one sphere has four times the charge of the other, what is the smaller of the two charges?", answerType: "numeric", unit: "μC" },
+          { id: "hw1_p2b_large", prompt: "(b) And what is the larger of the two charges?", answerType: "numeric", unit: "μC" },
         ],
       },
       // 21.22 — superposition of two Coulomb forces along a line
@@ -222,12 +247,12 @@ export const HOMEWORKS_PHYSICS2 = [
       // 21.30 — field at the center of a square (symmetry + an algebraic magnitude)
       {
         id: "hw1_p4",
-        figure: "/homeworkFigures/physics2/HW1/figE21-30.png",
+        figure: "/homeworkFigures/physics2/HW1/figE21-30.png", figureWidth: 400,  // natural 518×522
         prompt: "A point charge is placed at each corner of a square with side length $a$. The charges all have the same magnitude $q$. Two of the charges are positive and two are negative, as shown in the figure.",
         parts: [
           {
             id: "hw1_p4_d",
-            prompt: "(a) What is the direction of the net electric field at the center of the square due to the four charges? Draw the net field vector $\\vec E_{net}$ at the center. (Only its direction is graded — the length doesn't matter.)",
+            prompt: "(a) What is the direction of the net electric field at the center of the square due to the four charges? Draw the net field vector $\\vec E_{net}$ at the center. (Only its direction is graded; the length doesn't matter.)",
             answerType: "vector",
             vector: {
               xMin: -2, xMax: 2, yMin: -2, yMax: 2, xTick: 1, yTick: 1, snapDiv: 20,
@@ -236,7 +261,7 @@ export const HOMEWORKS_PHYSICS2 = [
               // Each corner contributes q/(2 pi eps0 a^2); the x-components cancel in pairs and all
               // four y-components point -y (away from the +q pair, toward the -q pair).
               // Direction only — no magTol, since the magnitude is asked algebraically in part (b).
-              key: { Enet: { tip: [0, -1.5], angleTol: 15 } },
+              key: { Enet: { tip: [0, -1.5], angleTol: 5 } },
               guide: {
                 title: "How to draw it",
                 steps: [
@@ -256,7 +281,7 @@ export const HOMEWORKS_PHYSICS2 = [
       // 21.33 — charged particles launched between parallel plates ("upside-down projectile")
       {
         id: "hw1_p5",
-        figure: "/homeworkFigures/physics2/HW1/figE21-33.png",
+        figure: "/homeworkFigures/physics2/HW1/figE21-33.png", figureWidth: 400,  // natural 506×292
         prompt: "An electron is projected with an initial speed $v_0 = 1.60\\times10^6\\text{ m/s}$ into the uniform field between the parallel plates in the figure. Assume that the field between the plates is uniform and directed vertically downward, and that the field outside the plates is zero. The electron enters the field at a point midway between the plates. Use $m_e = 9.109\\times10^{-31}\\text{ kg}$, $m_p = 1.673\\times10^{-27}\\text{ kg}$, and $e = 1.602\\times10^{-19}\\text{ C}$.",
         parts: [
           { id: "hw1_p5a", prompt: "(a) If the electron just misses the upper plate as it emerges from the field, find the magnitude of the electric field.", answerType: "numeric", unit: "N/C" },
@@ -279,7 +304,7 @@ export const HOMEWORKS_PHYSICS2 = [
       // 21.45 — field and force at three points on the axis (everything collinear ⇒ signed values)
       {
         id: "hw1_p7",
-        prompt: "A $+2.00\\text{-nC}$ point charge is at the origin, and a second $-5.00\\text{-nC}$ point charge is on the $x$-axis at $x = 0.800\\text{ m}$.\n\nEverything here lies along the $x$-axis, so give each answer as a **signed** $x$-component: a positive value means the $+x$-direction, a negative value means the $-x$-direction.",
+        prompt: "A $+2.00\\text{-nC}$ point charge is at the origin, and a second $-5.00\\text{-nC}$ point charge is on the $x$-axis at $x = 0.800\\text{ m}$.\n\nEverything here lies along the $x$-axis, so give each answer as a signed $x$-component: a positive value means the $+x$-direction, a negative value means the $-x$-direction.",
         parts: [
           { id: "hw1_p7a_i", prompt: "(a)(i) Find the electric field at $x = 0.200\\text{ m}$.", answerType: "numeric", unit: "N/C" },
           { id: "hw1_p7a_ii", prompt: "(a)(ii) Find the electric field at $x = 1.20\\text{ m}$.", answerType: "numeric", unit: "N/C" },
@@ -289,20 +314,95 @@ export const HOMEWORKS_PHYSICS2 = [
           { id: "hw1_p7b_iii", prompt: "(b)(iii) Find the net electric force on an electron placed at $x = -0.200\\text{ m}$.", answerType: "numeric", unit: "N" },
         ],
       },
-      // Clock — instructor-authored symmetry problem
+      // Clock — instructor-authored symmetry problem, walked through as a diagram instead of a
+      // single prose blank: draw the twelve fields, collapse opposite pairs, find the symmetry
+      // axis, then state the time. Every key tip is built from clockPoint(numeral, length), the
+      // same helper that draws the dial, so the answer can't drift from what students see.
       {
         id: "hw1_p8",
-        prompt: "A clockface has positive charges $q$, $2q$, $3q$, $\\ldots$, $12q$ fixed at the position of the corresponding numerals of the dial. The clock hands do not disturb the net field due to the point charges.\n\nAt what time does the hour hand point in the same direction as the electric field at the center of the dial? State the time and briefly justify it.",
-        answerType: "text",
+        prompt: "A clockface has positive charges $q$, $2q$, $3q$, $\\ldots$, $12q$ fixed at the position of the corresponding numerals of the dial. The clock hands do not disturb the net field due to the point charges.\n\nAt what time does the hour hand point in the same direction as the electric field at the center of the dial?",
+        parts: [
+          {
+            id: "hw1_p8a", answerType: "vector",
+            prompt: "(a) Draw all twelve field vectors $\\vec E_1 \\ldots \\vec E_{12}$ at the center of the dial.",
+            vector: {
+              ...CLOCK_PLANE, snapMagnitude: true,
+              vectors: CLOCK_NUMERALS.map(n => ({ id: `E${n}`, label: `E_{${n}}`, color: FIELD_BLUE })),
+              // E_n points away from numeral n, i.e. straight at the numeral opposite it (n+6),
+              // with length proportional to n.
+              key: Object.fromEntries(CLOCK_NUMERALS.map(n =>
+                [`E${n}`, { tip: clockPoint(n + 6, CLOCK_SCALE * n), angleTol: 5 }])),
+            },
+          },
+          {
+            id: "hw1_p8b", answerType: "vector",
+            prompt: "(b) Now take the numerals in opposite pairs. The two fields of a pair lie along the same line pointing opposite ways, so what survives is set by the difference of the two charges. Work that difference out for each of the six pairs, then draw the six net fields.",
+            vector: {
+              ...CLOCK_PLANE, snapMagnitude: true,
+              vectors: CLOCK_PAIRS.map(([big, small]) => ({ id: `P${big}`, label: `E_{${big},${small}}`, color: FIELD_BLUE })),
+              // Every pair differs by 6q, and the larger charge is always the higher numeral, so
+              // each net field points at the SMALLER numeral — all six the same length, and on
+              // the shared scale that length is exactly E_6's.
+              key: Object.fromEntries(CLOCK_PAIRS.map(([big, small]) =>
+                [`P${big}`, { tip: clockPoint(small, CLOCK_SCALE * 6), angleTol: 5 }])),
+              guide: {
+                title: "The six opposite pairs",
+                steps: CLOCK_PAIRS.map(([big, small]) => ({ vector: `P${big}`, label: `$${big}q$ opposite $${small}q$` })),
+              },
+            },
+          },
+          {
+            id: "hw1_p8c", answerType: "vector",
+            prompt: "(c) Those six net fields are all the same size, and their directions are evenly spread. Draw the axis of symmetry of the six: the line about which they are mirror images.",
+            vector: {
+              ...CLOCK_PLANE,
+              // The six net fields from (b) carry over as faded context — the student is finding
+              // the symmetry axis OF those arrows, so they have to be on the diagram. Ungraded,
+              // and drawn from (b)'s key: `snapMagnitude` means a correct drawing in (b) is
+              // exactly this, and a student who revealed (b) should still see the right picture.
+              staticVectors: CLOCK_PAIRS.map(([big, small]) =>
+                ({ id: `P${big}`, tip: clockPoint(small, CLOCK_SCALE * 6), color: FIELD_BLUE })),
+              // axisRadius matches the key's length so the committed handle lands where the
+              // revealed "correct diagram" puts it.
+              vectors: [{ id: "axis", label: "axis", color: "#f59e0b", render: "axis", axisRadius: 9.5 }],
+              // The mean of the six directions is the 3:30 mark — numeral 3.5. `mod180` because an
+              // axis is the same line drawn either way.
+              key: { axis: { tip: clockPoint(3.5, 9.5), angleTol: 5, mod180: true } },
+            },
+          },
+          {
+            id: "hw1_p8d", answerType: "text",
+            prompt: "(d) The resultant field at the center points along that axis. At what time does the hour hand point in the same direction? State the time and justify it.",
+          },
+        ],
       },
       // 21.73 — charged pendulum in equilibrium in a horizontal field
       {
         id: "hw1_p9",
-        figure: "/homeworkFigures/physics2/HW1/figP21-73.png",
+        figure: "/homeworkFigures/physics2/HW1/figP21-73.png", figureWidth: 180,  // natural 230×498 (tall/narrow)
         prompt: "A small $12.3\\text{-g}$ plastic ball is tied to a very light $28.6\\text{-cm}$ string that is attached to the vertical wall of a room (see figure). A uniform horizontal electric field exists in this room. When the ball has been given an excess charge of $-1.11\\ \\mu\\text{C}$, you observe that it remains suspended, with the string making an angle of $17.4°$ with the wall. Use $g = 9.81\\text{ m/s}^2$.",
         parts: [
-          { id: "hw1_p9_m", prompt: "(a) Find the magnitude of the electric field in the room.", answerType: "numeric", unit: "N/C" },
-          { id: "hw1_p9_d", prompt: "(b) Find the direction of the electric field in the room. Justify your answer, being careful about the sign of the ball's charge.", answerType: "text" },
+          {
+            id: "hw1_p9_fbd", answerType: "fbd",
+            prompt: "(a) Draw a complete, labeled free-body diagram for the ball. Add every force from the bank, assign your positive axes, and show the ball's acceleration.",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "ball",
+              bank: ["F", "T", "N", "w"],
+              // Tension runs from the ball back up the string toward the wall: 17.4 deg from
+              // vertical, tilted toward the wall (up and to the left, matching figP21-73). The
+              // standard +/-5 deg matters here: a straight-up arrow is only 17.4 deg away, and
+              // "the tension lies along the string" is the whole point of the problem.
+              forces: [
+                { type: "T", dir: [-0.299, 0.954], angleTol: 5 },
+                { type: "F", dir: [1, 0], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
+              ],
+              accel: { none: true },   // the ball hangs in equilibrium
+            },
+          },
+          { id: "hw1_p9_m", prompt: "(b) Find the magnitude of the electric field in the room.", answerType: "numeric", unit: "N/C" },
+          { id: "hw1_p9_d", prompt: "(c) Find the direction of the electric field in the room. Justify your answer, being careful about the sign of the ball's charge.", answerType: "text" },
         ],
       },
       // 21.87 — symbolic "electric projectile", then numbers, then the sketch
@@ -333,7 +433,7 @@ export const HOMEWORKS_PHYSICS2 = [
                   {
                     curve: "path", minPoints: 3, shape: "curveUp",
                     label: "the launch point, the lowest point, and the point where it returns to its starting height; shape “Curve ↑”.",
-                    note: "The proton starts at the origin moving downward and to the right, and the electric force on it is upward — so this is projectile motion turned upside down. The lowest point is reached halfway along the horizontal distance you found in part (c).",
+                    note: "The proton starts at the origin moving downward and to the right, and the electric force on it is upward, so this is projectile motion turned upside down. The lowest point is reached halfway along the horizontal distance you found in part (c).",
                   },
                 ],
               },

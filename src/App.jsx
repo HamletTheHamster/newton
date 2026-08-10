@@ -462,6 +462,84 @@ export default function App() {
     } finally { setClassDataLoading(false); }
   };
 
+  // ── Live refresh of instructor-authored content ────────────────────────────
+  // There is no realtime listener (the RTDB REST stream is an EventSource, which
+  // can't carry the X-Firebase-AppCheck header our reads require), so a student's
+  // tab otherwise renders whatever was fetched at page load — an instructor's
+  // module reorder, rename, added item, visibility toggle or due-date change would
+  // never reach an already-open session. This re-pulls ONLY instructor-owned nodes;
+  // per-student state (submissions, drafts, attempt counts) is deliberately left
+  // alone so a poll can never clobber the student's own in-flight work.
+  const refreshingRef = useRef(false);
+  const refreshClassContent = useCallback(async classId => {
+    if (!classId || refreshingRef.current) return;
+    refreshingRef.current = true;
+    try {
+      const [modulesData, moduleConfigData, pagesData, uploadsData, customQuizzesData,
+             datesData, hwSettingsData, annsData, gradeOverridesData, syllabusData] = await Promise.all([
+        fbGet(classPath(classId, 'modules')).catch(() => undefined),
+        fbGet(classPath(classId, 'moduleConfig')).catch(() => undefined),
+        fbGet(classPath(classId, 'pages')).catch(() => undefined),
+        fbGet(classPath(classId, 'uploads')).catch(() => undefined),
+        fbGet(classPath(classId, 'customQuizzes')).catch(() => undefined),
+        fbGet(classPath(classId, 'dueDates')).catch(() => undefined),
+        fbGet(classPath(classId, 'homeworkSettings')).catch(() => undefined),
+        fbGet(classPath(classId, 'announcements')).catch(() => undefined),
+        fbGet(classPath(classId, 'gradeOverrides')).catch(() => undefined),
+        fbGet(classPath(classId, 'syllabus')).catch(() => undefined),
+      ]);
+      // `undefined` = the fetch failed; skip that node rather than blanking it.
+      // `null` = the node genuinely doesn't exist → normalize to empty, same as loadClassData.
+      const patch = {};
+      const take = (data, setter, key, normalize) => {
+        if (data === undefined) return;
+        const val = normalize(data);
+        if (val === undefined) return;
+        setter(val);
+        patch[key] = val;
+      };
+      const obj = d => (d && typeof d === 'object') ? d : {};
+      // Only adopt `modules` when RTDB really returned an array — a missing node means
+      // "not seeded yet", which is loadClassData's job (seeding here would race it).
+      take(modulesData, setModules, 'modules', d => Array.isArray(d) ? d : undefined);
+      take(moduleConfigData, setModuleConfig, 'moduleConfig', obj);
+      take(pagesData, setPages, 'pages', obj);
+      take(uploadsData, setUploads, 'uploads', obj);
+      take(customQuizzesData, setCustomQuizzes, 'customQuizzes', obj);
+      take(datesData, setDueDates, 'dueDates', obj);
+      take(hwSettingsData, setHomeworkSettings, 'homeworkSettings', obj);
+      take(annsData, setAnnouncements, 'announcements', obj);
+      take(gradeOverridesData, setGradeOverrides, 'gradeOverrides', obj);
+      take(syllabusData, setSyllabus, 'syllabus', d => (d && typeof d === 'object') ? d : null);
+      if (Object.keys(patch).length) {
+        setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), ...patch } }));
+      }
+    } catch (e) {
+      console.warn("Content refresh failed:", e?.message || e);
+    } finally {
+      refreshingRef.current = false;
+    }
+  }, []);
+
+  // Student portal only. The instructor's own edits are optimistic (state is set
+  // before the PUT resolves), so polling there could momentarily revert a change
+  // that is still in flight.
+  const studentPortalActive = screen === "student-portal" && !!loggedInStudent && !!currentClassId;
+  useEffect(() => {
+    if (!studentPortalActive) return;
+    const cid = currentClassId;
+    const pull = () => { if (document.visibilityState === "visible") refreshClassContent(cid); };
+    pull();
+    const timer = setInterval(pull, 60000);
+    document.addEventListener("visibilitychange", pull);
+    window.addEventListener("focus", pull);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", pull);
+      window.removeEventListener("focus", pull);
+    };
+  }, [studentPortalActive, currentClassId, refreshClassContent]);
+
   // ── Scroll / focus ──────────────────────────────────────────────────────────
   const doScroll = useCallback(() => { const el = chatRef.current; if (!el) return; el.scrollTop = el.scrollHeight - el.clientHeight; }, []);
   useLayoutEffect(() => { doScroll(); }, [messages]);
@@ -508,7 +586,7 @@ export default function App() {
 
   // ── Persist functions ──────────────────────────────────────────────────────
   const requireClass = () => {
-    if (!currentClassId) throw new Error("No class selected — cannot save.");
+    if (!currentClassId) throw new Error("No class selected, so nothing can be saved.");
     return currentClassId;
   };
   const updateClassCache = (classId, key, value) => {
@@ -1037,7 +1115,7 @@ export default function App() {
     setQuizDone(false); setInput(""); setPendingFile(null); setBusy(false); setShowLeaveConfirm(false); setSubSaveError(false); setPendingSub(null);
     const late = isLate(quiz.dueDate);
     setMessages([
-      { id: 0, type: "system", text: (isPractice ? "Practice Mode — this run will not be submitted for a grade\n\n" : "") + "📚 " + quiz.title + "  •  " + (loggedInStudent.altName || loggedInStudent.fullName) + (late && !isPractice ? "\n\n⚠️ This quiz is past the due date. Your score will be halved." : "") },
+      { id: 0, type: "system", text: (isPractice ? "Practice Mode: this run will not be submitted for a grade\n\n" : "") + "📚 " + quiz.title + "  •  " + (loggedInStudent.altName || loggedInStudent.fullName) + (late && !isPractice ? "\n\n⚠️ This quiz is past the due date. Your score will be halved." : "") },
       { id: 1, type: "question", q: quiz.questions[0], num: 1, total: quiz.questions.length, pts: ptsPer(quiz.questions.length)[0] },
     ]);
     setScreen("quiz");
@@ -1069,8 +1147,8 @@ export default function App() {
     // Per-question replies (`yesReply`/`noReply`); the fallbacks are the original textbook-access
     // wording, so Physics 1's q1 reads exactly as before.
     const reply = answer
-      ? (q.yesReply || "Great — glad you're all set! Make sure to keep it handy throughout the semester.")
-      : (q.noReply || "No worries — please contact your instructor as soon as possible to get access sorted out.");
+      ? (q.yesReply || "Great, glad you're all set! Make sure to keep it handy throughout the semester.")
+      : (q.noReply || "No worries. Please contact your instructor as soon as possible to get access sorted out.");
     const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
     const newMsgs = [...messages, { id: Date.now(), type: "student", text: answer ? "Yes" : "No" }, { id: Date.now() + 1, type: "tutor", text: "✅ " + reply, correct: true }];
     await advanceOrFinish(activeQuiz, nScores, newMsgs, qIdx + 1); setBusy(false);
@@ -1088,7 +1166,7 @@ export default function App() {
     const newMsgs = [
       ...messages,
       { id: Date.now(), type: "student", text: ans },
-      { id: Date.now() + 1, type: "tutor", text: "✅ " + (q.reply || "Thanks for sharing — noted!"), correct: true },
+      { id: Date.now() + 1, type: "tutor", text: "✅ " + (q.reply || "Thanks for sharing, noted!"), correct: true },
     ];
     await advanceOrFinish(activeQuiz, nScores, newMsgs, qIdx + 1); setBusy(false);
   };
@@ -1108,10 +1186,10 @@ export default function App() {
     } else if (currentAttempt >= 5) {
       const right = (q.options || []).find(o => o.key === q.correct);
       const nScores = [...qScores]; nScores[qIdx] = qPts / 2; setQScores(nScores);
-      const tell = `The correct answer is ${q.correct}${right ? " — " + right.label : ""}. ${q.correctReply || ""}`.trim();
+      const tell = `The correct answer is ${q.correct}${right ? ": " + right.label : ""}. ${q.correctReply || ""}`.trim();
       await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: tell }], qIdx + 1);
     } else {
-      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: q.feedback?.[pick] || "Not quite — think it through once more and try again." }]);
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: q.feedback?.[pick] || "Not quite. Think it through once more and try again." }]);
     }
     setBusy(false);
   };
@@ -1128,7 +1206,7 @@ export default function App() {
       nScores[qIdx] = qPts; setQScores(nScores);
       await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: "✅ Exactly right! The dot product yields a scalar, while the cross product yields a vector.", correct: true }], qIdx + 1);
     } else {
-      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: blanks[0] === "vector" && blanks[1] === "scalar" ? "Those are swapped — think about which operation gives a single number (like work = F·d) and which gives a new vector (like torque = r×F)." : "Not quite. Consider: work is calculated using a dot product and gives a single number — what does that tell you about the type of quantity it produces?" }]);
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: blanks[0] === "vector" && blanks[1] === "scalar" ? "Those are swapped. Think about which operation gives a single number (like work = F·d) and which gives a new vector (like torque = r×F)." : "Not quite. Consider: work is calculated using a dot product and gives a single number. What does that tell you about the type of quantity it produces?" }]);
     }
     setBusy(false);
   };
@@ -1178,7 +1256,7 @@ export default function App() {
     } catch (err) {
       // Grader unreachable/errored — surface the reason and roll back the attempt so it isn't wasted.
       setAttemptCount(attemptCount);
-      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: "⚠️ " + (err?.message || "Error evaluating your answer.") + " Your attempt was not counted — please try again." }]);
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: "⚠️ " + (err?.message || "Error evaluating your answer.") + " Your attempt was not counted, so please try again." }]);
     }
     setBusy(false);
   };
@@ -1570,7 +1648,7 @@ export default function App() {
                       onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAnswer(); } }}
                       onPaste={e => { e.preventDefault(); setPasteWarning(true); setTimeout(() => setPasteWarning(false), 3000); }}
                     />
-                    {pasteWarning && <p style={{ color: "#f87171", fontSize: 12, margin: 0, textAlign: "center" }}>⚠️ Pasting is not allowed — please type your answer.</p>}
+                    {pasteWarning && <p style={{ color: "#f87171", fontSize: 12, margin: 0, textAlign: "center" }}>⚠️ Pasting is not allowed. Please type your answer.</p>}
                   </div>
                   <button onClick={sendAnswer} disabled={busy || pendingFile?.readability === "checking" || pendingFile?.readability?.status === "fail" || (isImageQ ? (!pendingFile && !input.trim()) : !input.trim())} style={{ ...s.btnPri, width: "auto", padding: "0 20px", alignSelf: "stretch", opacity: (busy || pendingFile?.readability === "checking" || pendingFile?.readability?.status === "fail" || (isImageQ ? (!pendingFile && !input.trim()) : !input.trim())) ? 0.4 : 1 }}>Send</button>
                 </div>
@@ -1640,7 +1718,7 @@ export default function App() {
             <CustomSelect
               value={currentClassId || ""}
               onChange={v => { if (v) switchToClass(v); }}
-              placeholder="— Select a class —"
+              placeholder="Select a class"
               options={Object.entries(classes).sort((a, b) => (a[1]?.metadata?.name || "").localeCompare(b[1]?.metadata?.name || "")).map(([cid, c]) => ({
                 value: cid,
                 label: (c?.metadata?.name || cid) + (c?.metadata?.active === false ? " (inactive)" : "")
@@ -1648,7 +1726,7 @@ export default function App() {
               style={{ marginTop: 4 }}
             />
           ) : (
-            <span style={{ ...s.muted, fontSize: 13 }}>No classes yet — create one in Settings.</span>
+            <span style={{ ...s.muted, fontSize: 13 }}>No classes yet. Create one in Settings.</span>
           )}
           {classDataLoading && <span style={{ ...s.muted, fontSize: 12 }}>Loading class data…</span>}
           <SyncBadge status={syncStatus} label={syncLabel} error={syncError} />
@@ -1785,7 +1863,7 @@ export default function App() {
                       <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Remove Student</h3>
                       <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 4px" }}>{removeStudent.fullName}</p>
                       <p style={{ color: MUTED, fontFamily: "monospace", fontSize: 13, margin: "0 0 16px" }}>ID: {removeStudent.studentId}</p>
-                      <p style={{ ...s.muted, fontSize: 13, marginBottom: 16 }}>This permanently deletes everything attached to them <strong>in this class</strong> — submissions, grades, overrides, homework progress, and uploaded work. Their data in any other class is untouched. This cannot be undone.</p>
+                      <p style={{ ...s.muted, fontSize: 13, marginBottom: 16 }}>This permanently deletes everything attached to them <strong>in this class</strong>: submissions, grades, overrides, homework progress, and uploaded work. Their data in any other class is untouched. This cannot be undone.</p>
                       <input type="password" style={{ ...s.input, marginBottom: 8 }} placeholder="Instructor password" value={removePw} onChange={e => setRemovePw(e.target.value)} autoFocus />
                       {removeErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 8px" }}>{removeErr}</p>}
                       <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
@@ -1830,7 +1908,7 @@ export default function App() {
                           </div>
                         ) : (
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ color: stu.email ? MUTED : isLight ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.2)", fontSize: 13 }}>{stu.email || "—"}</span>
+                            <span style={{ color: stu.email ? MUTED : isLight ? "rgba(0,0,0,0.2)" : "rgba(255,255,255,0.2)", fontSize: 13 }}>{stu.email || "-"}</span>
                             <button onClick={() => { setEditingEmail(stu.studentId); setEmailInput(stu.email || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Edit email">✎</button>
                           </div>
                         )}</td>
@@ -2041,7 +2119,7 @@ export default function App() {
                                   {isCurrent && <span style={{ ...s.badge(TEAL) }}>selected</span>}
                                 </div>
                               )}</td>
-                              <td style={{ padding: "12px 16px", color: MUTED }}>{COURSE_LABELS[m.courseType] || m.courseType || "—"}</td>
+                              <td style={{ padding: "12px 16px", color: MUTED }}>{COURSE_LABELS[m.courseType] || m.courseType || "-"}</td>
                               <td style={{ padding: "12px 16px" }}>
                                 <label style={{ display: "inline-flex", alignItems: "center", gap: 6, cursor: "pointer" }}>
                                   <input type="checkbox" checked={m.active !== false} onChange={e => setClassActive(cid, e.target.checked)} style={{ accentColor: TEAL, width: 16, height: 16 }} />
@@ -2261,7 +2339,7 @@ export default function App() {
                         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                           {SURVEY_QUESTIONS.map(q => (
                             <div key={q.id} style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                              <span style={{ ...s.badge(TEAL), minWidth: 110, textAlign: "center", flexShrink: 0, fontSize: 11 }}>{LIKERT_LABELS[ev.responses[q.id]] || "—"}</span>
+                              <span style={{ ...s.badge(TEAL), minWidth: 110, textAlign: "center", flexShrink: 0, fontSize: 11 }}>{LIKERT_LABELS[ev.responses[q.id]] || "-"}</span>
                               <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>{q.text}</span>
                             </div>
                           ))}

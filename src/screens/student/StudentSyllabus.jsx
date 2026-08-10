@@ -134,7 +134,7 @@ export function StudentSyllabus({ syllabus, showHeader = true }) {
                     </span>
                     <div>
                       <span style={{ color: text, fontSize: 14 }}>{m.title}</span>
-                      {m.author && <span style={{ color: muted, fontSize: 13 }}> — {m.author}</span>}
+                      {m.author && <span style={{ color: muted, fontSize: 13 }}> · {m.author}</span>}
                     </div>
                   </div>
                 ))}

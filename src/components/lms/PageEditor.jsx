@@ -36,7 +36,7 @@ export function PageEditor({ initialTitle = "", initialContent = "", editorLabel
             <label style={s.label}>{contentLabel}</label>
             <textarea
               style={{ ...s.input, height: 320, resize: "vertical", lineHeight: 1.5, fontFamily: "inherit" }}
-              placeholder="Page content — plain text with line breaks. Markdown is not rendered."
+              placeholder="Page content: plain text with line breaks. Markdown is not rendered."
               value={content}
               onChange={e => setContent(e.target.value)}
             />

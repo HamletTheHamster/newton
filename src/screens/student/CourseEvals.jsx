@@ -82,7 +82,7 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
       <div>
         <h2 style={{ color: text, fontWeight: 700, fontSize: 20, margin: "0 0 6px" }}>Course Evaluations</h2>
         <p style={{ ...s.muted, margin: 0, fontSize: 13 }}>
-          Your feedback helps improve this course. All submissions are completely anonymous — your name is never stored with your responses.
+          Your feedback helps improve this course. All submissions are completely anonymous. Your name is never stored with your responses.
         </p>
       </div>
 
@@ -93,7 +93,7 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
           <span style={s.badge("#00828c")}>Always open</span>
         </div>
         <p style={{ ...s.muted, fontSize: 13, margin: "0 0 16px" }}>
-          Share anything — suggestions, concerns, or thoughts. You can submit as many times as you like throughout the semester.
+          Share anything: suggestions, concerns, or thoughts. You can submit as many times as you like throughout the semester.
         </p>
         {quickStatus === "done" ? (
           <p style={{ color: "#4ade80", fontSize: 14, margin: 0 }}>Thank you for your feedback!</p>
@@ -114,7 +114,7 @@ export function CourseEvals({ classId, mergedModules, courseEvals, setCourseEval
               >
                 {quickSubmitting ? "Submitting…" : "Submit Feedback"}
               </button>
-              {quickSubmitted && <span style={{ ...s.muted, fontSize: 12 }}>You've submitted before — feel free to submit again anytime.</span>}
+              {quickSubmitted && <span style={{ ...s.muted, fontSize: 12 }}>You've submitted before. Feel free to submit again anytime.</span>}
             </div>
           </>
         )}

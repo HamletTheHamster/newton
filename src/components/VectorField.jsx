@@ -1,7 +1,8 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState, useEffect, useId } from "react";
 import { useTheme } from "../theme.js";
 import { parseVectorValue } from "../homework.js";
 import { MathText } from "./MathText.jsx";
+import { clockPoint } from "../clock-geometry.js";
 
 // Controlled vector/arrow plotter for homework `answerType: "vector"` items.
 //
@@ -15,7 +16,8 @@ import { MathText } from "./MathText.jsx";
 //
 // Props:
 //   config   — { xMin,xMax,yMin,yMax,xTick,yTick, xLabel?,yLabel?, origin?:[x,y],
-//                vectors:[{id,label,color}], snapDiv?, hideTicks?, guide? }
+//                vectors:[{id,label,color,freeTail?,render?}], snapDiv?, hideTicks?, hideGrid?,
+//                square?, dial?, staticVectors?, guide? }
 //   value    — JSON string (controlled)
 //   onChange — (jsonString) => void
 //   disabled — locked (renders read-only, no toolbar)
@@ -23,11 +25,17 @@ import { MathText } from "./MathText.jsx";
 //   grade    — { pass: { [vectorId]: bool } } from the last graded submission; a step's
 //              checklist tick turns green ONLY for vectors that actually passed, so a
 //              merely-drawn (but ungraded) arrow never looks "correct".
+//
+// `square` gives the plot equal pixel extents on both axes, which is REQUIRED whenever the
+// backdrop has to stay round or angles have to read true (the default 480×320 box stretches a
+// circle into an ellipse). `dial` then draws a clockface behind the arrows:
+//   dial: { radius, labels:[…12 strings, labels[i] belongs to numeral i+1…], labelRadius? }
+// `staticVectors: [{ id, tip, tail?, label?, color? }]` draws faded, ungraded context arrows —
+// how a later part inherits the diagram an earlier one built.
+// `render: "axis"` on a vector entry draws it as an undirected DASHED LINE through the origin
+// instead of an arrow (no handle, no label — only its orientation means anything), graded
+// mod 180° via the key's `mod180` flag.
 const DEFAULT_COLORS = ["#ef4444", "#3b82f6", "#10b981", "#f59e0b", "#a855f7", "#ec4899"];
-const VB_W = 480, VB_H = 320;
-const PAD_L = 46, PAD_R = 14, PAD_T = 14, PAD_B = 38;
-const PLOT_X0 = PAD_L, PLOT_X1 = VB_W - PAD_R, PLOT_Y0 = PAD_T, PLOT_Y1 = VB_H - PAD_B;
-const PLOT_W = PLOT_X1 - PLOT_X0, PLOT_H = PLOT_Y1 - PLOT_Y0;
 
 const fmt = v => String(Math.round(v * 1000) / 1000);
 
@@ -65,6 +73,9 @@ export function htmlSubscripts(str) {
 
 export function VectorField({ config, value, onChange, disabled = false, readOnly = false, grade = null }) {
   const { border, text, muted, isLight } = useTheme();
+  // Unique per instance: the interactive field and its read-only "correct diagram" reveal are on
+  // the page at once, and duplicate SVG ids would make one clipPath win for both.
+  const uid = useId().replace(/:/g, "");
   const { xMin, xMax, yMin, yMax, xTick, yTick, xLabel, yLabel } = config;
   const vectors = config.vectors || [];
   const origin = config.origin || [0, 0];
@@ -76,6 +87,15 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
   if (!activeRef.current && vectors[0]) activeRef.current = vectors[0].id;
   const interactive = !readOnly && !disabled;
   const [hover, setHover] = useState(null); // { x, y } snapped data coords under the cursor
+
+  // A square box (equal px-per-unit on both axes) is what keeps the dial circular and angles
+  // honest; the default wide box stays exactly as it was for every existing vector problem.
+  const square = !!config.square;
+  const VB_W = square ? 380 : 480, VB_H = square ? 380 : 320;
+  const PAD_L = square ? 24 : 46, PAD_R = square ? 24 : 14;
+  const PAD_T = square ? 24 : 14, PAD_B = square ? 24 : 38;
+  const PLOT_X0 = PAD_L, PLOT_X1 = VB_W - PAD_R, PLOT_Y0 = PAD_T, PLOT_Y1 = VB_H - PAD_B;
+  const PLOT_W = PLOT_X1 - PLOT_X0, PLOT_H = PLOT_Y1 - PLOT_Y0;
 
   const sx = x => PLOT_X0 + ((x - xMin) / (xMax - xMin)) * PLOT_W;
   const sy = y => PLOT_Y0 + (1 - (y - yMin) / (yMax - yMin)) * PLOT_H;
@@ -105,6 +125,25 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
   };
 
   const freeTailOf = id => !!vectors.find(c => c.id === id)?.freeTail;
+  const axisOf = id => vectors.find(c => c.id === id)?.render === "axis";
+
+  // An axis piece is placed by ORIENTATION, not by position: the dashed line is pinned through
+  // the origin and rotates to follow the cursor, and a click anywhere commits the angle under it.
+  // So the pointer position is used raw (snapping it would quantize the angle — at the 0.5-unit
+  // grid a click 5 units out only resolves to ~6°, coarser than the 7° tolerance being graded)
+  // and the stored tip is normalized to a fixed radius so the handle always lands in one place.
+  const axisRadiusOf = id => {
+    const v = vectors.find(c => c.id === id);
+    return v?.axisRadius ?? 0.7 * Math.min(Math.abs(xMax - origin[0]), Math.abs(yMax - origin[1]));
+  };
+  const axisTip = (id, rx, ry) => {
+    const ux = rx - origin[0], uy = ry - origin[1];
+    const r = Math.hypot(ux, uy);
+    if (r < 1e-9) return null;                       // dead centre — no direction to read
+    const R = axisRadiusOf(id);
+    const r3 = n => Math.round(n * 1000) / 1000;
+    return [r3(origin[0] + (ux / r) * R), r3(origin[1] + (uy / r) * R)];
+  };
 
   const onDown = e => {
     if (!interactive) return;
@@ -124,7 +163,7 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
     } else if (freeTailOf(id) && sv?.tail && near(sx(tail[0]), sy(tail[1]))) {
       gestureRef.current = { type: "tail", moved: false, startVX: vx, startVY: vy };
     } else {
-      gestureRef.current = { type: "bg", x: snapX(dx(vx)), y: snapY(dy(vy)), moved: false, startVX: vx, startVY: vy };
+      gestureRef.current = { type: "bg", x: snapX(dx(vx)), y: snapY(dy(vy)), rawX: dx(vx), rawY: dy(vy), moved: false, startVX: vx, startVY: vy };
     }
   };
   const onMove = e => {
@@ -132,15 +171,16 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
     const { vx, vy } = toVB(e);
     {
       const inPlot = vx >= PLOT_X0 - 2 && vx <= PLOT_X1 + 2 && vy >= PLOT_Y0 - 2 && vy <= PLOT_Y1 + 2;
-      setHover(inPlot ? { x: snapX(dx(vx)), y: snapY(dy(vy)) } : null);
+      setHover(inPlot ? { x: snapX(dx(vx)), y: snapY(dy(vy)), rawX: dx(vx), rawY: dy(vy) } : null);
     }
     const g = gestureRef.current;
     if (!g) return;
     if (isFrozen(activeRef.current)) { gestureRef.current = null; return; } // piece locked mid-drag → freeze it in place
     if (Math.hypot(vx - g.startVX, vy - g.startVY) > 4) g.moved = true;
     if (g.type === "tip" || g.type === "tail") {
-      const nx = snapX(dx(vx)), ny = snapY(dy(vy));
-      commit(n => { (n.vectors[activeRef.current] || (n.vectors[activeRef.current] = {}))[g.type] = [nx, ny]; });
+      const id = activeRef.current;
+      const nt = axisOf(id) && g.type === "tip" ? axisTip(id, dx(vx), dy(vy)) : [snapX(dx(vx)), snapY(dy(vy))];
+      if (nt) commit(n => { (n.vectors[id] || (n.vectors[id] = {}))[g.type] = nt; });
     }
   };
   const onUp = () => {
@@ -149,7 +189,14 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
     const id = activeRef.current;
     const sv = data.vectors?.[id];
     const setProp = (k, v) => commit(n => { (n.vectors[id] || (n.vectors[id] = {}))[k] = v; });
-    if (g.type === "tip" && !g.moved) {
+    if (axisOf(id)) {
+      // Any click in the plane sets the orientation — including one that started on the handle,
+      // since there is nowhere meaningful to "remove" a rotating line to.
+      if (!g.moved && g.type !== "tail") {
+        const t = axisTip(id, g.rawX ?? dx(g.startVX), g.rawY ?? dy(g.startVY));
+        if (t) setProp("tip", t);
+      }
+    } else if (g.type === "tip" && !g.moved) {
       commit(n => { delete n.vectors[id]; });                                    // click the tip → remove the whole vector
     } else if (g.type === "tail" && !g.moved) {
       if (!sv?.tip) commit(n => { if (n.vectors[id]) delete n.vectors[id].tail; }); // click the tail before the tip is set → undo it
@@ -206,6 +253,30 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
       : Array.isArray(data.vectors?.[step.vector]?.tip) ? "drawn"
       : "empty";
 
+  // An UNDIRECTED dashed line through the origin along the placed direction, extended to the
+  // plot edge both ways — an axis of symmetry rather than a vector. Deliberately JUST the line:
+  // no tip handle and no label, because both would mark the arbitrary spot the student happened
+  // to click, and only the line's orientation carries meaning. A locked (correct) axis turns
+  // green, which is the same "correct pieces go green" signal the other field types use.
+  const AxisLine = ({ ox: axOx, oy: axOy, tx, ty, color, faded, locked, preview }) => {
+    const ux = tx - axOx, uy = ty - axOy;
+    const len = Math.hypot(ux, uy);
+    if (len < 0.5) return null;
+    const span = Math.hypot(PLOT_W, PLOT_H); // long enough to always reach the edge
+    const ex = (ux / len) * span, ey = (uy / len) * span;
+    return (
+      <g opacity={preview ? 0.65 : faded ? 0.5 : 1} pointerEvents="none">
+        <clipPath id={`axclip-${uid}`}>
+          <rect x={PLOT_X0} y={PLOT_Y0} width={PLOT_W} height={PLOT_H} />
+        </clipPath>
+        <g clipPath={`url(#axclip-${uid})`}>
+          <line x1={axOx - ex} y1={axOy - ey} x2={axOx + ex} y2={axOy + ey}
+            stroke={locked ? "#4ade80" : color} strokeWidth={2.5} strokeDasharray="9 6" strokeLinecap="round" />
+        </g>
+      </g>
+    );
+  };
+
   // An arrow from (tailX,tailY) to (tx,ty) in screen space, with a triangular head. When
   // `showTail` is set, a hollow handle marks the (draggable) tail of a free-tail vector.
   const Arrow = ({ tailX, tailY, tx, ty, color, label, faded, showTail, locked }) => {
@@ -223,13 +294,22 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
         <polygon points={`${tx},${ty} ${p1[0]},${p1[1]} ${p2[0]},${p2[1]}`} fill={color} />
         {locked && <circle cx={tx} cy={ty} r={9} fill="none" stroke="#4ade80" strokeWidth={2} />}
         {showTail && <circle cx={tailX} cy={tailY} r={4} fill={svgBg} stroke={color} strokeWidth={2} />}
-        {label && (
-          <text x={tx + 8 * Math.cos(ang)} y={ty + 8 * Math.sin(ang)} fill={color} fontSize={15.5} fontWeight={700}
-            textAnchor={tx >= tailX ? "start" : "end"} dominantBaseline={ty >= tailY ? "hanging" : "auto"}
-            style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
-            {axisLabelTspans(label)}
-          </text>
-        )}
+        {label && (() => {
+          // Park the label just past the tip — but never closer to the tail than LABEL_MIN_R, so
+          // a fan of arrows sharing one origin doesn't pile its short arrows' labels on top of
+          // each other at the centre. Each arrow keeps its own direction, so a pushed-out label
+          // stays in its own sector and still reads as belonging to that arrow.
+          const LABEL_MIN_R = 34;
+          const r = Math.max(len, LABEL_MIN_R) + 8;
+          const lx = tailX + r * Math.cos(ang), ly = tailY + r * Math.sin(ang);
+          return (
+            <text x={lx} y={ly} fill={color} fontSize={15.5} fontWeight={700}
+              textAnchor={lx >= tailX ? "start" : "end"} dominantBaseline={ly >= tailY ? "hanging" : "auto"}
+              style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
+              {axisLabelTspans(label)}
+            </text>
+          );
+        })()}
       </g>
     );
   };
@@ -264,11 +344,35 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
           onPointerLeave={() => setHover(null)}
         >
           {/* gridlines */}
-          {xticks.map(v => <line key={"gx" + v} x1={sx(v)} y1={PLOT_Y0} x2={sx(v)} y2={PLOT_Y1} stroke={gridColor} strokeWidth={1} />)}
-          {yticks.map(v => <line key={"gy" + v} x1={PLOT_X0} y1={sy(v)} x2={PLOT_X1} y2={sy(v)} stroke={gridColor} strokeWidth={1} />)}
+          {!config.hideGrid && xticks.map(v => <line key={"gx" + v} x1={sx(v)} y1={PLOT_Y0} x2={sx(v)} y2={PLOT_Y1} stroke={gridColor} strokeWidth={1} />)}
+          {!config.hideGrid && yticks.map(v => <line key={"gy" + v} x1={PLOT_X0} y1={sy(v)} x2={PLOT_X1} y2={sy(v)} stroke={gridColor} strokeWidth={1} />)}
           {/* axes through the origin (or the plot edge if 0 is out of range) */}
-          <line x1={zeroX ? sx(0) : PLOT_X0} y1={PLOT_Y0} x2={zeroX ? sx(0) : PLOT_X0} y2={PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
-          <line x1={PLOT_X0} y1={zeroY ? sy(0) : PLOT_Y1} x2={PLOT_X1} y2={zeroY ? sy(0) : PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />
+          {!config.hideGrid && <line x1={zeroX ? sx(0) : PLOT_X0} y1={PLOT_Y0} x2={zeroX ? sx(0) : PLOT_X0} y2={PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />}
+          {!config.hideGrid && <line x1={PLOT_X0} y1={zeroY ? sy(0) : PLOT_Y1} x2={PLOT_X1} y2={zeroY ? sy(0) : PLOT_Y1} stroke={axisColor} strokeWidth={1.5} />}
+
+          {/* Clockface backdrop: the dial, a charge dot on each numeral, and its charge label. */}
+          {config.dial && (() => {
+            const R = config.dial.radius;
+            const labelR = config.dial.labelRadius ?? R * 1.15;
+            const dialColor = isLight ? "#94a3b8" : "#71717a";
+            return (
+              <g pointerEvents="none">
+                <circle cx={sx(origin[0])} cy={sy(origin[1])} r={Math.abs(sx(R) - sx(0))} fill="none" stroke={dialColor} strokeWidth={2} />
+                {(config.dial.labels || []).map((lab, i) => {
+                  const n = i + 1;                            // labels[i] belongs to numeral i+1
+                  const [px, py] = clockPoint(n, R);
+                  const [lx, ly] = clockPoint(n, labelR);
+                  return (
+                    <g key={n}>
+                      <circle cx={sx(px)} cy={sy(py)} r={3.5} fill={dialColor} />
+                      <text x={sx(lx)} y={sy(ly)} fill={text} fontSize={13.5} fontWeight={600}
+                        textAnchor="middle" dominantBaseline="middle">{axisLabelTspans(lab)}</text>
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })()}
           {/* tick labels (hidden for scale-free diagrams like FBDs) */}
           {!config.hideTicks && xticks.map(v => <text key={"tx" + v} x={sx(v)} y={PLOT_Y1 + 17} fill={muted} fontSize={13} textAnchor="middle">{fmt(v)}</text>)}
           {!config.hideTicks && yticks.map(v => <text key={"ty" + v} x={PLOT_X0 - 6} y={sy(v) + 4} fill={muted} fontSize={13} textAnchor="end">{fmt(v)}</text>)}
@@ -278,6 +382,15 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
 
           {/* origin dot */}
           <circle cx={ox} cy={oy} r={3} fill={axisColor} />
+
+          {/* Non-interactive context arrows carried over from an earlier part — drawn faded and
+              never graded, so a later part can be answered against the diagram already built. */}
+          {(config.staticVectors || []).map(v => (
+            <Arrow key={"static-" + v.id}
+              tailX={sx((v.tail || origin)[0])} tailY={sy((v.tail || origin)[1])}
+              tx={sx(v.tip[0])} ty={sy(v.tip[1])}
+              color={v.color || axisColor} label={v.label} faded />
+          ))}
 
           {/* vectors */}
           {vectors.map((c, i) => {
@@ -292,17 +405,34 @@ export function VectorField({ config, value, onChange, disabled = false, readOnl
                 : null;
             }
             const tail = sv.tail || origin;
+            if (c.render === "axis") {
+              // The committed line always stays drawn (with its handle and label) so a click has
+              // a visible result; the rotating preview is layered on top while hovering.
+              return <AxisLine key={c.id} ox={ox} oy={oy} tx={sx(sv.tip[0])} ty={sy(sv.tip[1])} color={color} faded={faded} locked={interactive && isFrozen(c.id)} />;
+            }
             return <Arrow key={c.id} tailX={sx(tail[0])} tailY={sy(tail[1])} tx={sx(sv.tip[0])} ty={sy(sv.tip[1])} color={color} label={c.label} faded={faded} showTail={!!c.freeTail} locked={interactive && isFrozen(c.id)} />;
           })}
 
-          {interactive && !data.vectors?.[activeId]?.tip && !hover && (
-            <text x={(PLOT_X0 + PLOT_X1) / 2} y={(PLOT_Y0 + PLOT_Y1) / 2} fill={muted} fontSize={14} textAnchor="middle">
+          {/* An axis piece needs no prompt: the line appears and starts rotating the moment the
+              cursor enters the plane, which explains itself — and a caption here would sit on top
+              of whatever context arrows the question carried over. */}
+          {interactive && !axisOf(activeId) && !data.vectors?.[activeId]?.tip && !hover && (
+            <text x={(PLOT_X0 + PLOT_X1) / 2} y={(PLOT_Y0 + PLOT_Y1) / 2 + (config.dial ? 30 : 0)} fill={muted} fontSize={14} textAnchor="middle">
               {freeTailOf(activeId) ? (data.vectors?.[activeId]?.tail ? "Click to place the tip (the arrow's head)" : "Click to place the tail") : "Click to draw the arrow tip"}
             </text>
           )}
 
+          {/* Axis pieces: a dashed line pinned through the origin that rotates with the cursor —
+              click anywhere to commit the orientation under it. */}
+          {interactive && hover && axisOf(activeId) && !isFrozen(activeId) && (() => {
+            const t = axisTip(activeId, hover.rawX, hover.rawY);
+            if (!t) return null;
+            const c = vectors.find(v => v.id === activeId);
+            return <AxisLine ox={ox} oy={oy} tx={sx(t[0])} ty={sy(t[1])} color={colorOf(c, vectors.indexOf(c))} preview />;
+          })()}
+
           {/* Hover crosshair + coordinate readout — the snapped point the next click places. */}
-          {interactive && hover && (() => {
+          {interactive && hover && !axisOf(activeId) && (() => {
             const px = sx(hover.x), py = sy(hover.y);
             const rightSide = px > (PLOT_X0 + PLOT_X1) / 2;
             const topSide = py < PLOT_Y0 + 26;

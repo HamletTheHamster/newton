@@ -16,9 +16,16 @@ import { formatNumeric, parseJsonReply } from "./grading-core.js";
 // Re-export the shared pure grading helpers so existing importers of homework.js keep working.
 // The actual numeric/text/math grading now happens server-side (netlify/functions/grade.js) so the
 // answer key is never shipped to the client; these primitives stay available for any other caller.
-export { parseNumber, sigFigsOf, numericMatch, toSigFigString } from "./grading-core.js";
+export { parseNumber, sigFigsOf, numericMatch, toSigFigString, toSciString, normalizeSciNotation } from "./grading-core.js";
 
 const HW_MODEL = "claude-opus-4-8";
+
+// Default angular tolerance (degrees) for a drawn direction, used by gradeVectors and gradeFBD
+// when a key omits `angleTol`. ±5° is a 10°-wide acceptance window, which is comfortably
+// achievable: every field snaps its tips to a lattice fine enough that the exact key direction
+// is reachable (see the per-config check in the phy115/phy215 docs). Tight tolerances are how
+// diagrams are kept clean - the student draws it right rather than the app correcting it after.
+const DEFAULT_ANGLE_TOL = 5;
 
 // Penalty applied to a homework score when its written-work integrity flag is upheld.
 export const WORK_INTEGRITY_PENALTY = 0.5;
@@ -143,9 +150,9 @@ export function graphHint(reason) {
   if (!reason) return "Re-examine your sketch.";
   const c = reason.curve;
   switch (reason.type) {
-    case "missing": return `Your “${c}” curve needs at least two points — sketch it across the time axis.`;
+    case "missing": return `Your “${c}” curve needs at least two points. Sketch it across the time axis.`;
     case "range":   return `Extend your “${c}” curve so it spans the full time axis.`;
-    case "points":  return `Your “${c}” curve doesn’t pass through the expected values — check where it should start and where the two motions meet.`;
+    case "points":  return `Your “${c}” curve doesn’t pass through the expected values. Check where it should start and where the two motions meet.`;
     case "shape":   return `Re-examine the shape of your “${c}” curve: does its slope stay constant, or change as time goes on?`;
     default:        return "Re-examine your sketch.";
   }
@@ -184,6 +191,44 @@ export function vectorHasInput(raw) {
 }
 
 // Build a renderable value object from a vector config's grading key (the "correct diagram").
+// Opt-in via `snapMagnitude: true` on a vector config: once an arrow is drawn in the right
+// DIRECTION, rescale it to the key's length along the direction the student drew. Their angle is
+// left exactly as placed — only the length is corrected.
+//
+// This is how a direction-graded question can still teach magnitude. The clock problem is the
+// motivating case: what makes the pairing argument visible is that $\vec E_{12}$ is twice
+// $\vec E_6$, and that all six pair-nets come out equal — but grading twelve lengths by hand
+// would be punishing, and the prompt deliberately says nothing about magnitude. Snapping shows
+// the student the right picture at the moment they earn it instead of testing them on it.
+//
+// Only meaningful for keys WITHOUT `magTol` (where passing means the direction matched); with a
+// magnitude tolerance the grade already depends on the length the student chose.
+export function snapVectorMagnitudes(raw, vector, pass) {
+  if (!vector?.snapMagnitude || !pass) return raw;
+  const data = parseVectorValue(raw);
+  const origin = vector.origin || [0, 0];
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const next = { ...data, vectors: { ...(data.vectors || {}) } };
+  let changed = false;
+  for (const v of vector.vectors || []) {
+    if (!pass[v.id]) continue;
+    const key = vector.key?.[v.id];
+    const sv = next.vectors[v.id];
+    if (!key || !Array.isArray(key.tip) || !sv || !Array.isArray(sv.tip)) continue;
+    const tail = Array.isArray(sv.tail) ? sv.tail : origin;
+    const kTail = Array.isArray(key.tail) ? key.tail : origin;
+    const sdx = sv.tip[0] - tail[0], sdy = sv.tip[1] - tail[1];
+    const sMag = Math.hypot(sdx, sdy);
+    const kMag = Math.hypot(key.tip[0] - kTail[0], key.tip[1] - kTail[1]);
+    if (sMag < 1e-9 || kMag < 1e-9) continue;
+    const tip = [r3(tail[0] + (sdx / sMag) * kMag), r3(tail[1] + (sdy / sMag) * kMag)];
+    if (tip[0] === sv.tip[0] && tip[1] === sv.tip[1]) continue;
+    next.vectors[v.id] = { ...sv, tip };
+    changed = true;
+  }
+  return changed ? JSON.stringify(next) : raw;
+}
+
 export function keyToVectorValue(vector) {
   const vectors = {};
   for (const v of vector?.vectors || []) {
@@ -217,8 +262,11 @@ export function gradeVectors(raw, vector) {
     const sMag = Math.hypot(sdx, sdy), kMag = Math.hypot(kdx, kdy);
     if (sMag < 1e-9 || kMag < 1e-9) { reasons.push({ vector: v.label, type: "missing" }); continue; }
     const cos = (sdx * kdx + sdy * kdy) / (sMag * kMag);
-    const angDiff = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
-    if (angDiff > (key.angleTol ?? 15)) { reasons.push({ vector: v.label, type: "direction" }); continue; }
+    let angDiff = (Math.acos(Math.max(-1, Math.min(1, cos))) * 180) / Math.PI;
+    // `mod180` pieces are UNDIRECTED — an axis of symmetry is the same line drawn either way,
+    // so a 180° flip must not count as an error.
+    if (key.mod180) angDiff = Math.min(angDiff, 180 - angDiff);
+    if (angDiff > (key.angleTol ?? DEFAULT_ANGLE_TOL)) { reasons.push({ vector: v.label, type: "direction" }); continue; }
     if (key.magTol != null && Math.abs(sMag - kMag) > key.magTol * kMag) {
       reasons.push({ vector: v.label, type: "magnitude" }); continue;
     }
@@ -232,7 +280,7 @@ export function vectorHint(reason) {
   if (!reason) return "Re-examine your vectors.";
   const v = reason.vector;
   switch (reason.type) {
-    case "missing":   return `Draw the “${v}” vector — click in the plane to place its arrow tip.`;
+    case "missing":   return `Draw the “${v}” vector. Click in the plane to place its arrow tip.`;
     case "direction": return `Re-check the direction of “${v}”: which quadrant should it point into, and at what angle?`;
     case "magnitude": return `Re-check the length of “${v}”: its components set how far its tip sits from the origin.`;
     default:          return "Re-examine your vectors.";
@@ -304,7 +352,7 @@ export function gradeFBD(raw, fbd) {
   const matched = new Array(keyForces.length).fill(false);
   const prefillLeft = (fbd?.prefill || []).map(p => ({ ...p })); // app-supplied forces satisfy their slot first
   for (const kf of keyForces) {
-    const pi = prefillLeft.findIndex(p => p.type === kf.type && _angleBetween(p.dir, kf.dir) <= (kf.angleTol ?? 18));
+    const pi = prefillLeft.findIndex(p => p.type === kf.type && _angleBetween(p.dir, kf.dir) <= (kf.angleTol ?? DEFAULT_ANGLE_TOL));
     if (pi >= 0) { matched[kf._i] = true; prefillLeft.splice(pi, 1); }
   }
   const usedStudent = new Set();
@@ -314,7 +362,7 @@ export function gradeFBD(raw, fbd) {
     for (const sf of studentForces) {
       if (usedStudent.has(sf.id) || sf.type !== kf.type) continue;
       const a = _angleBetween(sf.dir, kf.dir);
-      if (a <= (kf.angleTol ?? 18) && a < bestAng) { best = sf; bestAng = a; }
+      if (a <= (kf.angleTol ?? DEFAULT_ANGLE_TOL) && a < bestAng) { best = sf; bestAng = a; }
     }
     if (best) { matched[kf._i] = true; usedStudent.add(best.id); pass[best.id] = true; }
     else reasons.push({ type: "missing-force", forceType: kf.type });
@@ -334,7 +382,7 @@ export function gradeFBD(raw, fbd) {
   } else if (fbd?.accel?.dir) {
     const a = data.accel;
     accelOk = !!(a && Array.isArray(a.tip) && Array.isArray(a.tail) &&
-      _angleBetween(_sub(a.tip, a.tail), fbd.accel.dir) <= (fbd.accel.angleTol ?? 20));
+      _angleBetween(_sub(a.tip, a.tail), fbd.accel.dir) <= (fbd.accel.angleTol ?? DEFAULT_ANGLE_TOL));
     if (!accelOk) reasons.push({ type: "accel" });
   }
   pass._accel = accelOk;
@@ -350,7 +398,7 @@ export function keyToFBDValue(fbd) {
   // Skip forces that the field draws itself from `prefill` (so the reveal doesn't double them).
   const prefillLeft = (fbd?.prefill || []).map(p => ({ ...p }));
   for (const k of fbd?.forces || []) {
-    const pi = prefillLeft.findIndex(p => p.type === k.type && _angleBetween(p.dir, k.dir) <= (k.angleTol ?? 18));
+    const pi = prefillLeft.findIndex(p => p.type === k.type && _angleBetween(p.dir, k.dir) <= (k.angleTol ?? DEFAULT_ANGLE_TOL));
     if (pi >= 0) { prefillLeft.splice(pi, 1); continue; }
     forces["k" + i++] = { type: k.type, tip: [k.dir[0], k.dir[1]] };
   }
@@ -368,7 +416,7 @@ export function keyToFBDValue(fbd) {
 export function fbdHint(reason) {
   if (!reason) return "Re-examine your free-body diagram.";
   switch (reason.type) {
-    case "missing-force": return "You're missing at least one force. Go through every object touching the body — surfaces it rests against or pushes on, ropes or cords, applied pushes/pulls — and don't forget gravity (the weight). Each contact is a force.";
+    case "missing-force": return "You're missing at least one force. Go through every object touching the body: surfaces it rests against or pushes on, ropes or cords, applied pushes/pulls. And don't forget gravity (the weight). Each contact is a force.";
     case "extra-force":   return "You've drawn a force that doesn't belong. Every force on the body must have a physical source actually touching it (or be gravity). If you can't name what's pushing or pulling, remove that arrow.";
     case "accel":         return "Re-check your acceleration arrow (the one off to the side). Which way is the body's velocity changing? If the body isn't accelerating, mark “no acceleration (equilibrium)” instead of drawing an arrow.";
     default:              return "Re-examine your free-body diagram.";
@@ -631,30 +679,30 @@ export async function evaluateHomeworkAnswer({ item, hwId, studentAnswer, attemp
     // Deterministic grade — no Claude call needed. `_gradePass` lets the runner green only the
     // curves that actually passed (so a drawn-but-unverified curve never looks "correct").
     const res = gradeGraph(studentAnswer, item.graph);
-    if (res.correct) return { correct: true, message: "✓ Correct — your sketch matches.", _gradePass: res.pass };
+    if (res.correct) return { correct: true, message: "✓ Correct. Your sketch matches.", _gradePass: res.pass };
     if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct sketch.", _gradePass: res.pass };
     if (phase === "hint") return { correct: false, message: "💡 " + graphHint(res.reasons[0]), _gradePass: res.pass };
-    return { correct: false, message: "Not quite — review the points your curves pass through and their shape, then try again.", _gradePass: res.pass };
+    return { correct: false, message: "Not quite. Review the points your curves pass through and their shape, then try again.", _gradePass: res.pass };
   }
 
   if (item.answerType === "vector") {
     // Deterministic grade — no Claude call needed. `_gradePass` lets the runner green only the
     // vectors that actually passed (so a drawn-but-unverified arrow never looks "correct").
     const res = gradeVectors(studentAnswer, item.vector);
-    if (res.correct) return { correct: true, message: "✓ Correct — your vectors match.", _gradePass: res.pass };
+    if (res.correct) return { correct: true, message: "✓ Correct. Your vectors match.", _gradePass: res.pass };
     if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct diagram.", _gradePass: res.pass };
     if (phase === "hint") return { correct: false, message: "💡 " + vectorHint(res.reasons[0]), _gradePass: res.pass };
-    return { correct: false, message: "Not quite — re-check the direction (and length) of each vector, then try again.", _gradePass: res.pass };
+    return { correct: false, message: "Not quite. Re-check the direction (and length) of each vector, then try again.", _gradePass: res.pass };
   }
 
   if (item.answerType === "fbd") {
     // Deterministic grade — no Claude call. Graphical items normally live-grade via the runner's
     // onGraphicalChange (no Submit), but mirror the graph/vector branches for completeness.
     const res = gradeFBD(studentAnswer, item.fbd);
-    if (res.correct) return { correct: true, message: "✓ Correct — your free-body diagram matches.", _gradePass: res.pass };
+    if (res.correct) return { correct: true, message: "✓ Correct. Your free-body diagram matches.", _gradePass: res.pass };
     if (phase === "reveal") return { correct: false, revealedAnswer: revealAnswerFor(item), message: "Here is the correct free-body diagram.", _gradePass: res.pass };
     if (phase === "hint") return { correct: false, message: "💡 " + fbdHint(res.reasons[0]), _gradePass: res.pass };
-    return { correct: false, message: "Not quite — re-check that every force on the body is drawn (and no extras), and that your acceleration arrow points the right way.", _gradePass: res.pass };
+    return { correct: false, message: "Not quite. Re-check that every force on the body is drawn (and no extras), and that your acceleration arrow points the right way.", _gradePass: res.pass };
   }
 
   // ── numeric / text / math → server-side grading. The answer key is never shipped to the client;

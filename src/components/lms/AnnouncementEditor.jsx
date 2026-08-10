@@ -34,7 +34,7 @@ export function AnnouncementEditor({ initialTitle = "", initialBody = "", emailC
             <label style={s.label}>Body</label>
             <textarea
               style={{ ...s.input, height: 240, resize: "vertical", lineHeight: 1.5, fontFamily: "inherit" }}
-              placeholder="Announcement body — plain text with line breaks."
+              placeholder="Announcement body: plain text with line breaks."
               value={body}
               onChange={e => setBody(e.target.value)}
             />

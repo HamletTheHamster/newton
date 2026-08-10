@@ -44,8 +44,39 @@ function catmullRom(P) {
   return d;
 }
 
-// Screen-space path for a curve. Straight = polyline; curved = smooth spline, with a
-// single-segment "bow" when only two points exist so concavity reads visually.
+// Least-squares quadratic y = A·u² + B·u + C through screen points, with u = x − mean(x) for
+// conditioning. Returns null when the points can't define one (fewer than 3 distinct x). Fitting
+// in screen space is equivalent to fitting in data space: both axes are affine maps, so a
+// parabola in one is a parabola in the other.
+function quadFit(P) {
+  const n = P.length;
+  if (n < 3 || new Set(P.map(p => p[0])).size < 3) return null;
+  const xm = P.reduce((s, p) => s + p[0], 0) / n;
+  let S1 = 0, S2 = 0, S3 = 0, S4 = 0, Y = 0, UY = 0, U2Y = 0;
+  for (const [x, y] of P) {
+    const u = x - xm, u2 = u * u;
+    S1 += u; S2 += u2; S3 += u2 * u; S4 += u2 * u2;
+    Y += y; UY += u * y; U2Y += u2 * y;
+  }
+  // Normal equations: [S4 S3 S2; S3 S2 S1; S2 S1 n]·[A B C]ᵀ = [U2Y UY Y]ᵀ
+  const det = S4 * (S2 * n - S1 * S1) - S3 * (S3 * n - S1 * S2) + S2 * (S3 * S1 - S2 * S2);
+  if (!Number.isFinite(det) || Math.abs(det) < 1e-9) return null;
+  const A = (U2Y * (S2 * n - S1 * S1) - S3 * (UY * n - Y * S1) + S2 * (UY * S1 - Y * S2)) / det;
+  const B = (S4 * (UY * n - Y * S1) - U2Y * (S3 * n - S1 * S2) + S2 * (S3 * Y - S2 * UY)) / det;
+  const C = (S4 * (S2 * Y - S1 * UY) - S3 * (S3 * Y - S2 * UY) + U2Y * (S3 * S1 - S2 * S2)) / det;
+  return { A, B, C, xm };
+}
+
+// Screen-space path for a curve. Straight = polyline; curved = a TRUE PARABOLA through the
+// points, with a single-segment "bow" when only two points exist so concavity still reads.
+//
+// A quadratic Bézier traces a parabola exactly, so one `Q` renders the fit with no sampling:
+// put the control point at the midpoint x (which makes x linear in t) and at the height where
+// the two end tangents meet. With the usual 3 points this interpolates all of them exactly.
+//
+// This replaced a Catmull-Rom spline, which is NOT parabolic: it clamps the end tangent to the
+// first chord, so a trajectory left its launch point at half the true slope and then dipped too
+// hard in the middle, giving a visibly flat-bottomed curve instead of a parabola.
 function buildPath(P, shape) {
   if (P.length < 2) return "";
   if (shape === "line") return "M" + P.map(p => `${p[0]},${p[1]}`).join(" L");
@@ -55,7 +86,14 @@ function buildPath(P, shape) {
     const off = shape === "curveUp" ? k : -k; // screen-y grows downward
     return `M${a[0]},${a[1]} Q${mx},${my + off} ${b[0]},${b[1]}`;
   }
-  return catmullRom(P);
+  const q = quadFit(P);
+  if (!q) return catmullRom(P);                    // degenerate (e.g. a vertical stack of points)
+  const { A, B, C, xm } = q;
+  const yAt = u => A * u * u + B * u + C;
+  const u0 = P[0][0] - xm, u1 = P[P.length - 1][0] - xm;
+  const uc = (u0 + u1) / 2;
+  const yc = yAt(u0) + (2 * A * u0 + B) * (uc - u0);  // where the end tangents intersect
+  return `M${u0 + xm},${yAt(u0)} Q${uc + xm},${yc} ${u1 + xm},${yAt(u1)}`;
 }
 
 const SHAPES = [
@@ -329,7 +367,7 @@ export function GraphField({ config, value, onChange, disabled = false, readOnly
             })}
           </ol>
           <div style={{ marginTop: 11, paddingTop: 9, borderTop: `1px solid ${border}`, color: muted, fontSize: 12.5, lineHeight: 1.45 }}>
-            Each box turns <span style={{ color: "#4ade80", fontWeight: 700 }}>green ✓</span> and locks the moment that curve is in the right place — no Submit needed.
+            Each box turns <span style={{ color: "#4ade80", fontWeight: 700 }}>green ✓</span> and locks the moment that curve is in the right place. No Submit needed.
           </div>
         </aside>
       )}

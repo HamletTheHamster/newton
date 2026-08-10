@@ -55,8 +55,8 @@ export function ChatMessages({ messages, busy = false }) {
                 <h3 style={{ color: text, fontWeight: 700, fontSize: 22, margin: "0 0 4px" }}>
                   {msg.practiceMode ? "Practice Complete" : "Quiz Complete"}
                 </h3>
-                {msg.practiceMode && <p style={{ color: teal, fontSize: 13, margin: 0 }}>Practice run — no grade recorded.</p>}
-                {!msg.practiceMode && msg.late && <p style={{ color: "#facc15", fontSize: 13, margin: 0 }}>⚠️ Late submission — half credit applied</p>}
+                {msg.practiceMode && <p style={{ color: teal, fontSize: 13, margin: 0 }}>Practice run: no grade recorded.</p>}
+                {!msg.practiceMode && msg.late && <p style={{ color: "#facc15", fontSize: 13, margin: 0 }}>⚠️ Late submission: half credit applied</p>}
               </div>
               <div style={{ textAlign: "center", margin: "20px 0" }}>
                 <span style={{ fontSize: 64, fontWeight: 700, color: scoreColor }}>{msg.final}</span>

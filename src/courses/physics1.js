@@ -34,8 +34,8 @@ const M = (n, topic) => ({
   title: `Lecture ${n} | ${topic}`,
   items: [
     { type: "quiz",     refId: `q${n}` },
-    { type: "file",     title: `Assigned Reading: Ch. ${n} — ${topic}`, uploadId: null },
-    { type: "file",     title: `Lecture ${n} Notes — ${topic}`, uploadId: null },
+    { type: "file",     title: `Assigned Reading: Ch. ${n} · ${topic}`, uploadId: null },
+    { type: "file",     title: `Lecture ${n} Notes: ${topic}`, uploadId: null },
     { type: "homework", refId: `hw${n}` },
   ],
 });
@@ -152,11 +152,11 @@ export const HOMEWORKS_PHYSICS1 = [
         id: "hw1_p4",
         prompt: "Find the magnitude and direction of the vector represented by each of the following pairs of components. Give every direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
         parts: [
-          { id: "hw1_p4a_m", prompt: "(a) $A_x = -8.60\\text{ cm}$, $A_y = 5.20\\text{ cm}$ — magnitude.", answerType: "numeric", unit: "cm" },
+          { id: "hw1_p4a_m", prompt: "(a) $A_x = -8.60\\text{ cm}$, $A_y = 5.20\\text{ cm}$: magnitude.", answerType: "numeric", unit: "cm" },
           { id: "hw1_p4a_d", prompt: "(a) Direction (degrees CCW from $+x$).", answerType: "numeric", unit: "°" },
-          { id: "hw1_p4b_m", prompt: "(b) $A_x = -9.70\\text{ m}$, $A_y = -2.45\\text{ m}$ — magnitude.", answerType: "numeric", unit: "m" },
+          { id: "hw1_p4b_m", prompt: "(b) $A_x = -9.70\\text{ m}$, $A_y = -2.45\\text{ m}$: magnitude.", answerType: "numeric", unit: "m" },
           { id: "hw1_p4b_d", prompt: "(b) Direction (degrees CCW from $+x$).", answerType: "numeric", unit: "°" },
-          { id: "hw1_p4c_m", prompt: "(c) $A_x = 7.75\\text{ km}$, $A_y = -2.70\\text{ km}$ — magnitude.", answerType: "numeric", unit: "km" },
+          { id: "hw1_p4c_m", prompt: "(c) $A_x = 7.75\\text{ km}$, $A_y = -2.70\\text{ km}$: magnitude.", answerType: "numeric", unit: "km" },
           { id: "hw1_p4c_d", prompt: "(c) Direction (degrees CCW from $+x$).", answerType: "numeric", unit: "°" },
         ],
       },
@@ -230,7 +230,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 2.16 — average acceleration over a 10.0-s interval
       {
         id: "hw2_p2",
-        prompt: "An astronaut has left the International Space Station to test a new space scooter. Her partner measures the following velocity changes, each taking place in a $10.0\\text{-s}$ interval. For each case, take the positive direction (the $+x$-axis) to be toward the right. Give each average acceleration **with its algebraic sign** (a negative value means it points toward the left), then state its direction.",
+        prompt: "An astronaut has left the International Space Station to test a new space scooter. Her partner measures the following velocity changes, each taking place in a $10.0\\text{-s}$ interval. For each case, take the positive direction (the $+x$-axis) to be toward the right. Give each average acceleration with its algebraic sign (a negative value means it points toward the left), then state its direction.",
         parts: [
           { id: "hw2_p2a_a", prompt: "(a) At the beginning of the interval she is moving toward the right at $15.0\\text{ m/s}$, and at the end she is moving toward the right at $5.0\\text{ m/s}$. Average acceleration ($+$ = right):", answerType: "numeric", unit: "m/s²" },
           { id: "hw2_p2a_d", prompt: "(a) In which direction does this average acceleration point?", answerType: "text" },
@@ -414,11 +414,11 @@ export const HOMEWORKS_PHYSICS1 = [
                 { id: "a", label: "Δv", color: "#10b981", freeTail: true },
               ],
               key: {
-                v1: { tip: [2.6, -1.8], angleTol: 14, magTol: 0.2 },
-                v2: { tip: [6.4573, 0.5177], angleTol: 14, magTol: 0.2 },
+                v1: { tip: [2.6, -1.8], angleTol: 5, magTol: 0.2 },
+                v2: { tip: [6.4573, 0.5177], angleTol: 5, magTol: 0.2 },
                 // a ∥ Δv = v₂ − v₁ = (3.857, 2.318). Graded by (tip − tail), so the same arrow
                 // works drawn from v₁'s tip to v₂'s tip OR from the origin. Key is the subtraction form.
-                a:  { tail: [2.6, -1.8], tip: [6.4573, 0.5177], angleTol: 16, magTol: 0.25 },
+                a:  { tail: [2.6, -1.8], tip: [6.4573, 0.5177], angleTol: 5, magTol: 0.25 },
               },
               // After the part resolves, auto-play the conceptual payoff: ten ā·(1 s) steps laid
               // tip-to-tail equal Δv and carry v₁ to v₂ (each step = Δv/10, derived from key.a).
@@ -432,7 +432,7 @@ export const HOMEWORKS_PHYSICS1 = [
                 steps: [
                   { vector: "v1", label: "tip at $(v_x, v_y) = (2.6, -1.8)\\text{ m/s}$." },
                   { vector: "v2", label: "tip at the components you found in part (a)." },
-                  { vector: "a", label: "$\\Delta\\vec v = \\vec v_2 - \\vec v_1$ — from the tip of $\\vec v_1$ to the tip of $\\vec v_2$." },
+                  { vector: "a", label: "$\\Delta\\vec v = \\vec v_2 - \\vec v_1$: from the tip of $\\vec v_1$ to the tip of $\\vec v_2$." },
                 ],
               },
             },
@@ -579,12 +579,12 @@ export const HOMEWORKS_PHYSICS1 = [
               // Forces on A: applied push F (right), normal from floor N (up), weight w (down),
               // and the contact (normal) force from B pushing back on A (left).
               forces: [
-                { type: "F", dir: [1, 0], angleTol: 18 },
-                { type: "N", dir: [0, 1], angleTol: 18 },
-                { type: "N", dir: [-1, 0], angleTol: 18 },
-                { type: "w", dir: [0, -1], angleTol: 18 },
+                { type: "F", dir: [1, 0], angleTol: 5 },
+                { type: "N", dir: [0, 1], angleTol: 5 },
+                { type: "N", dir: [-1, 0], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
               ],
-              accel: { dir: [1, 0], angleTol: 20 }, // the crates accelerate to the right
+              accel: { dir: [1, 0], angleTol: 5 }, // the crates accelerate to the right
             },
           },
           {
@@ -597,11 +597,11 @@ export const HOMEWORKS_PHYSICS1 = [
               // Forces on B: normal from floor N (up), weight w (down), and the contact (normal)
               // force from A pushing B forward (right). There is NO applied force directly on B.
               forces: [
-                { type: "N", dir: [0, 1], angleTol: 18 },
-                { type: "N", dir: [1, 0], angleTol: 18 },
-                { type: "w", dir: [0, -1], angleTol: 18 },
+                { type: "N", dir: [0, 1], angleTol: 5 },
+                { type: "N", dir: [1, 0], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
               ],
-              accel: { dir: [1, 0], angleTol: 20 },
+              accel: { dir: [1, 0], angleTol: 5 },
             },
           },
           { id: "hw4_p5a_pairs", prompt: "(a) Among the forces in your two diagrams, identify any third-law action–reaction pair.", answerType: "text" },
@@ -611,11 +611,11 @@ export const HOMEWORKS_PHYSICS1 = [
       // 4.34 — free-body diagram for a box sliding on an accelerating truck bed
       {
         id: "hw4_p6",
-        prompt: "A large box containing your new computer sits on the bed of your pickup truck. You are stopped at a red light. The light turns green and you stomp on the gas and the truck accelerates forward (the $+x$-direction). To your horror, the box starts to slide toward the back of the truck. The bed of the truck is $\\textit{not}$ frictionless.",
+        prompt: "A large box containing your new computer sits on the bed of your pickup truck. You are stopped at a red light. The light turns green and you stomp on the gas and the truck accelerates forward (the $+x$-direction). To your horror, the box starts to slide toward the back of the truck. The bed of the truck is not frictionless.",
         parts: [
           {
             id: "hw4_p6a",
-            prompt: "(a) Draw a complete, labeled free-body diagram for the box. Add every force from the bank, assign your positive axes, and show the direction of the box's acceleration. The friction force $\\vec f$ from the bed has been drawn in for you in $\\textit{blue}$ (you'll study friction next assignment) — notice it points forward, in the direction the truck accelerates, because the bed slides forward beneath the box. Add the rest of the forces yourself.",
+            prompt: "(a) Draw a complete, labeled free-body diagram for the box. Add every force from the bank, assign your positive axes, and show the direction of the box's acceleration. The friction force $\\vec f$ from the bed has been drawn in for you in blue (you'll study friction next assignment). Notice it points forward, in the direction the truck accelerates, because the bed slides forward beneath the box. Add the rest of the forces yourself.",
             answerType: "fbd",
             fbd: {
               xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
@@ -623,17 +623,17 @@ export const HOMEWORKS_PHYSICS1 = [
               // Forces on the box: normal from the bed N (up), weight w (down), and friction f
               // (forward, +x). Friction is prefilled (given) since friction is a HW5 topic.
               forces: [
-                { type: "N", dir: [0, 1], angleTol: 18 },
-                { type: "w", dir: [0, -1], angleTol: 18 },
-                { type: "f", dir: [1, 0], angleTol: 18 },
+                { type: "N", dir: [0, 1], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
+                { type: "f", dir: [1, 0], angleTol: 5 },
               ],
               prefill: [{ type: "f", dir: [1, 0] }], // app draws & locks the friction arrow
-              accel: { dir: [1, 0], angleTol: 20 },   // the box accelerates forward (with the truck, just less)
+              accel: { dir: [1, 0], angleTol: 5 },   // the box accelerates forward (with the truck, just less)
             },
           },
           {
             id: "hw4_p6b",
-            prompt: "(b) Now draw a complete, labeled free-body diagram for the truck. Add every force from the bank, assign your positive axes, and show the direction of the truck's acceleration. Think about everything touching the truck — the road (under its tires) and the box (sitting on the bed) — plus gravity. The two friction forces are drawn in for you in $\\textit{blue}$ (friction is next assignment's topic): the road's forward driving (traction) force on the drive wheels ($+x$), and the box's backward drag on the bed ($-x$, the reaction to the bed pushing the box forward). Add the remaining forces yourself — and remember the box presses $\\textit{down}$ on the bed with its own normal force, separate from the truck's weight.",
+            prompt: "(b) Now draw a complete, labeled free-body diagram for the truck. Add every force from the bank, assign your positive axes, and show the direction of the truck's acceleration. Think about everything touching the truck: the road (under its tires), the box (sitting on the bed), and gravity. The two friction forces are drawn in for you in blue (friction is next assignment's topic): the road's forward driving (traction) force on the drive wheels ($+x$), and the box's backward drag on the bed ($-x$, the reaction to the bed pushing the box forward). Add the remaining forces yourself, and remember the box presses down on the bed with its own normal force, separate from the truck's weight.",
             answerType: "fbd",
             fbd: {
               xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
@@ -643,17 +643,17 @@ export const HOMEWORKS_PHYSICS1 = [
               // and the box's friction on the bed f (backward, -x). Both frictions are prefilled
               // (friction is a HW5 topic). Student supplies w (down), N-road (up), N-box (down).
               forces: [
-                { type: "N", dir: [0, 1], angleTol: 18 },   // road pushes truck up
-                { type: "N", dir: [0, -1], angleTol: 18 },  // box presses down on the bed
-                { type: "w", dir: [0, -1], angleTol: 18 },  // truck's weight
-                { type: "f", dir: [1, 0], angleTol: 18 },   // road traction (prefilled)
-                { type: "f", dir: [-1, 0], angleTol: 18 },  // box drags bed backward (prefilled)
+                { type: "N", dir: [0, 1], angleTol: 5 },   // road pushes truck up
+                { type: "N", dir: [0, -1], angleTol: 5 },  // box presses down on the bed
+                { type: "w", dir: [0, -1], angleTol: 5 },  // truck's weight
+                { type: "f", dir: [1, 0], angleTol: 5 },   // road traction (prefilled)
+                { type: "f", dir: [-1, 0], angleTol: 5 },  // box drags bed backward (prefilled)
               ],
               prefill: [{ type: "f", dir: [1, 0] }, { type: "f", dir: [-1, 0] }],
-              accel: { dir: [1, 0], angleTol: 20 },          // truck accelerates forward
+              accel: { dir: [1, 0], angleTol: 5 },          // truck accelerates forward
             },
           },
-          { id: "hw4_p6c", prompt: "(c) Among the forces in your two diagrams — the box and the truck — identify any third-law action–reaction pairs.", answerType: "text" },
+          { id: "hw4_p6c", prompt: "(c) Among the forces in your two diagrams (the box and the truck), identify any third-law action–reaction pairs.", answerType: "text" },
         ],
       },
       // 4.37 — smallest force for a cart to move along +x (equilibrium of the perpendicular component)
@@ -696,7 +696,7 @@ export const HOMEWORKS_PHYSICS1 = [
           { id: "hw4_p10a", prompt: "(a) What is the magnitude of the system's acceleration? (Box $B$ falls $12.0\\text{ m}$ from rest in $4.00\\text{ s}$.)", answerType: "numeric", unit: "m/s²" },
           {
             id: "hw4_p10b_fbdA",
-            prompt: "(b) Draw a complete, labeled free-body diagram for box $A$ (the upper box). Use the force bank to add every force that acts on it, assign your positive axes, and show the direction of its acceleration. Think about what touches box $A$: the applied force $\\vec F$ pulling up, and the rope below connecting it to box $B$. (There is no surface and no normal force — the boxes hang on the rope.)",
+            prompt: "(b) Draw a complete, labeled free-body diagram for box $A$ (the upper box). Use the force bank to add every force that acts on it, assign your positive axes, and show the direction of its acceleration. Think about what touches box $A$: the applied force $\\vec F$ pulling up, and the rope below connecting it to box $B$. (There is no surface and no normal force; the boxes hang on the rope.)",
             answerType: "fbd",
             fbd: {
               xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
@@ -704,11 +704,11 @@ export const HOMEWORKS_PHYSICS1 = [
               // Forces on A: applied force F up (+y), rope tension T down (-y, rope runs down to B),
               // and weight w down (-y). The system accelerates downward (B descends), so a is down.
               forces: [
-                { type: "F", dir: [0, 1], angleTol: 18 },
-                { type: "T", dir: [0, -1], angleTol: 18 },
-                { type: "w", dir: [0, -1], angleTol: 18 },
+                { type: "F", dir: [0, 1], angleTol: 5 },
+                { type: "T", dir: [0, -1], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
               ],
-              accel: { dir: [0, -1], angleTol: 20 },
+              accel: { dir: [0, -1], angleTol: 5 },
             },
           },
           {
@@ -721,10 +721,10 @@ export const HOMEWORKS_PHYSICS1 = [
               // Forces on B: rope tension T up (+y, rope runs up to A) and weight w down (-y).
               // B descends, so its acceleration is downward.
               forces: [
-                { type: "T", dir: [0, 1], angleTol: 18 },
-                { type: "w", dir: [0, -1], angleTol: 18 },
+                { type: "T", dir: [0, 1], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
               ],
-              accel: { dir: [0, -1], angleTol: 20 },
+              accel: { dir: [0, -1], angleTol: 5 },
             },
           },
           { id: "hw4_p10d", prompt: "(d) What is the mass of box $B$?", answerType: "numeric", unit: "kg" },

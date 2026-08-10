@@ -67,7 +67,7 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }
         </div>
       )}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 12, fontSize: 13, color: muted, alignItems: "center" }}>
-        {!isPlot && <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "—"}</strong>}</span>}
+        {!isPlot && <span>Answer: {row.answerType === "math" ? <MathText>{`$${row.studentAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.studentAnswer || "-"}</strong>}</span>}
         <span style={{ color }}>{correct ? "Correct" : row.status === "revealed" ? "Answer revealed" : "Open"}</span>
         <span>{row.attempts} attempt{row.attempts !== 1 ? "s" : ""}</span>
         {onEditChange ? (
@@ -164,7 +164,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
     <div style={{ position: "fixed", inset: 0, background: bg, display: "flex", flexDirection: "column", zIndex: 60 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: card, borderBottom: cellBorder, padding: "14px 20px", flexShrink: 0 }}>
         <div>
-          <div style={{ color: text, fontWeight: 700, fontSize: 15 }}>{studentName} — {assignmentTitle}</div>
+          <div style={{ color: text, fontWeight: 700, fontSize: 15 }}>{studentName} · {assignmentTitle}</div>
           <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
             Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
             {!resolved.excused && resolved.effective != null && Math.abs(resolved.effective - submission.score) > 0.0001 ? " · adjusted by instructor" : ""}
