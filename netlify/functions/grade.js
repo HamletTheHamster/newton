@@ -14,6 +14,7 @@
 //     attemptNum, phase, fullPrompt, figureBlock?, history?, diagramContext? }
 //   { action: "reveal", courseType, hwId, items: [itemId, …] }
 import { lookupAnswer } from "./_answerKeys.js";
+import { courseLabelFor } from "../../src/course-meta.js";
 import {
   numericMatch,
   formatNumeric,
@@ -23,9 +24,6 @@ import {
 } from "../../src/grading-core.js";
 
 const HW_MODEL = "claude-opus-4-8";
-
-// Minimal course label map (kept local so this function doesn't bundle the whole course content).
-const COURSE_LABELS = { physics1: "Physics 1", physics2: "Physics 2" };
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
@@ -37,7 +35,9 @@ export default async (req) => {
   try { body = JSON.parse(await req.text()); }
   catch { return json({ error: "Invalid JSON body." }, 400); }
 
-  const courseLabel = COURSE_LABELS[body.courseType] || "Physics";
+  // Course label only — ../../src/course-meta.js is content-free, so importing it does NOT pull
+  // the course content (quizzes/modules/homeworks) into this function's bundle.
+  const courseLabel = courseLabelFor(body.courseType);
 
   // ── reveal: return the correct answers for a set of items (used at final submit to populate the
   // gradebook key; post-submission so revealing is fine). Skips ids with no key entry. ──────────
@@ -47,7 +47,7 @@ export default async (req) => {
       const key = lookupAnswer(body.courseType, body.hwId, itemId);
       if (!key) continue;
       out[itemId] = key.answerType === "numeric"
-        ? formatNumeric(key.answer, key.sigFigs, key.unit)
+        ? formatNumeric(key.answer, key.sigFigs, key.unit, key.sci)
         : String(key.answer);
     }
     return json({ answers: out });
@@ -63,7 +63,7 @@ export default async (req) => {
 
   // ── Numeric: deterministic match (server owns the tolerance — never trust a client-sent one) ──
   if (key.answerType === "numeric") {
-    const revealed = formatNumeric(key.answer, key.sigFigs, key.unit);
+    const revealed = formatNumeric(key.answer, key.sigFigs, key.unit, key.sci);
     const correct = numericMatch(studentAnswer, key.answer, key.tolerance ?? DEFAULT_NUMERIC_TOL);
     if (correct) return json({ correct: true, message: "✓ Correct.", revealedAnswer: revealed });
     if (phase === "reveal") {

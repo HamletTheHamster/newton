@@ -59,11 +59,12 @@ export function Modules({
 
   // Add-item flow state (one module's add bar active at a time)
   const [addingTo, setAddingTo] = useState(null);    // moduleId
-  const [addType, setAddType] = useState(null);      // "quiz" | "reading" | "notes" | "link" | "file"
+  const [addType, setAddType] = useState(null);      // "quiz" | "homework" | "reading" | "notes" | "link" | "file"
   const [addTitle, setAddTitle] = useState("");
   const [addUrl, setAddUrl] = useState("");
   const [addFile, setAddFile] = useState(null);
   const [addQuizPick, setAddQuizPick] = useState("");
+  const [addHwPick, setAddHwPick] = useState("");
   const [addProgress, setAddProgress] = useState(0);
   const [addBusy, setAddBusy] = useState(false);
   const [addErr, setAddErr] = useState("");
@@ -96,7 +97,7 @@ export function Modules({
   const resetAddState = () => {
     setAddingTo(null); setAddType(null);
     setAddTitle(""); setAddUrl(""); setAddFile(null);
-    setAddQuizPick(""); setAddProgress(0); setAddBusy(false); setAddErr("");
+    setAddQuizPick(""); setAddHwPick(""); setAddProgress(0); setAddBusy(false); setAddErr("");
   };
 
   useEffect(() => {
@@ -242,6 +243,18 @@ export function Modules({
     setAddErr("");
     if (!addQuizPick) { setAddErr("Pick a quiz."); return; }
     const items = [...(mod.items || []), { id: newId("it"), type: "quiz", refId: addQuizPick }];
+    await updateModule(mod.id, m => ({ ...m, items }));
+    resetAddState();
+  };
+
+  // Homework items reference a course-defined assignment by refId (hw1…hwN). Unlike quizzes there
+  // are no instructor-authored homeworks, so this picker has no create/delete controls. Needed for
+  // any class whose modules were built by hand rather than seeded from the course template — the
+  // student's module list is what surfaces a homework to them (Home.jsx resolves item.refId).
+  const submitAddHomework = async (mod) => {
+    setAddErr("");
+    if (!addHwPick) { setAddErr("Pick a homework."); return; }
+    const items = [...(mod.items || []), { id: newId("it"), type: "homework", refId: addHwPick }];
     await updateModule(mod.id, m => ({ ...m, items }));
     resetAddState();
   };
@@ -619,9 +632,12 @@ export function Modules({
                   url={addUrl} setUrl={setAddUrl}
                   file={addFile} setFile={setAddFile}
                   quizPick={addQuizPick} setQuizPick={setAddQuizPick}
+                  hwPick={addHwPick} setHwPick={setAddHwPick}
                   quizzes={quizzes}
+                  homeworks={homeworks}
                   customQuizzes={customQuizzes}
                   onCancel={resetAddState}
+                  onSubmitHomework={() => submitAddHomework(mod)}
                   onOpenPageEditor={() => onOpenPageEditor(mod.id, null, null)}
                   onCreateNewQuiz={() => onOpenCustomQuizEditor?.(mod.id)}
                   onDeleteCustomQuiz={onDeleteCustomQuiz}
@@ -747,13 +763,42 @@ function UrlInput({ initial, onCommit, placeholder }) {
 function AddItemBar({
   mod, active, busy, progress, err,
   title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes, customQuizzes,
+  hwPick, setHwPick, homeworks,
   onCancel, onOpenPageEditor, onCreateNewQuiz, onDeleteCustomQuiz,
-  onSubmitQuiz, onSubmitText, onSubmitLink, onSubmitFile,
+  onSubmitQuiz, onSubmitHomework, onSubmitText, onSubmitLink, onSubmitFile,
 }) {
   const { s, muted, border, text, teal } = useTheme();
   const wrap = (child) => (
     <div style={{ borderTop: `1px solid ${border}`, padding: "12px 18px", background: "rgba(255,255,255,0.02)" }}>{child}</div>
   );
+
+  if (active === "homework") {
+    return wrap(
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ border: `1px solid ${border}`, borderRadius: 8, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+          {(homeworks || []).length === 0 ? (
+            <div style={{ padding: "10px 14px", color: muted, fontSize: 13 }}>No homework assignments available for this course.</div>
+          ) : (homeworks || []).map(h => {
+            const selected = hwPick === h.id;
+            return (
+              <button
+                key={h.id}
+                onClick={() => setHwPick(h.id)}
+                style={{ display: "block", width: "100%", background: selected ? "rgba(0,130,140,0.15)" : "transparent", border: "none", borderBottom: `1px solid ${border}`, color: selected ? teal : text, fontSize: 13, textAlign: "left", padding: "9px 14px", cursor: "pointer" }}
+              >
+                {h.title}
+              </button>
+            );
+          })}
+        </div>
+        {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onSubmitHomework} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13 }}>Add Homework</button>
+          <button onClick={onCancel} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
 
   if (active === "quiz") {
     return wrap(
@@ -933,6 +978,7 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
         <div style={{ color: muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Add Item</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button onClick={() => onAddItem("quiz")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Quiz</button>
+          <button onClick={() => onAddItem("homework")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Homework</button>
           <button onClick={onOpenPageEditor} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Page</button>
           <button onClick={() => onAddItem("link")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Link</button>
           <button onClick={() => onAddItem("file")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ File</button>

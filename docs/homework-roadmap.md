@@ -7,6 +7,11 @@ and integration into modules, the assignments tab, the calendar, and the to-do r
 
 See [architecture.md](architecture.md) § Homework for how the shipped pieces fit together.
 
+**Scope of this doc:** the course-agnostic homework *process* and *engine* — the required
+verify-first authoring procedure, what each `answerType` can do, and what's left to build. Content
+notes for a specific course (which problems, which figures, why a given part isn't numeric) live in
+the per-course docs: [courses/phy115.md](courses/phy115.md) · [courses/phy215.md](courses/phy215.md).
+
 ## Intended behavior NOT yet implemented
 
 ### ~~⚠️ Retakes must be practice-only (no re-grade)~~ ✅ Done
@@ -119,95 +124,22 @@ The procedure:
    diagram/sketch/direction questions, expression/reasoning answers) and choose a fitting
    `answerType` (`text`/`graph`/`vector`/`math`) — see the Workflow Rules in `CLAUDE.md`.
 
-HW1 and HW2 were fully re-verified on 2026-06-18 (every numeric, graph key point, and text
-answer confirmed correct/complete). HW3 was authored and verified from scratch on 2026-06-18
-(every numeric recomputed by script against the figures; two instructor-key values corrected —
-3.22(c) → 15.9 m, 3.6(b) direction → 4.58°). HW4 was authored and verified from scratch on
-2026-06-19 (every numeric recomputed by script against the figures and the source key, using
-$g = 9.80\text{ m/s}^2$; five key values differ — see answer-key-discrepancies.md — of which only
-4.37(a) 16.6 N vs. the key's 17 N exceeds ±2%). When verifying a set, do it the same way and
-record the date here.
+Per-course verification history — which sets have been verified, on what date, and what was
+corrected — lives in the course docs: [courses/phy115.md](courses/phy115.md) and
+[courses/phy215.md](courses/phy215.md). When you verify a set, do it the same way and record the
+date there.
 
 ## Remaining buildout steps
-1. **Real content** — author `hw2…hwN` for Physics 1 / Physics 2 in
-   `src/courses/physics{1,2}.js` (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems,
-   figures under `public/homeworkFigures/HWn/`, multipart `parts`, and per-problem `unit` (the
+1. **Real content** — author the remaining homework sets in `src/courses/physics{1,2}.js`
+   (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems, figures under
+   `public/homeworkFigures/<courseType>/HWn/`, multipart `parts`, and per-problem `unit` (the
    answer + `sigFigs` / `tolerance` go in `netlify/functions/_answerKeys.js` — see § Authoring).
    **Verify all solutions first — see § Authoring above.**
-   - ✅ **`hw1` (Physics 1) is now real content** — "Homework 1: Units & Vectors", 10
-     Young & Freedman Ch. 1 problems (1.10, 1.33, 1.35, 1.36, 1.37, 1.51, 1.53, 1.73,
-     1.87, 1.89). Figures `figE1-28.png` / `figE1-43.png` / `figP1-73.png` in
-     `public/homeworkFigures/HW1/` (textbook "Figure …" labels cropped off). "Magnitude
-     and direction" questions are split into two numeric blanks each (direction = degrees
-     CCW from +x, stated in the stem); answers are hardcoded numerics graded
-     deterministically, with Claude reserved for the few text/math parts (1.51b direction,
-     1.53b expression, 1.53c explanation) and hints.
-   - ✅ **`hw2` (Physics 1) is now real content** — "Homework 2: Motion Along a Straight
-     Line", 10 Young & Freedman Ch. 2 problems (2.3, 2.16, 2.21, 2.34, 2.35, 2.64, 2.66,
-     2.69, 2.80, 2.81). Single figure `figP2-80.png` (egg-drop building) in
-     `public/homeworkFigures/HW2/`. All answers are deterministic numerics (g = 9.80 m/s²)
-     with Claude reserved only for the 2.16 direction text parts and hints; 2.16 average
-     accelerations are entered as **signed** values (+x = right, so a negative value = left)
-     plus a text direction. 2.34 (c)/(d) are **`answerType: "graph"` sketch parts** —
-     students draw the $x$-$t$ and $v_x$-$t$ curves for both vehicles in `GraphField`,
-     graded deterministically by `gradeGraph`. 2.81 answers are entered as numerical
-     factors (×H, ×T).
-   - ✅ **`hw3` (Physics 1) is now real content** — "Homework 3: Motion in Two Dimensions",
-     10 Young & Freedman Ch. 3 problems (3.1, 3.6, 3.11, 3.15, 3.16, 3.22, 3.29, 3.51, 3.54,
-     3.63). Figures `figE3-29.png` (Ferris wheel) / `figP3-63.png` (grasshopper cliff) in
-     `public/homeworkFigures/HW3/` (copied straight from the screenshots — no textbook caption
-     to crop). Mostly deterministic numerics (g = 9.80 m/s²): vector/velocity questions split
-     into component + magnitude + direction blanks (direction = degrees CCW from +x, stated in
-     the stem). **3.6(c)** is an `answerType: "vector"` part — the student draws the two velocity
-     arrows $\vec v_1$, $\vec v_2$ (graded on direction + magnitude) **and the average-acceleration
-     arrow** $\vec a$ (graded on direction only — it must point along $\Delta\vec v$ at 31°, the
-     misconception being to draw it along $\vec v_2$) from the origin in the new `VectorField`
-     widget, graded deterministically by `gradeVectors`. Claude is reserved for the
-     remaining text parts and hints: **3.29(a)/(b)** acceleration directions (toward the center —
-     up at the bottom, down at the top) and **3.54(b)** (see next paragraph). Note two
-     instructor-key values were corrected during verification: 3.22(c)
-     strike height is **15.9 m** (key said 15.8 — key rounded $\sin 53.1°$) and 3.6(b) direction
-     is **4.58°** (key said 4.8°); both differences are inside the ±2% grading tolerance.
-   - ⚠️ **`hw3` 3.54(b) is intentionally a `text` answer (ill-conditioned numerically).** With
-     the *minimum* muzzle velocity from 3.54(a), the trajectory's apex (~25.3 m) barely exceeds
-     the 25.0-m cliff and is reached *before* the edge (at x ≈ 54 m), so the shell is descending
-     as it grazes the corner and lands **essentially at the edge (~0 m beyond)**. The "distance
-     past the edge" is hypersensitive to how `v0` is rounded — it swings from negative (doesn't
-     clear) to +2.6 m over v0 = 32.6 → 32.8 m/s — and the true value ≈ 0 has no meaningful ±2%
-     tolerance band. So 3.54(b) is graded as a conceptual `text` explanation rather than a fixed
-     numeric. (3.6(c) is `text` for a different reason: the sketch can't be captured by the
-     curve-on-axes `GraphField`.)
-   - ✅ **`hw4` (Physics 1) is now real content** — "Homework 4: Newton's Laws of Motion",
-     10 Young & Freedman Ch. 4 problems (4.4, 4.12, 4.19, 4.23, 4.27, 4.34, 4.37, 4.38, 4.40,
-     4.57). Figures `figE4-4.png` (ramp) / `figE4-23.png` (boxes A,B) / `figP4-37.png` (cart
-     forces) / `figP4-38.png` (oil tanker) / `figP4-57.png` (boxes on a rope) in
-     `public/homeworkFigures/HW4/` (copied straight from the screenshots — figure-only, no
-     caption to crop). Deterministic numerics use $g = 9.80\text{ m/s}^2$ (the source key used
-     9.81 — five small discrepancies logged, only 4.37(a) exceeds ±2%). **This set is the first
-     use of the new `FBDField` free-body-diagram builder** (`answerType: "fbd"` — see § FBD
-     builder below): **4.27** has two fbd parts (one per crate) — the student draws forces from a
-     bank ($F$/$T$/$N$/$w$), so the contact force shows up as a second normal ($N_1$ ground, $N_2$
-     contact) — plus `text` parts for the action–reaction pair and part (b). **The written action–reaction / FBD-description parts are graded with `diagramContext`** — the runner feeds Claude a `describeFBDDiagram` summary of the FBD(s) the student actually drew (their own `N_1`/`N_2` labels and directions), so a student who labels the box-box contact force `N_1` in their diagram and answers "N_1" is graded against their own labeling, not a conventional default. **4.34** has **two fbd
-     parts** — (a) the box, where the **friction arrow is prefilled** (drawn & locked forward,
-     $+x$, since friction is a HW5 topic) and the student adds $N$ and $w$; and (b) the truck,
-     where **both friction forces are prefilled** (road traction forward $+x$, box's drag backward
-     $-x$) and the student adds the truck's weight, the road's normal (up), and the box's normal
-     pressing down on the bed — then a (c) `text` part asks the student to identify the box↔bed
-     action–reaction pairs across their two diagrams (graded with `diagramContext`, which now spans
-     both FBDs so the student's own labels on either diagram are honored). Other text parts: 4.37(a) direction,
-     4.38(c) "will it hit / is the oil safe". 4.37 "magnitude and direction" is split into a
-     numeric magnitude + a `text` direction (the established pattern). 4.40(b) and 4.38(a) reveal
-     in plain decimal (`toSigFigString` never uses sci-notation: "3700000 N", "0.0022 m/s²");
-     students may type `3.7e6` (parseNumber accepts it). 4.57 is scaffolded: (a) find the
-     downward acceleration first, then **two `fbd` parts** — (b) box $A$ (applied force $\vec F$
-     up, rope tension $T$ down, weight $w$ down; acceleration down) and (c) box $B$ (tension $T$
-     up, weight $w$ down; acceleration down), both with no normal force since the boxes hang on
-     the rope — then (d) $m_B$, (e) $m_A$.
-   - ⚠️ **`hw4` 4.38(b) is a mildly rounding-sensitive numeric (kept numeric).** The impact speed
-     $0.17\text{ m/s}$ comes from $v^2 = 2.25 - 2.222 = 0.028$, a small difference of larger
-     numbers. Carrying full precision keeps the canonical 0.17 inside the ±2% band, so it stays a
-     numeric (unlike 3.54(b), whose value $\approx 0$ had no meaningful tolerance band).
-   The remaining `hw5…hw14` are still stubs to author.
+   - **PHY 115 (`physics1`)** — `hw1`–`hw4` are authored and verified; `hw5…hw14` are stubs.
+     Per-assignment notes (problem numbers, figures, which parts are text/graph/vector/fbd and
+     why): [courses/phy115.md](courses/phy115.md).
+   - **PHY 215 (`physics2`)** — scaffolded, nothing authored yet:
+     [courses/phy215.md](courses/phy215.md).
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into
@@ -305,7 +237,12 @@ record the date here.
   `gradeGraph` / `parseGraphValue` / `graphHasInput` / `keyToValue` / `graphHint` (graph).
 - Runner: `src/screens/student/HomeworkRunner.jsx`; math I/O: `MathField` (MathLive),
   `MathText` (KaTeX); graph I/O: `GraphField` (`src/components/GraphField.jsx`).
-- Content: `HOMEWORKS_PHYSICS1` in `src/courses/physics1.js`; `homeworksForCourse()` in
-  `src/courses/index.js`.
+- Content: `HOMEWORKS_PHYSICS1` / `HOMEWORKS_PHYSICS2` in `src/courses/physics{1,2}.js`;
+  `homeworksForCourse()` in `src/courses/index.js`; course identity (labels) in
+  `src/course-meta.js`.
+- Answers: `netlify/functions/_answerKeys.js` (`ANSWER_KEYS[courseType][hwId][itemId]`),
+  graded by `netlify/functions/grade.js`.
+- Figures: `public/homeworkFigures/<courseType>/HWn/`; instructor source material (gitignored)
+  in `source/<courseCode>/{quizzes,hw/HWn,lectures}/`.
 - Grading proxy: `netlify/functions/claude.js` reads `CLAUDE_API_KEY` (see
   [environment.md](environment.md) for why not `ANTHROPIC_API_KEY`).

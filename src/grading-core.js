@@ -72,9 +72,34 @@ export function toSigFigString(x, sf) {
   return rounded.toFixed(decimals);
 }
 
+// ── Scientific notation ────────────────────────────────────────────────────────
+// Unicode superscripts, so a revealed answer reads correctly as PLAIN TEXT. Numeric reveals are
+// rendered as text (HomeworkRunner's "Correct answer:" line, SubmissionView's "Key:", the CSV
+// export) — not through MathText — so LaTeX would leak markup instead of typesetting.
+const SUPERSCRIPT = { "-": "⁻", "+": "", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+const superscript = n => String(n).split("").map(c => SUPERSCRIPT[c] ?? c).join("");
+
+// Render x in scientific notation with `sf` significant figures: 1.2483e19 @3 → "1.25 × 10¹⁹",
+// 9.1998e-17 @3 → "9.20 × 10⁻¹⁷". Used for the E&M-scale answers in Physics 2, where
+// toSigFigString's plain decimal would give "12500000000000000000".
+//
+// Deliberately SEPARATE from toSigFigString rather than a mode of it: numericMatch feeds
+// toSigFigString's output back through Number(), which superscript glyphs would break.
+export function toSciString(x, sf) {
+  const n = Number(x);
+  if (!Number.isFinite(n)) return String(x);
+  if (n === 0) return (0).toFixed(Math.max(0, (sf || 1) - 1));
+  const [mantissa, exp] = n.toExponential(Math.max(0, (sf || 3) - 1)).split("e");
+  const e = parseInt(exp, 10);
+  return e === 0 ? mantissa : `${mantissa} × 10${superscript(e)}`;
+}
+
 // Format a numeric correct answer in its proper sig figs (when specified), with unit.
-export function formatNumeric(answer, sigFigs, unit) {
-  const val = sigFigs ? toSigFigString(answer, sigFigs) : String(answer);
+// `sci` opts this answer into scientific notation — set per answer-key entry rather than by an
+// automatic magnitude threshold, so Physics 1's deliberate plain reveals ("3700000 N",
+// "0.0022 m/s²") are unaffected.
+export function formatNumeric(answer, sigFigs, unit, sci = false) {
+  const val = sci ? toSciString(answer, sigFigs) : (sigFigs ? toSigFigString(answer, sigFigs) : String(answer));
   return unit ? `${val} ${unit}` : val;
 }
 

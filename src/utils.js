@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { COURSE_LABELS } from "./courses/index.js";
+import { courseLabelFor } from "./course-meta.js";
 
 export const ACCEPTED_IMG = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
@@ -82,7 +82,7 @@ export async function checkImageReadability(imgData) {
 
 export async function evaluateAnswer(question, answer, history, imageData, attemptNum = 1, parts = null, completedParts = [], courseType = "physics1") {
   const remaining = parts ? parts.filter(p => !completedParts.includes(p)) : null;
-  const courseLabel = COURSE_LABELS[courseType] || "Physics";
+  const courseLabel = courseLabelFor(courseType);
   let system;
   if (remaining && remaining.length > 0) {
     const doneStr = completedParts.length > 0 ? "(" + completedParts.join("), (") + ")" : "none yet";

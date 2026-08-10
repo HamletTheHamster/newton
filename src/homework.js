@@ -9,7 +9,7 @@
 //   • After the 3rd failed attempt: a targeted hint is revealed; correct on attempt 4 → 80%.
 //   • After the 5th failed attempt: the answer is revealed → 0% credit (no more attempts).
 // Each problem is worth 1 point; multipart `parts` split that point equally.
-import { COURSE_LABELS } from "./courses/index.js";
+import { courseLabelFor } from "./course-meta.js";
 import { compressImage } from "./utils.js";
 import { formatNumeric, parseJsonReply } from "./grading-core.js";
 
@@ -518,7 +518,7 @@ export async function workFileToBlock(file) {
 // homework problems and their submitted answers. Returns { flagged, reason } — and on any
 // grader error returns { flagged: false, error } so an outage never penalizes a student.
 export async function checkWorkIntegrity({ problems = [], answers = {}, files = [], courseType = "physics1" }) {
-  const courseLabel = COURSE_LABELS[courseType] || "Physics";
+  const courseLabel = courseLabelFor(courseType);
   try {
     const blocks = (await Promise.all(files.map(workFileToBlock))).filter(Boolean);
     if (!blocks.length) return { flagged: false, error: "No readable work files were provided to the integrity check." };
@@ -569,7 +569,7 @@ async function callClaude({ system, messages, maxTokens = 600 }) {
   return text;
 }
 
-// Fetch a problem figure (a same-origin static asset like "/homeworkFigures/HW1/fig1.png")
+// Fetch a problem figure (a same-origin static asset like "/homeworkFigures/physics1/HW1/fig1.png")
 // and return it as a Claude image content block, so the grader sees the full problem including
 // the figure. Best-effort: returns null if there's no figure or it can't be loaded, so a
 // missing/broken figure never blocks grading.

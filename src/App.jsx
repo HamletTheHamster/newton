@@ -20,6 +20,7 @@ import { SyncBadge } from "./components/SyncBadge.jsx";
 import { CustomSelect } from "./components/CustomSelect.jsx";
 import { ChatMessages } from "./components/ChatMessages.jsx";
 import { DragDropQuestion } from "./components/DragDropQuestion.jsx";
+import { ChoiceQuestion } from "./components/ChoiceQuestion.jsx";
 import { ManualAddStudent } from "./components/ManualAddStudent.jsx";
 import { BugReportModal } from "./components/BugReportModal.jsx";
 import { Footer } from "./components/Footer.jsx";
@@ -222,7 +223,16 @@ export default function App() {
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
   const currentQ = activeQuiz?.questions[qIdx];
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
-  const currentParts = currentQ && !isYesNoQ && !isDragDropQ ? detectParts(currentQ.text) : null;
+  const isChoiceQ = !!currentQ?.choices, isSurveyQ = !!currentQ?.survey;
+  // Widget questions — anything whose answer isn't free-form prose. `detectParts` looks for
+  // "(a) … (b) …" in the question text, which is meaningless for these.
+  const isWidgetQ = isYesNoQ || isDragDropQ || isChoiceQ || isSurveyQ;
+  // A survey question reuses the ordinary textarea (it just isn't graded), so it keeps autofocus.
+  const usesTextInput = !isYesNoQ && !isDragDropQ && !isChoiceQ;
+  // Multiple choice IS graded on the same 5-attempt / half-credit schedule as free response, so it
+  // shows the counter; yes/no, drag-drop and survey have no attempt limit.
+  const showsAttempts = !isYesNoQ && !isDragDropQ && !isSurveyQ;
+  const currentParts = currentQ && !isWidgetQ ? detectParts(currentQ.text) : null;
   const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId));
   const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const syllabusBreakdown = syllabus?.fields?.gradingBreakdown ?? [];
@@ -440,7 +450,7 @@ export default function App() {
   const doScroll = useCallback(() => { const el = chatRef.current; if (!el) return; el.scrollTop = el.scrollHeight - el.clientHeight; }, []);
   useLayoutEffect(() => { doScroll(); }, [messages]);
   useLayoutEffect(() => { doScroll(); }, [busy]);
-  useEffect(() => { if (screen === "quiz" && !isYesNoQ && !isDragDropQ && !quizDone) requestAnimationFrame(() => inputRef.current?.focus()); }, [qIdx, screen, quizDone]);
+  useEffect(() => { if (screen === "quiz" && usesTextInput && !quizDone) requestAnimationFrame(() => inputRef.current?.focus()); }, [qIdx, screen, quizDone]);
   const navStateRef = useRef({ screen, quizDone, showStudentSettings });
   useEffect(() => { navStateRef.current = { screen, quizDone, showStudentSettings }; }, [screen, quizDone, showStudentSettings]);
   useEffect(() => {
@@ -458,7 +468,7 @@ export default function App() {
   }, []);
   const prevBusy = useRef(false);
   useEffect(() => {
-    if (prevBusy.current && !busy && screen === "quiz" && !isYesNoQ && !isDragDropQ && !quizDone) requestAnimationFrame(() => inputRef.current?.focus());
+    if (prevBusy.current && !busy && screen === "quiz" && usesTextInput && !quizDone) requestAnimationFrame(() => inputRef.current?.focus());
     prevBusy.current = busy;
   }, [busy]);
 
@@ -1039,12 +1049,59 @@ export default function App() {
   const clearFile = () => { setPendingFile(null); };
   const submitYesNo = async answer => {
     if (busy) return; setBusy(true);
-    const pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
-    const reply = answer ? "Great — glad you're all set! Make sure to keep it handy throughout the semester." : "No worries — please contact your instructor as soon as possible to get access sorted out.";
+    const q = activeQuiz.questions[qIdx], pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
+    // Per-question replies (`yesReply`/`noReply`); the fallbacks are the original textbook-access
+    // wording, so Physics 1's q1 reads exactly as before.
+    const reply = answer
+      ? (q.yesReply || "Great — glad you're all set! Make sure to keep it handy throughout the semester.")
+      : (q.noReply || "No worries — please contact your instructor as soon as possible to get access sorted out.");
     const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
     const newMsgs = [...messages, { id: Date.now(), type: "student", text: answer ? "Yes" : "No" }, { id: Date.now() + 1, type: "tutor", text: "✅ " + reply, correct: true }];
     await advanceOrFinish(activeQuiz, nScores, newMsgs, qIdx + 1); setBusy(false);
   };
+  // Survey question — no right answer. Any substantive response earns full credit immediately:
+  // no Claude call, no attempt counter, no Socratic follow-up. The answer still rides on the
+  // submission so the instructor can read it in the gradebook.
+  const submitSurvey = async () => {
+    if (busy) return;
+    const ans = input.trim();
+    if (!ans) return;
+    setInput(""); setBusy(true);
+    const q = activeQuiz.questions[qIdx], pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
+    const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
+    const newMsgs = [
+      ...messages,
+      { id: Date.now(), type: "student", text: ans },
+      { id: Date.now() + 1, type: "tutor", text: "✅ " + (q.reply || "Thanks for sharing — noted!"), correct: true },
+    ];
+    await advanceOrFinish(activeQuiz, nScores, newMsgs, qIdx + 1); setBusy(false);
+  };
+  // Multiple choice — graded deterministically here (no Claude), so a wrong pick gets that
+  // option's authored misconception nudge and a retry. Same 5-attempt / half-credit rule the
+  // free-response path uses.
+  const submitChoice = async pick => {
+    if (busy) return; setBusy(true);
+    const q = activeQuiz.questions[qIdx], pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
+    const chosen = (q.options || []).find(o => o.key === pick);
+    const currentAttempt = attemptCount + 1;
+    setAttemptCount(currentAttempt);
+    const newMsgs = [...messages, { id: Date.now(), type: "student", text: pick + (chosen ? ". " + chosen.label : "") }];
+    if (pick === q.correct) {
+      const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
+      await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: "✅ " + (q.correctReply || "Exactly right."), correct: true }], qIdx + 1);
+    } else if (currentAttempt >= 5) {
+      const right = (q.options || []).find(o => o.key === q.correct);
+      const nScores = [...qScores]; nScores[qIdx] = qPts / 2; setQScores(nScores);
+      const tell = `The correct answer is ${q.correct}${right ? " — " + right.label : ""}. ${q.correctReply || ""}`.trim();
+      await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: tell }], qIdx + 1);
+    } else {
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: q.feedback?.[pick] || "Not quite — think it through once more and try again." }]);
+    }
+    setBusy(false);
+  };
+  // The textarea path serves free-response, image, and survey questions; only the survey is
+  // ungraded, so it routes to submitSurvey instead of the Claude-backed submitAnswer.
+  const sendAnswer = () => (isSurveyQ ? submitSurvey() : submitAnswer());
   const submitDragDrop = async blanks => {
     if (busy) return; setBusy(true);
     const q = activeQuiz.questions[qIdx], pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
@@ -1433,7 +1490,7 @@ export default function App() {
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
             <div style={{ ...s.muted, fontFamily: "monospace" }}>Q{qIdx + 1}/{activeQuiz?.questions.length}</div>
             {currentParts && completedParts.length > 0 && <div style={{ color: TEAL, fontFamily: "monospace", fontSize: 11 }}>Part{completedParts.length > 1 ? "s" : ""} {completedParts.join(", ")} done · {currentParts.filter(p => !completedParts.includes(p)).join(", ")} remaining</div>}
-            {!isYesNoQ && !isDragDropQ && <div style={{ ...s.muted, fontFamily: "monospace", fontSize: 11 }}>{Math.max(0, 5 - attemptCount)} attempt{Math.max(0, 5 - attemptCount) !== 1 ? "s" : ""} left</div>}
+            {showsAttempts && <div style={{ ...s.muted, fontFamily: "monospace", fontSize: 11 }}>{Math.max(0, 5 - attemptCount)} attempt{Math.max(0, 5 - attemptCount) !== 1 ? "s" : ""} left</div>}
           </div>
         )}
       </div>
@@ -1458,6 +1515,8 @@ export default function App() {
               </div>
             ) : isDragDropQ ? (
               <DragDropQuestion key={qIdx} q={currentQ} onSubmit={submitDragDrop} busy={busy} />
+            ) : isChoiceQ ? (
+              <ChoiceQuestion key={qIdx} q={currentQ} onSubmit={submitChoice} busy={busy} />
             ) : (
               <>
                 {pendingFile && (
@@ -1487,17 +1546,17 @@ export default function App() {
                     <textarea
                       ref={inputRef}
                       style={{ ...s.input, resize: "none", lineHeight: 1.5 }}
-                      placeholder={isImageQ ? "Upload your drawing above, and optionally add a note…" : "Type your answer… (Enter to submit, Shift+Enter for new line)"}
+                      placeholder={isImageQ ? "Upload your drawing above, and optionally add a note…" : isSurveyQ ? "Type your response… (Enter to submit, Shift+Enter for new line)" : "Type your answer… (Enter to submit, Shift+Enter for new line)"}
                       value={input}
                       onChange={e => setInput(e.target.value)}
                       rows={2}
                       disabled={busy}
-                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitAnswer(); } }}
+                      onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAnswer(); } }}
                       onPaste={e => { e.preventDefault(); setPasteWarning(true); setTimeout(() => setPasteWarning(false), 3000); }}
                     />
                     {pasteWarning && <p style={{ color: "#f87171", fontSize: 12, margin: 0, textAlign: "center" }}>⚠️ Pasting is not allowed — please type your answer.</p>}
                   </div>
-                  <button onClick={submitAnswer} disabled={busy || pendingFile?.readability === "checking" || pendingFile?.readability?.status === "fail" || (isImageQ ? (!pendingFile && !input.trim()) : !input.trim())} style={{ ...s.btnPri, width: "auto", padding: "0 20px", alignSelf: "stretch", opacity: (busy || pendingFile?.readability === "checking" || pendingFile?.readability?.status === "fail" || (isImageQ ? (!pendingFile && !input.trim()) : !input.trim())) ? 0.4 : 1 }}>Send</button>
+                  <button onClick={sendAnswer} disabled={busy || pendingFile?.readability === "checking" || pendingFile?.readability?.status === "fail" || (isImageQ ? (!pendingFile && !input.trim()) : !input.trim())} style={{ ...s.btnPri, width: "auto", padding: "0 20px", alignSelf: "stretch", opacity: (busy || pendingFile?.readability === "checking" || pendingFile?.readability?.status === "fail" || (isImageQ ? (!pendingFile && !input.trim()) : !input.trim())) ? 0.4 : 1 }}>Send</button>
                 </div>
                 {isImageQ && !pendingFile && <p style={{ ...s.muted, fontSize: 12, textAlign: "center", margin: 0 }}>Click the 🖼 button to upload your drawing</p>}
               </>

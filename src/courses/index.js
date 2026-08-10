@@ -1,9 +1,12 @@
+import { COURSE_META } from "../course-meta.js";
 import { QUIZZES_PHYSICS1, MODULES_PHYSICS1, HOMEWORKS_PHYSICS1 } from "./physics1.js";
 import { QUIZZES_PHYSICS2, MODULES_PHYSICS2, HOMEWORKS_PHYSICS2 } from "./physics2.js";
 
+// Course content, joined to the shared course identity in ../course-meta.js (which the Netlify
+// grading function also imports — labels must not drift between client and server).
 const COURSES = {
-  physics1: { label: "Physics 1", quizzes: QUIZZES_PHYSICS1, modules: MODULES_PHYSICS1, homeworks: HOMEWORKS_PHYSICS1 },
-  physics2: { label: "Physics 2", quizzes: QUIZZES_PHYSICS2, modules: MODULES_PHYSICS2, homeworks: HOMEWORKS_PHYSICS2 },
+  physics1: { label: COURSE_META.physics1.label, quizzes: QUIZZES_PHYSICS1, modules: MODULES_PHYSICS1, homeworks: HOMEWORKS_PHYSICS1 },
+  physics2: { label: COURSE_META.physics2.label, quizzes: QUIZZES_PHYSICS2, modules: MODULES_PHYSICS2, homeworks: HOMEWORKS_PHYSICS2 },
 };
 
 export const COURSE_LABELS = Object.fromEntries(Object.entries(COURSES).map(([k, v]) => [k, v.label]));

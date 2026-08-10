@@ -92,8 +92,21 @@ export const MODULES_PHYSICS1 = [
 //                      key:{ [vecId]: { tip:[x,y], angleTol?:deg=15, magTol?:frac } },
 //                      snapDiv?, hideTicks?, guide?:{ title, steps:[{ vector, label, note? }] } }`
 //   instead of `answer`. Direction is always graded (within angleTol); magnitude is graded only
-//   when the key gives magTol — so free-body diagrams (set hideTicks, omit magTol) grade on
-//   direction alone, while scaled vectors (velocity components, etc.) also require the right length.
+//   when the key gives magTol — so scaled vectors (velocity components, etc.) also require the
+//   right length. Real free-body diagrams use `fbd` below, not this.
+// - fbd:     student builds a free-body diagram from a force bank in FBDField; graded
+//   deterministically by gradeFBD. Carries `fbd: { xMin,xMax,yMin,yMax,xTick,yTick,snapDiv?,
+//                      origin?:[x,y], bodyLabel?, bank:["F","T","N","w","f"],
+//                      forces:[{ type, dir:[x,y], angleTol? }],
+//                      prefill?:[{ type, dir }],        // app-supplied, counts as satisfied
+//                      accel:{ dir:[x,y], angleTol? } | { none: true } }`
+//   instead of `answer`. Forces are matched as a MULTISET by type+direction (any draw order;
+//   missing/extra flagged without naming them); the acceleration arrow is graded by direction;
+//   the positive-axes orientation is a required but UNGRADED step.
+//
+// Figures live in `public/homeworkFigures/physics1/HWn/` (per-course, so PHY 215's HW1 figures
+// can't collide with these); the instructor's source screenshots and answer keys stay out of the
+// repo in `source/phy115/hw/HWn/`.
 export const HOMEWORKS_PHYSICS1 = [
   {
     id: "hw1",
@@ -121,7 +134,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 1.35 — sums & differences from Fig E1.28
       {
         id: "hw1_p3",
-        figure: "/homeworkFigures/HW1/figE1-28.png",
+        figure: "/homeworkFigures/physics1/HW1/figE1-28.png",
         prompt: "For the vectors $\\vec{A}$ and $\\vec{B}$ shown in the figure, use the method of components to find the magnitude and direction of each vector below. Give every direction as an angle measured counterclockwise from the $+x$-axis (between $0°$ and $360°$).",
         parts: [
           { id: "hw1_p3a_m", prompt: "(a) Magnitude of the vector sum $\\vec{A}+\\vec{B}$.", answerType: "numeric", unit: "m" },
@@ -159,7 +172,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 1.51 — scalar & vector product from Fig E1.43
       {
         id: "hw1_p6",
-        figure: "/homeworkFigures/HW1/figE1-43.png",
+        figure: "/homeworkFigures/physics1/HW1/figE1-43.png",
         prompt: "For the two vectors $\\vec{A}$ and $\\vec{B}$ shown in the figure, find the scalar product and the vector product.",
         parts: [
           { id: "hw1_p6a", prompt: "(a) Find the scalar product $\\vec{A}\\cdot\\vec{B}$ (in m²).", answerType: "numeric", unit: "m²" },
@@ -182,7 +195,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 1.73 — dislocated shoulder (Fig P1.73)
       {
         id: "hw1_p8",
-        figure: "/homeworkFigures/HW1/figP1-73.png",
+        figure: "/homeworkFigures/physics1/HW1/figP1-73.png",
         prompt: "Dislocated Shoulder. A patient with a dislocated shoulder is put into a traction apparatus as shown in the figure. The pulls $\\vec{A}$ and $\\vec{B}$ have equal magnitudes and must combine to produce an outward traction force of $5.60\\text{ N}$ on the patient's arm. How large should these pulls be?",
         answerType: "numeric",
         unit: "N",
@@ -310,7 +323,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 2.35 — flea jump (free fall)
       {
         id: "hw2_p5",
-        prompt: "Use $g = 9.80\\text{ m/s}^2$ and neglect air resistance.",
+        prompt: "Use $g = 9.81\\text{ m/s}^2$ and neglect air resistance.",
         parts: [
           { id: "hw2_p5a", prompt: "(a) If a flea can jump straight up to a height of $0.440\\text{ m}$, what is its initial speed as it leaves the ground?", answerType: "numeric", unit: "m/s" },
           { id: "hw2_p5b", prompt: "(b) How long is it in the air?", answerType: "numeric", unit: "s" },
@@ -347,15 +360,15 @@ export const HOMEWORKS_PHYSICS1 = [
       // 2.80 — Egg Drop (Fig. P2.80)
       {
         id: "hw2_p9",
-        figure: "/homeworkFigures/HW2/figP2-80.png",
-        prompt: "Egg Drop. You are on the roof of the physics building, $46.0\\text{ m}$ above the ground (see figure). Your physics professor, who is $1.80\\text{ m}$ tall, is walking alongside the building at a constant speed of $1.20\\text{ m/s}$. If you wish to drop an egg on your professor's head, where should the professor be when you release the egg? Assume that the egg is in free fall ($g = 9.80\\text{ m/s}^2$). Give the professor's horizontal distance from the point directly below you (the egg's release point) at the moment of release.",
+        figure: "/homeworkFigures/physics1/HW2/figP2-80.png",
+        prompt: "Egg Drop. You are on the roof of the physics building, $46.0\\text{ m}$ above the ground (see figure). Your physics professor, who is $1.80\\text{ m}$ tall, is walking alongside the building at a constant speed of $1.20\\text{ m/s}$. If you wish to drop an egg on your professor's head, where should the professor be when you release the egg? Assume that the egg is in free fall ($g = 9.81\\text{ m/s}^2$). Give the professor's horizontal distance from the point directly below you (the egg's release point) at the moment of release.",
         answerType: "numeric",
         unit: "m",
       },
       // 2.81 — volcano on Mars vs. Earth
       {
         id: "hw2_p10",
-        prompt: "A certain volcano on earth can eject rocks vertically to a maximum height $H$. The acceleration due to gravity on Mars is $3.71\\text{ m/s}^2$ (use $g = 9.80\\text{ m/s}^2$ on earth), and you can neglect air resistance on both planets. Give each answer as a numerical multiple of the earth quantity.",
+        prompt: "A certain volcano on earth can eject rocks vertically to a maximum height $H$. The acceleration due to gravity on Mars is $3.71\\text{ m/s}^2$ (use $g = 9.81\\text{ m/s}^2$ on earth), and you can neglect air resistance on both planets. Give each answer as a numerical multiple of the earth quantity.",
         parts: [
           { id: "hw2_p10a", prompt: "(a) How high (in terms of $H$) would these rocks go if a volcano on Mars ejected them with the same initial velocity? Enter the numerical factor (height $= $ factor $\\times H$).", answerType: "numeric", unit: "× H" },
           { id: "hw2_p10b", prompt: "(b) If the rocks are in the air for a time $T$ on earth, for how long (in terms of $T$) will they be in the air on Mars? Enter the numerical factor (time $= $ factor $\\times T$).", answerType: "numeric", unit: "× T" },
@@ -436,14 +449,14 @@ export const HOMEWORKS_PHYSICS1 = [
       // 3.15 — starship on Planet X
       {
         id: "hw3_p4",
-        prompt: "Inside a starship at rest on the earth, a ball rolls off the top of a horizontal table and lands a distance $D$ from the foot of the table. This starship now lands on the unexplored Planet X. The commander, Captain Curious, rolls the same ball off the same table with the same initial speed as on earth and finds that it lands a distance $2.76D$ from the foot of the table. What is the acceleration due to gravity on Planet X? (Use $g = 9.80\\text{ m/s}^2$ on earth.)",
+        prompt: "Inside a starship at rest on the earth, a ball rolls off the top of a horizontal table and lands a distance $D$ from the foot of the table. This starship now lands on the unexplored Planet X. The commander, Captain Curious, rolls the same ball off the same table with the same initial speed as on earth and finds that it lands a distance $2.76D$ from the foot of the table. What is the acceleration due to gravity on Planet X? (Use $g = 9.81\\text{ m/s}^2$ on earth.)",
         answerType: "numeric",
         unit: "m/s²",
       },
       // 3.16 — shell fired on level ground
       {
         id: "hw3_p5",
-        prompt: "On level ground a shell is fired with an initial velocity of $50.0\\text{ m/s}$ at $60.0°$ above the horizontal and feels no appreciable air resistance. Use $g = 9.80\\text{ m/s}^2$.",
+        prompt: "On level ground a shell is fired with an initial velocity of $50.0\\text{ m/s}$ at $60.0°$ above the horizontal and feels no appreciable air resistance. Use $g = 9.81\\text{ m/s}^2$.",
         parts: [
           { id: "hw3_p5a_x", prompt: "(a) Horizontal component of the shell's initial velocity.", answerType: "numeric", unit: "m/s" },
           { id: "hw3_p5a_y", prompt: "(a) Vertical component of the shell's initial velocity.", answerType: "numeric", unit: "m/s" },
@@ -459,7 +472,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 3.22 — firemen's hose
       {
         id: "hw3_p6",
-        prompt: "Firemen are shooting a stream of water at a burning building using a high-pressure hose that shoots the water with a speed of $25.0\\text{ m/s}$ as it leaves the end of the hose. Once it leaves the hose, the water moves in projectile motion. The firemen adjust the angle of elevation $\\alpha$ of the hose until the water takes $3.00\\text{ s}$ to reach a building $45.0\\text{ m}$ away. You can ignore air resistance; assume that the end of the hose is at ground level. Use $g = 9.80\\text{ m/s}^2$.",
+        prompt: "Firemen are shooting a stream of water at a burning building using a high-pressure hose that shoots the water with a speed of $25.0\\text{ m/s}$ as it leaves the end of the hose. Once it leaves the hose, the water moves in projectile motion. The firemen adjust the angle of elevation $\\alpha$ of the hose until the water takes $3.00\\text{ s}$ to reach a building $45.0\\text{ m}$ away. You can ignore air resistance; assume that the end of the hose is at ground level. Use $g = 9.81\\text{ m/s}^2$.",
         parts: [
           { id: "hw3_p6a", prompt: "(a) Find the angle of elevation $\\alpha$ (degrees above the horizontal).", answerType: "numeric", unit: "°" },
           { id: "hw3_p6b_s", prompt: "(b) Find the speed of the water at the highest point in its trajectory.", answerType: "numeric", unit: "m/s" },
@@ -471,7 +484,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 3.29 — Ferris wheel (uniform circular motion)
       {
         id: "hw3_p7",
-        figure: "/homeworkFigures/HW3/figE3-29.png",
+        figure: "/homeworkFigures/physics1/HW3/figE3-29.png",
         prompt: "A Ferris wheel with radius $14.0\\text{ m}$ is turning about a horizontal axis through its center (see figure). The linear speed of a passenger on the rim is constant and equal to $7.00\\text{ m/s}$.",
         parts: [
           { id: "hw3_p7a_m", prompt: "(a) What is the magnitude of the passenger's acceleration as she passes through the lowest point in her circular motion?", answerType: "numeric", unit: "m/s²" },
@@ -484,14 +497,14 @@ export const HOMEWORKS_PHYSICS1 = [
       // 3.51 — monkey and hunter
       {
         id: "hw3_p8",
-        prompt: "A jungle veterinarian with a blow-gun loaded with a tranquilizer dart and a sly $1.5\\text{-kg}$ monkey are each $25\\text{ m}$ above the ground in trees $70\\text{ m}$ apart. Just as the hunter shoots horizontally at the monkey, the monkey drops from the tree in a vain attempt to escape being hit. What must the minimum muzzle velocity of the dart have been for the hunter to have hit the monkey before it reached the ground? Use $g = 9.80\\text{ m/s}^2$.",
+        prompt: "A jungle veterinarian with a blow-gun loaded with a tranquilizer dart and a sly $1.5\\text{-kg}$ monkey are each $25\\text{ m}$ above the ground in trees $70\\text{ m}$ apart. Just as the hunter shoots horizontally at the monkey, the monkey drops from the tree in a vain attempt to escape being hit. What must the minimum muzzle velocity of the dart have been for the hunter to have hit the monkey before it reached the ground? Use $g = 9.81\\text{ m/s}^2$.",
         answerType: "numeric",
         unit: "m/s",
       },
       // 3.54 — cannon firing over a cliff
       {
         id: "hw3_p9",
-        prompt: "A cannon, located $60.0\\text{ m}$ from the base of a vertical $25.0\\text{-m}$-tall cliff, shoots a $15\\text{-kg}$ shell at $43.0°$ above the horizontal toward the cliff. Use $g = 9.80\\text{ m/s}^2$.",
+        prompt: "A cannon, located $60.0\\text{ m}$ from the base of a vertical $25.0\\text{-m}$-tall cliff, shoots a $15\\text{-kg}$ shell at $43.0°$ above the horizontal toward the cliff. Use $g = 9.81\\text{ m/s}^2$.",
         parts: [
           { id: "hw3_p9a", prompt: "(a) What must the minimum muzzle velocity be for the shell to clear the top of the cliff?", answerType: "numeric", unit: "m/s" },
           { id: "hw3_p9b", prompt: "(b) The ground at the top of the cliff is level, with a constant elevation of $25.0\\text{ m}$ above the cannon. Under the conditions of part (a), how far does the shell land past the edge of the cliff? Explain your reasoning.", answerType: "text" },
@@ -500,8 +513,8 @@ export const HOMEWORKS_PHYSICS1 = [
       // 3.63 — grasshopper leaping from a cliff
       {
         id: "hw3_p10",
-        figure: "/homeworkFigures/HW3/figP3-63.png",
-        prompt: "A grasshopper leaps into the air from the edge of a vertical cliff, as shown in the figure. It rises $6.74\\text{ cm}$ above the launch point while moving a horizontal distance of $1.06\\text{ m}$ to where it lands at the base of the cliff; its initial velocity is directed $50.0°$ above the horizontal. Use information from the figure to find the following. Use $g = 9.80\\text{ m/s}^2$.",
+        figure: "/homeworkFigures/physics1/HW3/figP3-63.png",
+        prompt: "A grasshopper leaps into the air from the edge of a vertical cliff, as shown in the figure. It rises $6.74\\text{ cm}$ above the launch point while moving a horizontal distance of $1.06\\text{ m}$ to where it lands at the base of the cliff; its initial velocity is directed $50.0°$ above the horizontal. Use information from the figure to find the following. Use $g = 9.81\\text{ m/s}^2$.",
         parts: [
           { id: "hw3_p10a", prompt: "(a) Find the initial speed of the grasshopper.", answerType: "numeric", unit: "m/s" },
           { id: "hw3_p10b", prompt: "(b) Find the height of the cliff.", answerType: "numeric", unit: "m" },
@@ -516,7 +529,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 4.4 — dragging a trunk up a ramp (force components along/perpendicular to the ramp)
       {
         id: "hw4_p1",
-        figure: "/homeworkFigures/HW4/figE4-4.png",
+        figure: "/homeworkFigures/physics1/HW4/figE4-4.png",
         prompt: "A man is dragging a trunk up the loading ramp of a mover's truck. The ramp has a slope angle of $20.0°$, and the man pulls upward with a force $\\vec F$ whose direction makes an angle of $30.0°$ with the ramp (see figure). The components $F_x$ and $F_y$ here are taken parallel and perpendicular to the ramp surface, respectively.",
         parts: [
           { id: "hw4_p1a", prompt: "(a) How large a force $\\vec F$ is necessary for the component $F_x$ parallel to the ramp to be $60.0\\text{ N}$?", answerType: "numeric", unit: "N" },
@@ -536,7 +549,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 4.19 — mass vs. weight on Io (distinguishing m and w)
       {
         id: "hw4_p3",
-        prompt: "At the surface of Jupiter's moon Io, the acceleration due to gravity is $g = 1.81\\text{ m/s}^2$. A watermelon weighs $44.0\\text{ N}$ at the surface of the earth. Use $g = 9.80\\text{ m/s}^2$ on earth.",
+        prompt: "At the surface of Jupiter's moon Io, the acceleration due to gravity is $g = 1.81\\text{ m/s}^2$. A watermelon weighs $44.0\\text{ N}$ at the surface of the earth. Use $g = 9.81\\text{ m/s}^2$ on earth.",
         parts: [
           { id: "hw4_p3a", prompt: "(a) What is the watermelon's mass on the earth's surface?", answerType: "numeric", unit: "kg" },
           { id: "hw4_p3b_m", prompt: "(b) What is its mass on the surface of Io?", answerType: "numeric", unit: "kg" },
@@ -546,7 +559,7 @@ export const HOMEWORKS_PHYSICS1 = [
       // 4.23 — two boxes in contact, contact force (system + single-body Newton's 2nd law)
       {
         id: "hw4_p4",
-        figure: "/homeworkFigures/HW4/figE4-23.png",
+        figure: "/homeworkFigures/physics1/HW4/figE4-23.png",
         prompt: "Boxes $A$ and $B$ are in contact on a horizontal, frictionless surface, as shown in the figure. Box $A$ has mass $20.0\\text{ kg}$ and box $B$ has mass $5.0\\text{ kg}$. A horizontal force of $100\\text{ N}$ is exerted on box $A$. What is the magnitude of the force that box $A$ exerts on box $B$?",
         answerType: "numeric",
         unit: "N",
@@ -646,18 +659,18 @@ export const HOMEWORKS_PHYSICS1 = [
       // 4.37 — smallest force for a cart to move along +x (equilibrium of the perpendicular component)
       {
         id: "hw4_p7",
-        figure: "/homeworkFigures/HW4/figP4-37.png",
+        figure: "/homeworkFigures/physics1/HW4/figP4-37.png",
         prompt: "Two adults and a child want to push a wheeled cart in the direction of $+x$ in the figure. The two adults push with horizontal forces $\\vec F_1$ and $\\vec F_2$ as shown: $F_1 = 100\\text{ N}$ directed $60.0°$ above the $+x$-axis, and $F_2 = 140\\text{ N}$ directed $30.0°$ below the $+x$-axis.",
         parts: [
           { id: "hw4_p7a_m", prompt: "(a) Find the magnitude of the smallest force that the child should exert. (You can ignore the effects of friction.)", answerType: "numeric", unit: "N" },
           { id: "hw4_p7a_d", prompt: "(a) In what direction should the child push?", answerType: "text" },
-          { id: "hw4_p7b", prompt: "(b) If the child exerts the minimum force found in part (a), the cart accelerates at $2.0\\text{ m/s}^2$ in the $+x$-direction. What is the weight of the cart? Use $g = 9.80\\text{ m/s}^2$.", answerType: "numeric", unit: "N" },
+          { id: "hw4_p7b", prompt: "(b) If the child exerts the minimum force found in part (a), the cart accelerates at $2.0\\text{ m/s}^2$ in the $+x$-direction. What is the weight of the cart? Use $g = 9.81\\text{ m/s}^2$.", answerType: "numeric", unit: "N" },
         ],
       },
       // 4.38 — oil tanker decelerating toward a reef (kinematics with no time)
       {
         id: "hw4_p8",
-        figure: "/homeworkFigures/HW4/figP4-38.png",
+        figure: "/homeworkFigures/physics1/HW4/figP4-38.png",
         prompt: "An oil tanker's engines have broken down, and the wind is blowing the tanker straight toward a reef at a constant speed of $1.5\\text{ m/s}$ (see figure). When the tanker is $500\\text{ m}$ from the reef, the wind dies down just as the engineer gets the engines going again. The rudder is stuck, so the only choice is to try to accelerate straight backward away from the reef. The mass of the tanker and cargo is $3.6\\times10^7\\text{ kg}$, and the engines produce a net horizontal force of $8.0\\times10^4\\text{ N}$ on the tanker. The hull can withstand an impact at a speed of $0.2\\text{ m/s}$ or less. You can ignore the retarding force of the water on the tanker's hull.",
         parts: [
           { id: "hw4_p8a", prompt: "(a) What is the magnitude of the tanker's acceleration?", answerType: "numeric", unit: "m/s²" },
@@ -677,8 +690,8 @@ export const HOMEWORKS_PHYSICS1 = [
       // 4.57 — two boxes on a vertical rope (kinematics → acceleration → two single-body 2nd-law equations)
       {
         id: "hw4_p10",
-        figure: "/homeworkFigures/HW4/figP4-57.png",
-        prompt: "Two boxes, $A$ and $B$, are connected to each end of a light vertical rope, as shown in the figure. A constant upward force $F = 80.0\\text{ N}$ is applied to box $A$. Starting from rest, box $B$ descends $12.0\\text{ m}$ in $4.00\\text{ s}$. The tension in the rope connecting the two boxes is $36.0\\text{ N}$. Use $g = 9.80\\text{ m/s}^2$.",
+        figure: "/homeworkFigures/physics1/HW4/figP4-57.png",
+        prompt: "Two boxes, $A$ and $B$, are connected to each end of a light vertical rope, as shown in the figure. A constant upward force $F = 80.0\\text{ N}$ is applied to box $A$. Starting from rest, box $B$ descends $12.0\\text{ m}$ in $4.00\\text{ s}$. The tension in the rope connecting the two boxes is $36.0\\text{ N}$. Use $g = 9.81\\text{ m/s}^2$.",
         parts: [
           { id: "hw4_p10a", prompt: "(a) What is the magnitude of the system's acceleration? (Box $B$ falls $12.0\\text{ m}$ from rest in $4.00\\text{ s}$.)", answerType: "numeric", unit: "m/s²" },
           {

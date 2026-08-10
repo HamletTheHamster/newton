@@ -48,13 +48,14 @@ src/
   utils.js                       — dueToDate/isLate/fmtDate/ptsPer/fmtDueTime/detectParts/
                                    compressImage/checkImageReadability/evaluateAnswer/
                                    parseRoster/parseGradesCSV
+  course-meta.js                 — COURSE_META (courseType → label/code), courseLabelFor() — shared with netlify/functions/grade.js
   courses/
     index.js                     — COURSE_LABELS, COURSE_OPTIONS, quizzes/modulesForCourse(), defaultModulesForCourse()
     ids.js                       — newId(prefix) for modules/items/pages/uploads
     merge.js                     — buildModules(modulesArr, moduleConfig, pages, uploads)
     migrate.js                   — migrateLegacyModuleConfig(template, legacyConfig) — seed + legacy fold-in
-    physics1.js                  — QUIZZES_PHYSICS1 + MODULES_PHYSICS1 (seed template) + (Phase 3) HOMEWORKS_PHYSICS1
-    physics2.js                  — stubs
+    physics1.js                  — PHY 115: QUIZZES_PHYSICS1 + MODULES_PHYSICS1 (seed template) + HOMEWORKS_PHYSICS1
+    physics2.js                  — PHY 215: authoring skeleton, exports still empty
   components/
     SyncBadge.jsx                — instructor header sync indicator
     ChatMessages.jsx             — quiz chat message list
