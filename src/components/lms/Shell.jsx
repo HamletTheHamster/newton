@@ -3,8 +3,11 @@ import { useTheme } from "../../theme.js";
 import { useIsMobile } from "../../utils.js";
 
 // Three-pane LMS layout (desktop) / single-column with drawer (mobile).
-// Props: header, sidebar, children, rightRail (optional)
-export function Shell({ header, sidebar, rightRail, children }) {
+// Props: header, sidebar, children, rightRail (optional), footer (optional)
+// `footer` is a sticky footer *inside* the scrolling main region: it sits at the
+// bottom of the content, pushed down to the bottom of the scroll area when the
+// content is short. Long content scrolls it out of view until you reach the end.
+export function Shell({ header, sidebar, rightRail, children, footer }) {
   const { s, bg, border, text } = useTheme();
   const isMobile = useIsMobile();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -72,16 +75,26 @@ export function Shell({ header, sidebar, rightRail, children }) {
 
         <main style={{ flex: 1, overflowY: "auto",
                        padding: isMobile ? "12px 14px" : "24px 28px", minWidth: 0,
+                       display: "flex", flexDirection: "column",
                        scrollbarWidth: "none", msOverflowStyle: "none" }}
               className="hide-scrollbar">
-          <div style={{ maxWidth: 960, margin: "0 auto" }}>
+          {/* flex: 1 0 auto pushes the footer to the bottom of the scroll area
+              when content is short, without pinning it to the viewport */}
+          <div style={{ maxWidth: 960, width: "100%", margin: "0 auto", flex: "1 0 auto" }}>
             {children}
           </div>
+          {footer && (
+            <div style={{ maxWidth: 960, width: "100%", margin: "0 auto",
+                          flexShrink: 0, paddingTop: 32 }}>
+              {footer}
+            </div>
+          )}
         </main>
 
         {/* Desktop right rail */}
         {!isMobile && rightRail}
       </div>
+
     </div>
   );
 }

@@ -174,7 +174,7 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
   return (
     <div>
       {navHeader}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1, marginBottom: 1 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 1, marginBottom: 1 }}>
         {WEEKDAYS.map(wd => (
           <div key={wd} style={{ textAlign: "center", padding: "6px 0", fontSize: 12, color: muted, fontWeight: 600, letterSpacing: "0.04em" }}>
             {wd}
@@ -182,7 +182,7 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 1 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 1 }}>
         {grid.map(cell => {
           const isToday = cell.dateStr === today;
           const events = eventMap[cell.dateStr] || [];
@@ -191,6 +191,7 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
               key={cell.dateStr}
               style={{
                 minHeight: 80,
+                minWidth: 0,
                 padding: "6px 8px",
                 background: hover,
                 border: isToday ? `2px solid ${teal}` : `1px solid ${border}`,
@@ -210,6 +211,7 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
               {events.map(ev => (
                 <div
                   key={ev.id}
+                  title={ev.title}
                   style={{
                     background: KIND_COLOR[ev.kind] || teal,
                     borderRadius: 3,

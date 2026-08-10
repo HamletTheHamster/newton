@@ -266,23 +266,39 @@ export default function App() {
   const unreadBugCount = Object.values(bugReports).filter(b => !b.read).length;
   const unreadEvalCount = Object.values(courseEvals).filter(e => !e.read).length;
 
-  // ── To Do (quizzes due in next 7 days, not yet completed) ──────────────────
-  const todoItems = (() => {
-    if (!loggedInStudent) return [];
+  // ── To Do rail ─────────────────────────────────────────────────────────────
+  // `upcoming` = due within the next 7 days, soonest first.
+  // `overdue`  = already past due, most recent miss first. Kept (not dropped) so
+  // the student's rail keeps nagging — late work still earns partial credit.
+  const { upcoming: upcomingAssignments, overdue: overdueAssignments } = (() => {
     const now = new Date();
     const horizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
-    const quizTodos = quizzes
-      .filter(q => q.dueDate && !completedQuizIds.has(q.id))
-      .map(q => ({ id: q.id, title: q.title, due: q.dueDate, kind: "quiz", onClick: () => startQuiz(q, false) }));
-    const hwTodos = homeworks
-      .filter(h => h.dueDate && !completedQuizIds.has(h.id))
-      .map(h => ({ id: h.id, title: h.title, due: h.dueDate, kind: "homework", onClick: () => startHomework(h) }));
-    return [...quizTodos, ...hwTodos]
-      .map(t => ({ t, due: dueToDate(t.due) }))
-      .filter(({ due }) => due && due >= now && due <= horizon)
-      .sort((a, b) => a.due - b.due)
-      .map(({ t }) => t);
+    const all = [
+      ...quizzes.filter(q => q.dueDate).map(q => ({ id: q.id, title: q.title, due: q.dueDate, kind: "quiz", ref: q })),
+      ...homeworks.filter(h => h.dueDate).map(h => ({ id: h.id, title: h.title, due: h.dueDate, kind: "homework", ref: h })),
+    ].map(t => ({ t, due: dueToDate(t.due) })).filter(({ due }) => !!due);
+    return {
+      upcoming: all.filter(({ due }) => due >= now && due <= horizon).sort((a, b) => a.due - b.due).map(({ t }) => t),
+      overdue: all.filter(({ due }) => due < now).sort((a, b) => b.due - a.due).map(({ t }) => t),
+    };
   })();
+
+  const toStudentTodo = list => list
+    .filter(t => !completedQuizIds.has(t.id))
+    .map(({ ref, ...t }) => ({
+      ...t,
+      onClick: t.kind === "quiz" ? () => startQuiz(ref, false) : () => startHomework(ref),
+    }));
+  const todoItems = loggedInStudent ? toStudentTodo(upcomingAssignments) : [];
+  const todoOverdue = loggedInStudent ? toStudentTodo(overdueAssignments) : [];
+
+  // Instructor rail (Home tab only): what's currently open for the class — no
+  // per-student completion filter and no past-due section, since a closed
+  // assignment isn't "open". Clicking jumps to the Assignments hub.
+  const instructorTodoItems = upcomingAssignments.map(({ ref, ...t }) => ({
+    ...t,
+    onClick: () => setInstructorSection("assignments"),
+  }));
 
   // ── Load from Firebase on startup ──────────────────────────────────────────
   useEffect(() => {
@@ -1431,10 +1447,10 @@ export default function App() {
           <Shell
             header={header}
             sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}
-            rightRail={<TodoRail items={todoItems} />}
+            rightRail={<TodoRail items={todoItems} overdue={todoOverdue} />}
+            footer={<Footer inline onBugClick={() => setBugReportOpen(true)} />}
           >
             {mainContent}
-            <Footer inline onBugClick={() => setBugReportOpen(true)} />
           </Shell>
         </>
       </ThemeContext.Provider>
@@ -1680,6 +1696,7 @@ export default function App() {
       <Shell
         header={header}
         sidebar={<Sidebar items={sidebarItems} activeId={instructorSection} onSelect={setInstructorSection} />}
+        rightRail={instructorSection === "modules" ? <TodoRail items={instructorTodoItems} /> : null}
       >
         {dangerAction && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>

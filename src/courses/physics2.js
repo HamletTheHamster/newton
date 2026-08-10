@@ -292,7 +292,7 @@ export const HOMEWORKS_PHYSICS2 = [
       // Clock — instructor-authored symmetry problem
       {
         id: "hw1_p8",
-        prompt: "**Clock.** A clockface has positive charges $q$, $2q$, $3q$, $\\ldots$, $12q$ fixed at the position of the corresponding numerals of the dial. The clock hands do not disturb the net field due to the point charges.\n\nAt what time does the hour hand point in the same direction as the electric field at the center of the dial? State the time and briefly justify it.",
+        prompt: "A clockface has positive charges $q$, $2q$, $3q$, $\\ldots$, $12q$ fixed at the position of the corresponding numerals of the dial. The clock hands do not disturb the net field due to the point charges.\n\nAt what time does the hour hand point in the same direction as the electric field at the center of the dial? State the time and briefly justify it.",
         answerType: "text",
       },
       // 21.73 — charged pendulum in equilibrium in a horizontal field

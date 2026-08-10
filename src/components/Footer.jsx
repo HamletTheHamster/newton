@@ -7,7 +7,7 @@ export function Footer({ onBugClick, inline }) {
 
   return (
     <div style={inline
-      ? { display: "flex", alignItems: "center", justifyContent: "center", gap: 12, margin: "32px 0 8px" }
+      ? { display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }
       : { position: "fixed", bottom: 16, left: 0, right: 0, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, zIndex: 30 }
     }>
       <span style={{ color: MUTED, fontSize: 12 }}>© Joel N. Johnson 2026</span>

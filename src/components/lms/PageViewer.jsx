@@ -10,9 +10,12 @@ export function PageViewer({ title, content, onClose }) {
       onClick={onClose}
       style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}
     >
+      {/* maxWidth 960 matches the app's content column (Shell's main,
+          HomeworkRunner), so a page reads at the same measure as the
+          module list behind it. */}
       <div
         onClick={e => e.stopPropagation()}
-        style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 720, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
+        style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 960, maxHeight: "85vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
       >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: `1px solid ${border}`, gap: 12 }}>
           <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title || "Untitled"}</h3>

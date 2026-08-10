@@ -2,29 +2,12 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { useTheme } from "../../theme.js";
 import { fmtDueTime, dueToDate } from "../../utils.js";
 import { newId } from "../../courses/ids.js";
+import { ItemIcon } from "../../components/lms/itemIcons.jsx";
 
 const fmtBytes = bytes => {
   if (!bytes || bytes < 1024) return (bytes || 0) + " B";
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
   return (bytes / (1024 * 1024)).toFixed(1) + " MB";
-};
-
-// ── Type icons ────────────────────────────────────────────────────────────────
-const QuizIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>;
-const FileIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>;
-const LinkIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>;
-const PageIcon    = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>;
-const HWIcon      = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="8" y1="6" x2="16" y2="6"/><line x1="8" y1="10" x2="16" y2="10"/><line x1="8" y1="14" x2="12" y2="14"/></svg>;
-const CalIcon     = () => <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>;
-
-const TYPE_ICON = {
-  quiz:     <QuizIcon />,
-  file:     <FileIcon />,
-  link:     <LinkIcon />,
-  page:     <PageIcon />,
-  homework: <HWIcon />,
-  reading:  <FileIcon />,
-  notes:    <FileIcon />,
 };
 
 const EyeIcon = ({ hidden }) => hidden
@@ -458,10 +441,7 @@ export function Modules({
                       <button onClick={() => setEditingTitleFor(null)} style={{ background: "none", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontWeight: 500, fontSize: 14, color: text }}>{mod.title || "Untitled module"}</span>
-                      <button onClick={e => { e.stopPropagation(); setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }} style={{ background: "none", border: "none", color: muted, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Rename module">✎</button>
-                    </div>
+                    <span style={{ fontWeight: 500, fontSize: 14, color: text }}>{mod.title || "Untitled module"}</span>
                   )}
                 </div>
                 {/* Three-dot menu */}
@@ -479,6 +459,7 @@ export function Modules({
                       releaseDate={releaseDate}
                       locked={locked}
                       onSaveRelease={val => setReleaseFull(mod, val)}
+                      onRename={() => { setModuleMenuFor(null); setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }}
                       onAddItem={type => {
                         setModuleMenuFor(null);
                         setOpenMap(prev => ({ ...prev, [mod.id]: true }));
@@ -506,18 +487,22 @@ export function Modules({
                   const upload = item.type === "file" ? uploads[item.uploadId] : null;
                   const itemKey = `${mod.id}::${item.id}`;
                   const replacingThis = replacing?.itemKey === itemKey ? replacing : null;
+                  // Kept deliberately sparse to match the student row: no filename/size
+                  // for uploads, no "Page" label. Only in-flight upload progress and a
+                  // broken-item warning survive — both are instructor-only signals.
                   const subtitle = replacingThis
                     ? `Uploading ${replacingThis.name}… ${Math.round(replacingThis.progress * 100)}%`
                     : item.type === "link" ? item.url :
-                    item.type === "page" ? "Page" :
-                    item.type === "file" ? (upload ? `${upload.name || "file"}${upload.size ? " · " + fmtBytes(upload.size) : ""}` : "File (missing)") :
+                    item.type === "file" && !upload ? "File (missing)" :
                     null;
                   const canHaveUrl = item.type === "reading" || item.type === "notes";
                   const schedulable = item.type === "quiz" || item.type === "homework";
+                  const refQuiz = item.type === "quiz" ? quizzes.find(q => q.id === item.refId) : null;
+                  const refHw = item.type === "homework" ? homeworks.find(h => h.id === item.refId) : null;
                   const displayTitle = item.type === "quiz"
-                    ? (quizzes.find(q => q.id === item.refId)?.title || `Quiz (${item.refId})`)
+                    ? (refQuiz?.title || `Quiz (${item.refId})`)
                     : item.type === "homework"
-                    ? (homeworks.find(h => h.id === item.refId)?.title || `Homework (${item.refId})`)
+                    ? (refHw?.title || `Homework (${item.refId})`)
                     : (item.title || (item.type === "link" ? item.url : (upload?.name || "Untitled")));
 
                   const quizDueDate = schedulable ? (dueDates?.[item.refId] || null) : null;
@@ -525,14 +510,32 @@ export function Modules({
                   const quizTimeVal = quizDueDate && quizDueDate.length === 16 && quizDueDate[10] === ' ' ? quizDueDate.slice(11) : "23:59";
                   const quizLate = quizDueDate ? dueToDate(quizDueDate) < new Date() : false;
 
+                  // Mirrors the student's ModuleItem meta line (counts · pts · due).
+                  const nQ = refQuiz?.questions?.length || 0;
+                  const nP = refHw?.problems?.length || 0;
+                  const metaBits = (nQ || nP || quizDueDate) ? (
+                    <div style={{ ...s.muted, fontSize: 11, marginTop: 2, display: "flex", flexWrap: "wrap", gap: 10 }}>
+                      {!!nQ && <span>{nQ} question{nQ > 1 ? "s" : ""} · 10 pts</span>}
+                      {refQuiz?.questions?.some(q => q.requiresImage) && <span style={{ color: "#a78bfa" }}>drawing</span>}
+                      {!!nP && <span>{nP} problem{nP > 1 ? "s" : ""} · {nP} pts</span>}
+                      {quizDueDate && (
+                        <span style={{ color: quizLate ? "#f87171" : "#4ade80", fontWeight: 500 }}>
+                          {quizLate ? "Past due · " : "Due "}
+                          {dueToDate(quizDueDate).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })}
+                        </span>
+                      )}
+                    </div>
+                  ) : null;
+
                   const isItemDropTarget = dragItemOverKey === itemKey && dragItemKey !== itemKey;
 
                   return (
                     <Fragment key={item.id}>
                       <ItemRow
-                        typeIcon={TYPE_ICON[item.type] || <FileIcon />}
+                        typeIcon={<ItemIcon type={item.type} size={14} />}
                         title={displayTitle}
                         subtitle={subtitle}
+                        meta={metaBits}
                         error={replaceErr?.itemKey === itemKey ? replaceErr.msg : null}
                         isHidden={isHidden}
                         isDropTarget={isItemDropTarget}
@@ -689,7 +692,7 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeIcon, title, subtitle, error, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel }) {
+function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel }) {
   const { s, muted, border, text, teal } = useTheme();
   const activeDragProps = renameMode ? { ...dragProps, draggable: false } : (dragProps || {});
   return (
@@ -713,6 +716,7 @@ function ItemRow({ typeIcon, title, subtitle, error, isHidden, urlField, actions
           <>
             <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
             {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
+            {meta}
             {error && <div style={{ color: "#f87171", fontSize: 11 }}>{error}</div>}
           </>
         )}
@@ -888,7 +892,7 @@ function AddItemBar({
 }
 
 // ── ModuleMenu ────────────────────────────────────────────────────────────────
-function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageEditor, onDelete }) {
+function ModuleMenu({ releaseDate, locked, onSaveRelease, onRename, onAddItem, onOpenPageEditor, onDelete }) {
   const { s, muted, border, text, teal, bg } = useTheme();
   const ET = "America/New_York";
   const etParts = d => {
@@ -973,7 +977,15 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
         )}
       </div>
 
-      {/* Section 2: Add item */}
+      {/* Section 2: Edit — rename lives here rather than as a ✎ beside the title,
+          so the module header reads as plainly as the student's. */}
+      {onRename && (
+        <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
+          <button onClick={onRename} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Rename module</button>
+        </div>
+      )}
+
+      {/* Section 3: Add item */}
       <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
         <div style={{ color: muted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Add Item</div>
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -985,7 +997,7 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onAddItem, onOpenPageE
         </div>
       </div>
 
-      {/* Section 3: Delete */}
+      {/* Section 4: Delete */}
       <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10 }}>
         <button onClick={onDelete} style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "#f87171", borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>🗑 Delete module</button>
       </div>
