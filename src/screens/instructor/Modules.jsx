@@ -19,7 +19,7 @@ export function Modules({
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onDeleteStorage, onOpenPageEditor,
-  onOpenCustomQuizEditor, onDeleteCustomQuiz,
+  onOpenCustomQuizEditor, onDeleteCustomQuiz, onPreviewQuiz, onPreviewHomework, onViewPage,
 }) {
   const { s, muted, border, text, teal, bg } = useTheme();
   const lsKey = `newton_inst_modules_${classId}`;
@@ -527,6 +527,29 @@ export function Modules({
                     </div>
                   ) : null;
 
+                  // What clicking the item's TITLE does — the instructor's mirror of the student's
+                  // dispatch in Home.jsx (`onItemClick`), so an item opens the same way on both
+                  // sides. Quiz/homework run the real student runner in preview mode; everything
+                  // else opens exactly what the student would get. An item with nothing behind it
+                  // yet (no URL, no uploaded file, unresolved refId) yields no onClick, so its
+                  // title stays plain text rather than offering a click that would do nothing.
+                  //
+                  // Only the TITLE is a click target, never the whole row: the row is the drag
+                  // handle for reordering, and a row-wide target would fire on every aborted drag.
+                  const openInNewTab = url => window.open(url, "_blank", "noopener,noreferrer");
+                  const titleAction =
+                    item.type === "quiz" && refQuiz && onPreviewQuiz
+                      ? { onClick: () => onPreviewQuiz(refQuiz), hint: "Preview this quiz as a student" }
+                    : item.type === "homework" && refHw && onPreviewHomework
+                      ? { onClick: () => onPreviewHomework(refHw), hint: "Preview this homework as a student" }
+                    : item.type === "page" && item.pageId && pages?.[item.pageId] && onViewPage
+                      ? { onClick: () => onViewPage(pages[item.pageId]), hint: "View this page as a student" }
+                    : item.type === "file" && upload?.downloadUrl
+                      ? { onClick: () => openInNewTab(upload.downloadUrl), hint: "Open this file" }
+                    : (item.type === "link" || item.type === "reading" || item.type === "notes") && item.url
+                      ? { onClick: () => openInNewTab(item.url), hint: "Open this link" }
+                    : {};
+
                   const isItemDropTarget = dragItemOverKey === itemKey && dragItemKey !== itemKey;
 
                   return (
@@ -534,6 +557,8 @@ export function Modules({
                       <ItemRow
                         typeIcon={<ItemIcon type={item.type} size={14} />}
                         title={displayTitle}
+                        onTitleClick={titleAction.onClick}
+                        titleHint={titleAction.hint}
                         subtitle={subtitle}
                         meta={metaBits}
                         error={replaceErr?.itemKey === itemKey ? replaceErr.msg : null}
@@ -578,13 +603,6 @@ export function Modules({
                             placeholder="Paste link URL (https://…)"
                           />
                         ) : null}
-                        actions={
-                          <>
-                            {item.type === "file" && upload?.downloadUrl && (
-                              <IconBtn title="Open file" onClick={() => window.open(upload.downloadUrl, "_blank", "noopener,noreferrer")}>↗</IconBtn>
-                            )}
-                          </>
-                        }
                         menuOpen={itemMenuFor === itemKey}
                         menuRef={itemMenuFor === itemKey ? itemMenuRef : null}
                         onToggleMenu={() => setItemMenuFor(k => k === itemKey ? null : itemKey)}
@@ -692,7 +710,11 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
   );
 }
 
-function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, actions, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel }) {
+// `onTitleClick` (with `titleHint` as its tooltip) turns the title into the row's open affordance.
+// It replaced a right-hand ↗ icon button that only `file` rows had; every openable type now opens
+// the same way, which is also how the student's ModuleItem behaves. The old `actions` slot and its
+// `IconBtn` helper went with it — nothing needs a right-hand control beside the ⋮ menu anymore.
+function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel, onTitleClick, titleHint }) {
   const { s, muted, border, text, teal } = useTheme();
   const activeDragProps = renameMode ? { ...dragProps, draggable: false } : (dragProps || {});
   return (
@@ -714,7 +736,20 @@ function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, a
           </div>
         ) : (
           <>
-            <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            {onTitleClick ? (
+              // `draggable: false` so a click-drag on the title selects/clicks rather than
+              // starting a row drag, which would swallow the click.
+              <span
+                draggable={false}
+                onClick={e => { e.stopPropagation(); onTitleClick(); }}
+                title={titleHint}
+                style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "block", cursor: "pointer", width: "fit-content", maxWidth: "100%" }}
+                onMouseEnter={e => { e.currentTarget.style.color = teal; e.currentTarget.style.textDecoration = "underline"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = text; e.currentTarget.style.textDecoration = "none"; }}
+              >{title}</span>
+            ) : (
+              <div style={{ color: text, fontSize: 14, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title}</div>
+            )}
             {subtitle && <div style={{ ...s.muted, fontSize: 11, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{subtitle}</div>}
             {meta}
             {error && <div style={{ color: "#f87171", fontSize: 11 }}>{error}</div>}
@@ -723,27 +758,12 @@ function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, a
       </div>
       {urlField && <div style={{ flex: "2 1 280px", minWidth: 0 }}>{urlField}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
-        {actions}
         <div style={{ position: "relative" }} ref={menuRef}>
           <button onClick={onToggleMenu} style={{ background: "transparent", border: "none", color: muted, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}>⋮</button>
           {menuOpen && menu}
         </div>
       </div>
     </div>
-  );
-}
-
-function IconBtn({ children, onClick, title, disabled }) {
-  const { muted, border } = useTheme();
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      disabled={disabled}
-      style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "5px 8px", cursor: disabled ? "not-allowed" : "pointer", fontSize: 12, lineHeight: 1, opacity: disabled ? 0.35 : 1, display: "inline-flex", alignItems: "center", justifyContent: "center", minWidth: 28 }}
-    >
-      {children}
-    </button>
   );
 }
 

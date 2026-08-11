@@ -66,7 +66,8 @@ src/
     lms/
       Shell.jsx                  — three-pane layout (header + sidebar + main + rightRail)
       Sidebar.jsx                — left vertical nav (generic items)
-      TodoRail.jsx               — right rail To Do widget
+      TodoRail.jsx               — right rail To Do widget (a still-locked assignment is listed, dimmed and
+                                   unclickable, with the date its module unlocks)
       ModuleList.jsx             — collapsible module list + Collapse/Expand All + lock gate
       ModuleRow.jsx              — one module (header + items when expanded; hard-lock state)
       ModuleItem.jsx             — one item row (quiz/reading/notes/homework/page/file/link)
@@ -74,7 +75,9 @@ src/
       PageViewer.jsx             — student modal: read-only page rendering (pre-wrap text)
   screens/student/
     Home.jsx                     — student Home landing (module list, dispatches by type)
-    StudentCalendar.jsx          — calendar; month grid on desktop, agenda list on mobile (≤768px); events from quizzes+dueDates
+    StudentCalendar.jsx          — calendar; month grid on desktop, agenda list on mobile (≤768px); events from quizzes+dueDates;
+                                   an event the student hasn't completed opens the assignment on click, unless the `locks` map
+                                   (App's `assignmentLocks`) says it's still gated by its module's timed release / hidden flag
     StudentGrades.jsx            — student Grades view: overall grade banner + category breakdown
     CourseEvals.jsx              — student Course Evals: quick feedback (always open) + end-of-course survey (gated on last module release)
     Stub.jsx                     — generic "Coming Soon" placeholder (Syllabus only; Evals now has a real screen)

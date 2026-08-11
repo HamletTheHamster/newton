@@ -1,6 +1,6 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–2 and homework 1 (Ch. 21) are authored; later weeks are added as each is
+// STATUS: quizzes 1–3 and homework 1 (Ch. 21) are authored; later weeks are added as each is
 // prepped. Source material (quiz documents, homework problem screenshots, the instructor answer
 // key, lecture notes) lives OUTSIDE the repo in `source/phy215/{quizzes,hw/HWn,lectures}/`
 // (gitignored). Figures the app actually serves go in `public/homeworkFigures/physics2/HWn/`.
@@ -90,6 +90,38 @@ export const QUIZZES_PHYSICS2 = [
           A: "Attraction was the answer before they touched, when one sphere was neutral and merely polarized. Contact changes things: these are conductors, so what happens to the excess charge when they touch?",
           C: "That would require at least one sphere to end up neutral. But the excess electrons are free to move across both spheres once they touch. Where do they end up?",
         },
+      },
+    ],
+  },
+  // Week 3 quiz — covers week 2 (Ch. 22): Gauss's law and electric flux. All four questions are
+  // free response (the default type, graded conceptually by Claude with Socratic follow-ups):
+  // every one of them asks for a definition or an explanation, so the answer IS the prose. The
+  // two that hinge on a yes/no verdict (3 and 4) deliberately do NOT use the `yesNo` type, since
+  // that type just posts a canned reply and never reads the reasoning, which is the whole point
+  // here. Q4 labels its two halves (a)/(b) so `detectParts` splits it and awards per-part credit:
+  // the field at a point on the surface DOES change while the total flux does NOT, and a student
+  // who gets one of those and not the other should keep the half they earned.
+  {
+    id: "q3",
+    title: "Quiz 3: Gauss's Law",
+    questions: [
+      {
+        id: "q3_1",
+        text: "In words, what is Gauss's law?",
+      },
+      {
+        id: "q3_2",
+        text: "In words, what is electric flux?",
+      },
+      {
+        id: "q3_3",
+        text: "A rubber balloon has a single point charge in its interior. Does the electric flux through the balloon depend on whether or not it is fully inflated? Explain your reasoning.",
+      },
+      {
+        id: "q3_4",
+        // No $…$ math here: quiz question text renders as PLAIN TEXT (ChatMessages.jsx), unlike
+        // homework prompts, which go through MathText. A "$q$" would reach students literally.
+        text: "A spherical Gaussian surface encloses a point charge q. The point charge is now moved from the center of the sphere to a point away from the center.\n\n(a) Does the electric field at a point on the surface change? Explain.\n\n(b) Does the total flux through the Gaussian surface change? Explain.",
       },
     ],
   },

@@ -20,3 +20,16 @@ export function ItemIcon({ type, size = 16 }) {
     </svg>
   );
 }
+
+// "Not open yet" padlock — same glyph wherever a timed release gates something:
+// the locked module header (ModuleRow), a locked calendar event, a locked To Do
+// entry. `strokeWidth` goes up at tiny sizes so the shackle stays readable.
+export function LockIcon({ size = 14, color = "currentColor", strokeWidth = 2 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
+         strokeWidth={strokeWidth} strokeLinecap="round" strokeLinejoin="round"
+         style={{ flexShrink: 0 }}>
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </svg>
+  );
+}

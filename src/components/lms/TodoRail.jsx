@@ -1,26 +1,26 @@
 import { useTheme } from "../../theme.js";
 import { dueToDate, useIsMobile } from "../../utils.js";
+import { LockIcon } from "./itemIcons.jsx";
+import { categoryColor } from "../../category-colors.js";
 
 // Right rail "To Do" widget.
-// `items`: [{ id, title, due (string), kind, onClick? }] — due soon, not yet done
+// `items`: [{ id, title, due (string), kind, onClick?, locked?, releaseDate? }] —
+//   due soon, not yet done
 // `overdue`: same shape, already past due and still not done. Rendered in a
 //   separate lower section rather than dropped, so a missed assignment keeps
 //   nagging (it can still be submitted late for partial credit).
-// `kind` drives the color dot (quiz/homework/lab/midterm/final).
-const KIND_COLOR = {
-  quiz: "#a3e635",
-  homework: "#60a5fa",
-  lab: "#f472b6",
-  midterm: "#fbbf24",
-  final: "#f87171",
-  reading: "#94a3b8",
-  notes: "#94a3b8",
-};
+// `locked`: the assignment's module hasn't released yet (or its item is hidden),
+//   so it can't be opened. It stays listed — the due date is real and worth
+//   seeing coming — but has no `onClick` and shows when it opens instead.
+// `kind` drives the color dot, via the shared category palette (src/category-colors.js) that the
+// calendar, gradebook, grades list and syllabus all read — so a quiz is the same green everywhere.
 
 const LATE = "#f87171";
 
 const fmtDue = due => dueToDate(due).toLocaleDateString('en-US',
   { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+
+const unlockText = it => it.releaseDate ? "Unlocks " + fmtDue(it.releaseDate) : "Not open yet";
 
 export function TodoRail({ items, overdue = [] }) {
   const { s, text, muted, border, teal, hover } = useTheme();
@@ -34,16 +34,20 @@ export function TodoRail({ items, overdue = [] }) {
         key={it.id}
         onClick={it.onClick}
         disabled={!it.onClick}
+        title={it.locked ? unlockText(it) : undefined}
         style={{ display: "inline-flex", alignItems: "center", gap: 6,
                  background: "transparent",
                  border: `1px solid ${late ? "rgba(248,113,113,0.45)" : border}`,
                  borderRadius: 999, padding: "4px 10px",
                  cursor: it.onClick ? "pointer" : "default",
                  color: text, fontSize: 12, whiteSpace: "nowrap",
+                 opacity: it.locked ? 0.6 : 1,
                  flexShrink: 0 }}
       >
-        <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 4,
-                       background: KIND_COLOR[it.kind] || teal, flexShrink: 0 }} />
+        {it.locked
+          ? <LockIcon size={11} color={muted} strokeWidth={2.5} />
+          : <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: 4,
+                           background: categoryColor(it.kind, teal), flexShrink: 0 }} />}
         <span style={{ fontWeight: 500 }}>{it.title}</span>
         {it.due && (
           <span style={{ color: late ? LATE : muted, fontSize: 11 }}>
@@ -85,20 +89,25 @@ export function TodoRail({ items, overdue = [] }) {
         textAlign: "left",
         fontSize: 13,
         lineHeight: 1.4,
+        opacity: it.locked ? 0.7 : 1,
         transition: "background 0.12s, border-color 0.12s",
       }}
       onMouseEnter={e => { if (it.onClick) { e.currentTarget.style.background = hover; e.currentTarget.style.borderColor = late ? LATE : teal; } }}
       onMouseLeave={e => { if (it.onClick) { e.currentTarget.style.background = "transparent"; e.currentTarget.style.borderColor = late ? "rgba(248,113,113,0.4)" : border; } }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-        <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: KIND_COLOR[it.kind] || teal, flexShrink: 0 }} />
+        <span style={{ display: "inline-block", width: 8, height: 8, borderRadius: 4, background: categoryColor(it.kind, teal), flexShrink: 0 }} />
         <span style={{ color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{it.kind}</span>
+        {it.locked && <LockIcon size={11} color={muted} strokeWidth={2.5} />}
       </div>
       <div style={{ fontWeight: 500 }}>{it.title}</div>
       {it.due && (
         <div style={{ ...s.muted, fontSize: 12, marginTop: 3, color: late ? LATE : undefined }}>
           {late ? "Was due " : "Due "}{fmtDue(it.due)}
         </div>
+      )}
+      {it.locked && (
+        <div style={{ ...s.muted, fontSize: 12, marginTop: 2 }}>{unlockText(it)}</div>
       )}
     </button>
   );

@@ -22,10 +22,14 @@ import { InfoDot } from "./InfoDot.jsx";
 // config.fbd shape is documented in homework.js (gradeFBD).
 const FORCE_COLOR = "#3b82f6";   // all forces share one color — the label disambiguates them
 const ACCEL_COLOR = "#f59e0b";   // acceleration is conceptually not a force → its own color
-const VB_W = 480, VB_H = 320;
+// SQUARE on purpose: the plot must have the same px-per-unit on both axes, or a force drawn
+// off-axis is graded at an angle different from the one the student sees. At the old 448x288
+// px for a 3x3 data range, aiming by eye at 107.4 deg submitted 101.4 deg - a 6 deg error
+// against a 5 deg tolerance. Cardinal directions survive any scaling, which is why every
+// axis-aligned FBD looked fine and this only surfaced with a tilted force (21.73's tension).
+const VB_W = 380, VB_H = 380;
 const PAD = 16;
-const PLOT_X0 = PAD, PLOT_X1 = VB_W - PAD, PLOT_Y0 = PAD, PLOT_Y1 = VB_H - PAD;
-const PLOT_W = PLOT_X1 - PLOT_X0, PLOT_H = PLOT_Y1 - PLOT_Y0;
+const BOX_X0 = PAD, BOX_X1 = VB_W - PAD, BOX_Y0 = PAD, BOX_Y1 = VB_H - PAD;
 
 const TYPE_ORDER = ["F", "T", "N", "w", "f"];
 const TYPE_NAME = { F: "Applied force", T: "Tension", N: "Normal", w: "Weight", f: "Friction" };
@@ -52,6 +56,15 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
     const maxN = Object.keys(data.forces || {}).reduce((m, k) => Math.max(m, parseInt(k.replace(/\D/g, ""), 10) || 0), 0);
     if (maxN >= idRef.current) idRef.current = maxN + 1;
   }); // every render is cheap; keeps the counter monotonic
+
+  // The plot rect is the largest ISOTROPIC box that fits the padded area, centered. Equal
+  // px-per-unit on both axes is what makes a drawn angle equal the graded angle; deriving it
+  // from the ranges means a future config with, say, a wider x-range can't silently break that
+  // (which is exactly how a 448x288 box for a 3x3 range once made a tilted force unplaceable).
+  const scale = Math.min((BOX_X1 - BOX_X0) / (xMax - xMin), (BOX_Y1 - BOX_Y0) / (yMax - yMin));
+  const PLOT_W = scale * (xMax - xMin), PLOT_H = scale * (yMax - yMin);
+  const PLOT_X0 = BOX_X0 + ((BOX_X1 - BOX_X0) - PLOT_W) / 2, PLOT_X1 = PLOT_X0 + PLOT_W;
+  const PLOT_Y0 = BOX_Y0 + ((BOX_Y1 - BOX_Y0) - PLOT_H) / 2, PLOT_Y1 = PLOT_Y0 + PLOT_H;
 
   const sx = x => PLOT_X0 + ((x - xMin) / (xMax - xMin)) * PLOT_W;
   const sy = y => PLOT_Y0 + (1 - (y - yMin) / (yMax - yMin)) * PLOT_H;
@@ -95,6 +108,10 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
     const sym = FORCE_TYPES[r.type] || r.type;
     return typeCounts[r.type] > 1 ? `${sym}_{${typeSeen[r.type]}}` : sym;
   };
+  // Resolve every label once up front: labelFor advances a per-type counter, so calling it a
+  // second time (for the angle annotations) would renumber the repeats.
+  rendered.forEach(r => { r.label = labelFor(r); });
+
 
   // ── Pointer interaction (interactive mode only) ─────────────────────────────────
   const onDown = e => {
@@ -157,14 +174,42 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
   const setNoAccel = () => { setTool(null); commit(n => { n.accel = { none: true }; }); };
   const clearAccel = () => commit(n => { n.accel = null; });
   const rotateAxes = deg => commit(n => { n.axes = { angle: (((n.axes?.angle || 0) + deg) % 360 + 360) % 360 }; });
+  const setAxesCommitted = on => commit(n => { n.axes = { angle: n.axes?.angle || 0, committed: on }; });
   const axesAngle = data.axes?.angle || 0;
+  const axesCommitted = !!data.axes?.committed;
+
+  // ── Off-axis angles ─────────────────────────────────────────────────────────────
+  // Step 3 of the method is "describe any angles". A force that doesn't lie along one of the
+  // student's chosen axes is annotated with the angle it makes with the NEAREST one, which is
+  // both the conventional FBD notation and the only feedback that makes an off-axis force
+  // placeable: the tolerance is a few degrees, and nothing else on a scale-free diagram tells
+  // you what angle you just drew.
+  const AXIS_NAMES = ["+x", "+y", "-x", "-y"];
+  const OFF_AXIS_MIN = 3;   // degrees; below this it reads as "along the axis"
+  const angleToNearestAxis = tip => {
+    const ux = tip[0] - origin[0], uy = tip[1] - origin[1];
+    if (Math.hypot(ux, uy) < 1e-9) return null;
+    const dirDeg = (Math.atan2(uy, ux) * 180) / Math.PI;
+    let best = null;
+    for (let k = 0; k < 4; k++) {
+      const axDeg = axesAngle + 90 * k;
+      const delta = (((dirDeg - axDeg) % 360) + 540) % 360 - 180;
+      if (!best || Math.abs(delta) < Math.abs(best.delta)) best = { delta, axDeg, dirDeg, name: AXIS_NAMES[k] };
+    }
+    return best;
+  };
+  const offAxis = rendered
+    .map(r => ({ r, a: angleToNearestAxis(r.tip) }))
+    .filter(({ a }) => a && Math.abs(a.delta) >= OFF_AXIS_MIN);
   const accelArmed = tool === "accel";
 
   // ── Guide / process checklist state ─────────────────────────────────────────────
   const forcesState = grade?.pass?._forces ? "correct" : (studentIds.length || prefill.length) ? "drawn" : "empty";
   const accelState = grade?.pass?._accel ? "correct"
     : data.accel?.none || Array.isArray(data.accel?.tip) ? "drawn" : "empty";
-  const axesState = "drawn"; // axes always have a value (standard by default); ungraded info step
+  // Steps 2 and 3 resolve together: committing the axes fixes the frame, and the angle labels
+  // are derived from that frame, so describing the angles is done the moment it is chosen.
+  const axesState = axesCommitted ? "correct" : "drawn";
 
   // ── Sub-renderers ───────────────────────────────────────────────────────────────
   const Arrow = ({ tail, tip, color, label, italic, locked, dim, accent }) => {
@@ -256,9 +301,15 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
                   Set which way is positive <MathText>{"$+x$"}</MathText> and <MathText>{"$+y$"}</MathText> for this problem (rotate them if an incline makes tilted axes convenient). This is part of the method but isn't graded.
                 </InfoDot>
               </span>
-              <button type="button" onClick={() => rotateAxes(-15)} style={toolBtn(false)}>↺</button>
+              <button type="button" onClick={() => rotateAxes(-15)} disabled={axesCommitted}
+                style={{ ...toolBtn(false), opacity: axesCommitted ? 0.35 : 1, cursor: axesCommitted ? "default" : "pointer" }}>↺</button>
               <span style={{ color: text, fontSize: 13, minWidth: 70, textAlign: "center" }}>+x at {Math.round(axesAngle)}°</span>
-              <button type="button" onClick={() => rotateAxes(15)} style={toolBtn(false)}>↻</button>
+              <button type="button" onClick={() => rotateAxes(15)} disabled={axesCommitted}
+                style={{ ...toolBtn(false), opacity: axesCommitted ? 0.35 : 1, cursor: axesCommitted ? "default" : "pointer" }}>↻</button>
+              <button type="button" onClick={() => setAxesCommitted(!axesCommitted)}
+                style={toolBtn(axesCommitted, "#4ade80")}>
+                {axesCommitted ? "✓ Axes set" : "Use these axes"}
+              </button>
             </div>
           </>
         )}
@@ -288,10 +339,32 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
 
           {/* forces */}
           {rendered.map(r => (
-            <Arrow key={r.key} tail={origin} tip={r.tip} color={FORCE_COLOR} label={labelFor(r)} italic={r.type === "f"}
+            <Arrow key={r.key} tail={origin} tip={r.tip} color={FORCE_COLOR} label={r.label} italic={r.type === "f"}
               locked={interactive && (r.prefill || isFrozen(r.key))} dim={r.prefill && interactive}
               accent={interactive && r.key === activeId && !isFrozen(r.key)} />
           ))}
+
+          {/* Angle annotations: an arc from the nearest axis to each off-axis force, labeled with
+              the angle between them. Radii are staggered so several arcs don't overlap. */}
+          {offAxis.map(({ r, a }, i) => {
+            const rad = 34 + i * 15;
+            const pt = deg => [ox + rad * Math.cos((deg * Math.PI) / 180), oy - rad * Math.sin((deg * Math.PI) / 180)];
+            const [x1, y1] = pt(a.axDeg), [x2, y2] = pt(a.dirDeg);
+            const sweep = a.delta > 0 ? 0 : 1;          // screen y is flipped, so CCW in data is sweep 0
+            const [lx, ly] = pt(a.axDeg + a.delta / 2);
+            const out = 1 + 13 / rad;                    // nudge the label just outside the arc
+            return (
+              <g key={"ang" + r.key} pointerEvents="none">
+                <line x1={ox} y1={oy} x2={pt(a.axDeg)[0]} y2={pt(a.axDeg)[1]} stroke={axisColor} strokeWidth={1} strokeDasharray="3 3" />
+                <path d={`M${x1},${y1} A${rad},${rad} 0 0,${sweep} ${x2},${y2}`} fill="none" stroke={axisColor} strokeWidth={1.5} />
+                <text x={ox + (lx - ox) * out} y={oy + (ly - oy) * out} fill={text} fontSize={12.5} fontWeight={700}
+                  textAnchor="middle" dominantBaseline="middle"
+                  style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
+                  {Math.round(Math.abs(a.delta))}°
+                </text>
+              </g>
+            );
+          })}
 
           {/* acceleration */}
           {data.accel && Array.isArray(data.accel.tip) && Array.isArray(data.accel.tail) && (
@@ -322,9 +395,13 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
             <GuideStep n={1} state={forcesState} text={text} muted={muted} border={border}
               label="Draw & label every force acting on the body" note="One arrow per push or pull the body actually feels (contact forces, ropes, applied pushes), plus gravity. Pick each from the bank; repeats auto-number." />
             <GuideStep n={2} state={axesState} text={text} muted={muted} border={border} info
-              label="Assign your positive axes" note="Choose which way is $+x$ and $+y$ (rotate for inclines). Required step, not graded." />
-            <GuideStep n={3} state="drawn" text={text} muted={muted} border={border} info
-              label="Describe any angles" note="If a force doesn't lie along an axis, note the angle it makes with one. (Here every force lies along an axis, so there's nothing to label.)" />
+              label="Assign your positive axes" note={axesCommitted
+                ? `Frame set: $+x$ at ${Math.round(axesAngle)}°. Press “✓ Axes set” again if you want to change it.`
+                : "Choose which way is $+x$ and $+y$ (rotate them to line up with an incline if that helps), then press “Use these axes”. Any orientation is fine; the choice fixes the frame your angles are measured against."} />
+            <GuideStep n={3} state={axesState} text={text} muted={muted} border={border} info
+              label="Describe any angles" note={offAxis.length
+                ? `Done with your axes: each force that isn't along one is labeled on the diagram with the angle it makes with the nearest axis (${offAxis.map(({ r, a }) => `${r.label.replace(/_\{?(\w+)\}?/, "$1")} is ${Math.round(Math.abs(a.delta))}° from ${a.name}`).join("; ")}).`
+                : "Any force that isn't along an axis is labeled automatically with its angle to the nearest one. Nothing you've drawn is off-axis, so there's nothing to label."} />
             <GuideStep n={4} state={accelState} text={text} muted={muted} border={border}
               label="Show the acceleration direction" note="A small arrow off to the side for the body's acceleration, or mark “no acceleration” if it's in equilibrium." />
           </ol>

@@ -27,6 +27,7 @@ import {
   gradeVectors,
   gradeFBD,
   snapVectorMagnitudes,
+  snapFBDDirections,
   graphHint,
   vectorHint,
   fbdHint,
@@ -61,7 +62,13 @@ function itemsOf(p) {
 
 // MasteringPhysics-style homework runner. Owns all per-item state; on finish, builds a
 // submission object and calls onFinish(submission) (which persists it and may throw).
-export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, onFinish, onLeave }) {
+// `preview` = an instructor is running this from the Modules editor. It is a labelling flag ONLY:
+// the caller always pairs it with `practice`, and `practice` is what actually keeps the runner off
+// every per-student path (drafts, attempt counts, work upload, submission), all of which read
+// `loggedInStudent` — null on the instructor side. Never gate behaviour on `preview` alone.
+export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, preview = false, onFinish, onLeave }) {
+  const whoLabel = preview ? "Instructor preview · not saved" : (loggedInStudent?.fullName || "");
+  const backLabel = preview ? "Back to Modules" : "Back to Course";
   const { s, text, muted, border, teal, card, isLight } = useTheme();
   const solidBg = isLight ? "#fff" : "#252627";
   const G = homework.grading || HW_GRADING_DEFAULTS;
@@ -254,7 +261,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     // right direction is rescaled to the key's length (angle untouched), so the finished diagram
     // shows the relative magnitudes the question never asked them to measure. Grading runs on
     // what they drew; only the stored/redisplayed value is corrected.
-    const stored = item.answerType === "vector" ? snapVectorMagnitudes(v, item.vector, res.pass) : v;
+    // Two different snaps, for two different reasons:
+    //   vector — corrects an UNGRADED magnitude the question withheld (the clock's E_n ∝ n)
+    //   fbd    — corrects the graded DIRECTION, because off-axis forces display their angle and
+    //            a within-tolerance arrow would otherwise label a wrong one. Lengths are left
+    //            exactly as drawn in both cases.
+    const stored = item.answerType === "vector" ? snapVectorMagnitudes(v, item.vector, res.pass)
+      : item.answerType === "fbd" ? snapFBDDirections(v, item.fbd, res)
+      : v;
     setAnswers(a => ({ ...a, [item.id]: stored }));
     setGradePass(g => ({ ...g, [item.id]: res.pass }));
     const st = status[item.id];
@@ -655,11 +669,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
         <div style={{ background: card, borderBottom: `1px solid ${border}`, padding: "14px 24px", flexShrink: 0 }}>
           <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>{homework.title}</div>
-          <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{loggedInStudent?.fullName}</p>
+          <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{whoLabel}</p>
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
-            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{practice ? "Practice complete, not submitted for a grade" : "Homework complete"}</div>
+            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{preview ? "Preview complete, nothing saved or graded" : practice ? "Practice complete, not submitted for a grade" : "Homework complete"}</div>
             <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
             {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late: 50% penalty applied to your recorded grade.</div>}
           </div>
@@ -681,7 +695,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
               <button onClick={async () => { await persistDraft(); onLeave(); }} disabled={saving} style={{ ...s.btnSec, opacity: saving ? 0.4 : 1 }}>Leave, my work is saved</button>
             </div>
           )}
-          {(practice || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>Back to Course</button>}
+          {(practice || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>{backLabel}</button>}
         </div>
       </div>
     );
@@ -838,8 +852,8 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       {showLeave && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
-            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave homework?</h3>
-            <p style={{ ...s.muted, marginBottom: 20 }}>{practice ? "This is a practice session. Nothing is graded, and you can start it again anytime. Your practice progress won't be saved." : "Your progress will be saved, so you can resume later."}</p>
+            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>{preview ? "Leave preview?" : "Leave homework?"}</h3>
+            <p style={{ ...s.muted, marginBottom: 20 }}>{preview ? "This is an instructor preview. Nothing is graded or saved, and you can open it again anytime." : practice ? "This is a practice session. Nothing is graded, and you can start it again anytime. Your practice progress won't be saved." : "Your progress will be saved, so you can resume later."}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeave(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
               <button onClick={handleLeaveConfirm} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
@@ -881,9 +895,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ width: 1, height: 20, background: border }} />
           <div>
             <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              {homework.title}{practice && <span style={s.badge(teal)}>Practice</span>}
+              {homework.title}{practice && <span style={s.badge(teal)}>{preview ? "Preview" : "Practice"}</span>}
             </div>
-            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{loggedInStudent?.fullName}{!practice && late ? " · ⚠️ past due (50% penalty)" : ""}</p>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{whoLabel}{!practice && late ? " · ⚠️ past due (50% penalty)" : ""}</p>
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>

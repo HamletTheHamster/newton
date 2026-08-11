@@ -1,14 +1,8 @@
 import { useState } from "react";
 import { useTheme } from "../../theme.js";
-import { useIsMobile } from "../../utils.js";
-
-const KIND_COLOR = {
-  quiz: "#a3e635",
-  homework: "#60a5fa",
-  lab: "#f472b6",
-  midterm: "#fbbf24",
-  final: "#f87171",
-};
+import { useIsMobile, dueToDate } from "../../utils.js";
+import { LockIcon } from "../../components/lms/itemIcons.jsx";
+import { categoryColor } from "../../category-colors.js";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTH_NAMES = [
@@ -43,7 +37,16 @@ function todayDateStr() {
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
+const shortDate = str => {
+  const d = dueToDate(str);
+  return d ? d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : null;
+};
+
+// `locks`: { [assignmentId]: { locked, releaseDate } } — an assignment sitting in a
+//   module whose timed release hasn't arrived (or hidden) can't be opened yet.
+// `onOpen(id, kind)`: starts the assignment. Omitted (instructor preview) means no
+//   event is clickable.
+export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds, locks = {}, onOpen = null }) {
   const { s, text, muted, border, teal, hover } = useTheme();
   const isMobile = useIsMobile();
   const [viewDate, setViewDate] = useState(() => {
@@ -61,7 +64,18 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
       if (!it.dueDate) continue;
       const key = it.dueDate.slice(0, 10);
       if (!eventMap[key]) eventMap[key] = [];
-      eventMap[key].push({ id: it.id, title: it.title, kind, done: completedQuizIds.has(it.id) });
+      const done = completedQuizIds.has(it.id);
+      const lock = locks[it.id] || null;
+      const locked = !!lock?.locked;
+      eventMap[key].push({
+        id: it.id,
+        title: it.title,
+        kind,
+        done,
+        locked,
+        unlocksOn: locked && lock.releaseDate ? shortDate(lock.releaseDate) : null,
+        onClick: !done && !locked && onOpen ? () => onOpen(it.id, kind) : null,
+      });
     }
   };
   addEvents(quizzes, "quiz");
@@ -133,34 +147,53 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
                     {label}
                   </div>
                   <div style={{ padding: "8px 12px", display: "flex", flexDirection: "column", gap: 6 }}>
-                    {eventMap[cell.dateStr].map(ev => (
-                      <div key={ev.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{
-                          display: "inline-block",
-                          width: 10, height: 10,
-                          borderRadius: 2,
-                          background: KIND_COLOR[ev.kind] || teal,
-                          flexShrink: 0,
-                          opacity: ev.done ? 0.45 : 1,
-                        }} />
-                        <span style={{
-                          fontSize: 14,
-                          color: ev.done ? muted : text,
-                          textDecoration: ev.done ? "line-through" : "none",
-                        }}>
-                          {ev.title}
-                        </span>
-                        <span style={{
-                          marginLeft: "auto",
-                          fontSize: 11,
-                          color: muted,
-                          textTransform: "capitalize",
-                          flexShrink: 0,
-                        }}>
-                          {ev.kind}
-                        </span>
-                      </div>
-                    ))}
+                    {eventMap[cell.dateStr].map(ev => {
+                      const Tag = ev.onClick ? "button" : "div";
+                      return (
+                        <Tag
+                          key={ev.id}
+                          onClick={ev.onClick || undefined}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            width: "100%",
+                            padding: 0,
+                            background: "none",
+                            border: "none",
+                            textAlign: "left",
+                            fontFamily: "inherit",
+                            cursor: ev.onClick ? "pointer" : "default",
+                          }}
+                        >
+                          <span style={{
+                            display: "inline-block",
+                            width: 10, height: 10,
+                            borderRadius: 2,
+                            background: categoryColor(ev.kind, teal),
+                            flexShrink: 0,
+                            opacity: ev.done || ev.locked ? 0.45 : 1,
+                          }} />
+                          {ev.locked && <LockIcon size={11} color={muted} strokeWidth={2.5} />}
+                          <span style={{
+                            fontSize: 14,
+                            color: ev.done || ev.locked ? muted : text,
+                            textDecoration: ev.done ? "line-through" : "none",
+                          }}>
+                            {ev.title}
+                          </span>
+                          <span style={{
+                            marginLeft: "auto",
+                            fontSize: 11,
+                            color: muted,
+                            textTransform: ev.locked ? "none" : "capitalize",
+                            flexShrink: 0,
+                          }}>
+                            {ev.locked ? (ev.unlocksOn ? "Unlocks " + ev.unlocksOn : "Not open yet") : ev.kind}
+                          </span>
+                        </Tag>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -208,28 +241,45 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
               }}>
                 {cell.day}
               </div>
-              {events.map(ev => (
-                <div
-                  key={ev.id}
-                  title={ev.title}
-                  style={{
-                    background: KIND_COLOR[ev.kind] || teal,
-                    borderRadius: 3,
-                    padding: "1px 5px",
-                    fontSize: 11,
-                    fontWeight: 600,
-                    color: "#000",
-                    marginBottom: 2,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    opacity: ev.done ? 0.45 : 1,
-                    textDecoration: ev.done ? "line-through" : "none",
-                  }}
-                >
-                  {ev.title}
-                </div>
-              ))}
+              {events.map(ev => {
+                const Tag = ev.onClick ? "button" : "div";
+                const tip = ev.locked
+                  ? ev.title + (ev.unlocksOn ? " (unlocks " + ev.unlocksOn + ")" : " (not open yet)")
+                  : ev.title;
+                return (
+                  <Tag
+                    key={ev.id}
+                    title={tip}
+                    onClick={ev.onClick || undefined}
+                    onMouseEnter={e => { if (ev.onClick) e.currentTarget.style.filter = "brightness(1.15)"; }}
+                    onMouseLeave={e => { if (ev.onClick) e.currentTarget.style.filter = "none"; }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 3,
+                      width: "100%",
+                      background: categoryColor(ev.kind, teal),
+                      border: "none",
+                      borderRadius: 3,
+                      padding: "1px 5px",
+                      fontSize: 11,
+                      fontFamily: "inherit",
+                      fontWeight: 600,
+                      textAlign: "left",
+                      color: "#000",
+                      marginBottom: 2,
+                      overflow: "hidden",
+                      whiteSpace: "nowrap",
+                      opacity: ev.done ? 0.45 : ev.locked ? 0.6 : 1,
+                      textDecoration: ev.done ? "line-through" : "none",
+                      cursor: ev.onClick ? "pointer" : "default",
+                    }}
+                  >
+                    {ev.locked && <LockIcon size={9} color="#000" strokeWidth={2.5} />}
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{ev.title}</span>
+                  </Tag>
+                );
+              })}
             </div>
           );
         })}
@@ -239,7 +289,7 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds }) {
         <div style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
           {kindsPresent.map(kind => (
             <div key={kind} style={{ display: "flex", alignItems: "center", gap: 5 }}>
-              <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: KIND_COLOR[kind] || teal }} />
+              <span style={{ display: "inline-block", width: 10, height: 10, borderRadius: 2, background: categoryColor(kind, teal) }} />
               <span style={{ color: muted, fontSize: 12, textTransform: "capitalize" }}>{kind}</span>
             </div>
           ))}

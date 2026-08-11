@@ -1,23 +1,9 @@
 import { useTheme } from "../../theme.js";
+import { categoryColorForName } from "../../category-colors.js";
 
-// Matches CAT_COLORS in Gradebook.jsx
-const CAT_COLORS = {
-  lab:     "#818cf8",
-  hw:      "#60a5fa",
-  quiz:    "#34d399",
-  midterm: "#fbbf24",
-  final:   "#f87171",
-};
-
-function gradingColor(name) {
-  const n = name.toLowerCase();
-  if (n.includes("lab"))                        return CAT_COLORS.lab;
-  if (n.includes("homework") || n === "hw")     return CAT_COLORS.hw;
-  if (n.includes("quiz"))                       return CAT_COLORS.quiz;
-  if (n.includes("midterm") || n.includes("mid")) return CAT_COLORS.midterm;
-  if (n.includes("final"))                      return CAT_COLORS.final;
-  return "#00828c";
-}
+// A syllabus names its own grading categories in free text ("Quizzes", "Homework & Problem Sets"),
+// so the color is matched by name against the shared palette rather than by a category id.
+const gradingColor = name => categoryColorForName(name, "#00828c");
 
 function renderWithLinks(text, teal) {
   if (!text) return text;

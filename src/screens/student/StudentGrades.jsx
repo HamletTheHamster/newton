@@ -3,11 +3,7 @@ import { useTheme } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
 import { resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
-
-const CAT_COLORS = {
-  cat_lab: "#818cf8", cat_hw: "#60a5fa", cat_quiz: "#34d399",
-  cat_midterm: "#fbbf24", cat_final: "#f87171",
-};
+import { categoryColor } from "../../category-colors.js";
 
 function overallColor(pct) {
   if (pct >= 90) return "#4ade80"; if (pct >= 80) return "#a3e635";
@@ -117,7 +113,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
         const data = byCategory[cat.id];
         if (!data || data.assignments.length === 0) return null;
         const catAssignments = assignments.filter(a => a.catId === cat.id);
-        const cc = CAT_COLORS[cat.id] || teal;
+        const cc = categoryColor(cat.id, teal);
 
         return (
           <div key={cat.id} style={{ ...s.card, overflow: "hidden" }}>

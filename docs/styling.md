@@ -75,9 +75,27 @@ Applied to: instructor class picker, student class picker, and the Settings cour
 - Light: `color + "28"` background (16%), `color + "70"` border (44%)
 - Dark: `color + "22"` background (13%), `color + "44"` border (27%)
 
+### Assignment-category colors — one map, in `src/category-colors.js`
+
+The color identifying a category (quiz, homework, lab, midterm, final) is **not** theme-derived and
+is **not** declared per screen. It lives in `src/category-colors.js` and is read through
+`categoryColor(key, fallback)` or, for a syllabus's free-text category names,
+`categoryColorForName(name, fallback)`:
+
+```js
+import { categoryColor } from "../../category-colors.js";
+background: categoryColor(ev.kind, teal)     // "quiz" | "cat_quiz" | "hw" all resolve
+```
+
+The five colors used to be redeclared in `Gradebook.jsx`, `StudentGrades.jsx`,
+`StudentSyllabus.jsx`, `StudentCalendar.jsx` and `TodoRail.jsx` under two different key spellings
+(`quiz` vs `cat_quiz`), and they drifted — a quiz was mint green in the gradebook and syllabus but
+lime in the calendar and To Do rail. **Adding or changing a category color means editing that one
+file**; the `fallback` argument stays per-caller, since it's usually that screen's theme teal.
+
 ### Module-level utility functions
 
-Functions defined at module scope (outside any component) cannot call `useTheme()`. In `Gradebook.jsx`, the helpers `catColor`, `overallColor`, and `cellFg` import `TEAL` and `MUTED` at module level and keep using those uppercase constants. Only inside component functions can `useTheme()` be called.
+Functions defined at module scope (outside any component) cannot call `useTheme()`. In `Gradebook.jsx`, the helpers `catColor`, `overallColor`, and `cellFg` import `TEAL` and `MUTED` at module level and keep using those uppercase constants (`catColor` is now a thin wrapper passing `TEAL` as the fallback to the shared `categoryColor`). Only inside component functions can `useTheme()` be called.
 
 ## Mobile / Responsive
 

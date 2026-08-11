@@ -53,9 +53,9 @@ export function ChatMessages({ messages, busy = false }) {
             <div key={i} style={{ ...s.card, padding: 28, animation: "fadeSlideUp 0.45s ease" }}>
               <div style={{ textAlign: "center", marginBottom: 20 }}>
                 <h3 style={{ color: text, fontWeight: 700, fontSize: 22, margin: "0 0 4px" }}>
-                  {msg.practiceMode ? "Practice Complete" : "Quiz Complete"}
+                  {msg.preview ? "Preview Complete" : msg.practiceMode ? "Practice Complete" : "Quiz Complete"}
                 </h3>
-                {msg.practiceMode && <p style={{ color: teal, fontSize: 13, margin: 0 }}>Practice run: no grade recorded.</p>}
+                {msg.practiceMode && <p style={{ color: teal, fontSize: 13, margin: 0 }}>{msg.preview ? "Instructor preview: nothing was saved or graded." : "Practice run: no grade recorded."}</p>}
                 {!msg.practiceMode && msg.late && <p style={{ color: "#facc15", fontSize: 13, margin: 0 }}>⚠️ Late submission: half credit applied</p>}
               </div>
               <div style={{ textAlign: "center", margin: "20px 0" }}>

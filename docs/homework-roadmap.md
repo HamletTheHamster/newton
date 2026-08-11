@@ -90,6 +90,13 @@ one accepted form. Prefer, in order:
    `grade.js` — the runner shows a blue nudge and leaves the attempt counter alone. First use:
    `nonNegative: true` items, where a negative entry is nudged instead of marked wrong. Keep the
    nudge text independent of whether their value was right, so it leaks nothing.
+
+   **Snapping a drawn answer** follows the same spirit but needs a reason. Two exist so far:
+   `snapVectorMagnitudes` corrects an *ungraded* attribute the question withheld (the clock's
+   $E_n \propto n$), and `snapFBDDirections` corrects the *graded* direction because an FBD
+   displays the angle it was drawn at, so a within-tolerance arrow would otherwise label a wrong
+   number. Both fire only on an already-correct piece. Neither touches length: FBD arrow length
+   conventionally carries relative magnitude and is stored exactly as drawn.
 3. **Show state rather than explain it** (a piece that turns green and locks; the `= 1.25 × 10¹⁹`
    echo; the attempt/credit indicator).
 4. **Only then** write a sentence — and if you're about to, first check whether the behavior
@@ -329,6 +336,9 @@ date there.
 - Engine: `src/homework.js` — `HW_GRADING_DEFAULTS`, `creditForAttempt`, `phaseForAttempt`,
   `numericMatch` / `parseNumber` / `formatNumericAnswer`, `evaluateHomeworkAnswer`,
   `gradeGraph` / `parseGraphValue` / `graphHasInput` / `keyToValue` / `graphHint` (graph).
+- FBD method steps: forces and acceleration are graded from the drawing; the positive-axis
+  choice must be **committed** ("Use these axes"), which greens steps 2 and 3 together and
+  leaves the acceleration as the last open step. Orientation itself is never graded.
 - Runner: `src/screens/student/HomeworkRunner.jsx`; math I/O: `MathField` (MathLive),
   `MathText` (KaTeX); graph I/O: `GraphField` (`src/components/GraphField.jsx`).
   MathLive's virtual keyboard never closes itself — `hideMathKeyboard()` is wired to focusout,

@@ -4,13 +4,10 @@ import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js
 import { integrityState, resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
+import { categoryColor } from "../../category-colors.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
-const CAT_COLORS = {
-  cat_lab: "#818cf8", cat_hw: "#60a5fa", cat_quiz: "#34d399",
-  cat_midterm: "#fbbf24", cat_final: "#f87171",
-};
-function catColor(catId) { return CAT_COLORS[catId] || TEAL; }
+function catColor(catId) { return categoryColor(catId, TEAL); }
 
 function overallColor(pct) {
   if (pct == null) return MUTED;

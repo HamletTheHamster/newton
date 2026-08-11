@@ -74,3 +74,7 @@ This token is for local dev only — do not set it in Netlify environment variab
 - Be prepared to delete the resulting `submissions/{studentId}/{...}` entry afterward.
 
 The "⚠️ This quiz is past the due date" banner at the top of the chat indicates the run is **not** in practice mode (practice mode shows a teal "Practice" badge in the header and a "Practice Mode" line in the system message).
+
+**The safest way to exercise a quiz or homework end-to-end is the instructor preview**, which needs no student and writes nothing: Instructor → Home (Modules) → expand a module → **click the item's title**. It runs the real runner with practice forced on, badged "Preview" instead of "Practice", and "← Back" returns to Modules rather than the student portal. Use it to check new content (question wording, choice feedback, survey replies, homework prompts/figures, graph-vector-fbd fields, Claude's grading of a free-response or `text`/`math` answer) without touching `submissions`, `hwDrafts` or `hwAttempts` — homework preview writes **no** draft and **no** attempt counts, so it is repeatable. It still calls Claude, so the local proxy gotchas above apply.
+
+Clicking the title also opens the other item types the way a student gets them — `file` and `link`/`reading`/`notes` in a new tab, `page` in the student `PageViewer` — which is the quickest way to confirm an upload or URL actually resolves.

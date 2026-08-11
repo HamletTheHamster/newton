@@ -356,6 +356,7 @@ export function gradeFBD(raw, fbd) {
     if (pi >= 0) { matched[kf._i] = true; prefillLeft.splice(pi, 1); }
   }
   const usedStudent = new Set();
+  const matchedDir = {};   // { [forceId]: key dir } - which key force each drawn arrow satisfied
   for (const kf of keyForces) {
     if (matched[kf._i]) continue;
     let best = null, bestAng = Infinity;
@@ -364,7 +365,7 @@ export function gradeFBD(raw, fbd) {
       const a = _angleBetween(sf.dir, kf.dir);
       if (a <= (kf.angleTol ?? DEFAULT_ANGLE_TOL) && a < bestAng) { best = sf; bestAng = a; }
     }
-    if (best) { matched[kf._i] = true; usedStudent.add(best.id); pass[best.id] = true; }
+    if (best) { matched[kf._i] = true; usedStudent.add(best.id); pass[best.id] = true; matchedDir[best.id] = kf.dir; }
     else reasons.push({ type: "missing-force", forceType: kf.type });
   }
   for (const sf of studentForces) {
@@ -387,11 +388,61 @@ export function gradeFBD(raw, fbd) {
   }
   pass._accel = accelOk;
 
-  return { correct: reasons.length === 0, reasons, pass };
+  // The positive-axis choice is a committed step, not a passive default: the student presses
+  // "Use these axes", which fixes the frame every angle annotation is measured against. Its
+  // ORIENTATION is still ungraded (any frame is legitimate) - only the commitment is required.
+  const axesOk = !!data.axes?.committed;
+  if (!axesOk) reasons.push({ type: "axes" });
+  pass._axes = axesOk;
+
+  return {
+    correct: reasons.length === 0, reasons, pass, matchedDir,
+    accelDir: accelOk && fbd?.accel?.dir ? fbd.accel.dir : null,
+  };
 }
 
 // Build the renderable "correct diagram" from an FBD key (every required force once, plus the
 // acceleration arrow off to the lower-right). Used for the reveal and the gradebook.
+// Rotate every CORRECTLY PLACED arrow onto its exact key direction, keeping the length the
+// student drew. Direction only: FBD arrow length conventionally carries relative magnitude, so
+// it is stored exactly as drawn and never normalized.
+//
+// Why direction is snapped here when it IS the graded attribute: off-axis forces are annotated on
+// the diagram with the angle they make with the nearest axis, so the drawn angle is DISPLAYED.
+// Without snapping, an arrow placed 4 deg off inside a 5 deg tolerance would label itself "13 deg"
+// on a problem whose physics says 17.4 - the diagram would state a wrong number. Snapping makes
+// the label true. It fires only once an arrow is already accepted, so it corrects presentation,
+// never the verdict.
+export function snapFBDDirections(raw, fbd, grade) {
+  if (!grade) return raw;
+  const data = parseFBDValue(raw);
+  const origin = fbd?.origin || [0, 0];
+  const r3 = n => Math.round(n * 1000) / 1000;
+  const rotate = (tail, tip, dir) => {
+    const len = Math.hypot(tip[0] - tail[0], tip[1] - tail[1]);
+    const dm = Math.hypot(dir[0], dir[1]);
+    if (len < 1e-9 || dm < 1e-9) return null;
+    return [r3(tail[0] + (dir[0] / dm) * len), r3(tail[1] + (dir[1] / dm) * len)];
+  };
+  let changed = false;
+  const next = { ...data, forces: { ...(data.forces || {}) } };
+  for (const [id, dir] of Object.entries(grade.matchedDir || {})) {
+    const sf = next.forces[id];
+    if (!sf || !Array.isArray(sf.tip)) continue;
+    const tail = Array.isArray(sf.tail) ? sf.tail : origin;
+    const tip = rotate(tail, sf.tip, dir);
+    if (!tip || (tip[0] === sf.tip[0] && tip[1] === sf.tip[1])) continue;
+    next.forces[id] = { ...sf, tip };
+    changed = true;
+  }
+  const a = data.accel;
+  if (grade.accelDir && a && Array.isArray(a.tip) && Array.isArray(a.tail)) {
+    const tip = rotate(a.tail, a.tip, grade.accelDir);
+    if (tip && (tip[0] !== a.tip[0] || tip[1] !== a.tip[1])) { next.accel = { ...a, tip }; changed = true; }
+  }
+  return changed ? JSON.stringify(next) : raw;
+}
+
 export function keyToFBDValue(fbd) {
   const forces = {};
   let i = 0;
@@ -408,7 +459,7 @@ export function keyToFBDValue(fbd) {
     const base = [0.95, -1.15]; // off to the side, away from the origin-rooted force arrows
     accel = { tail: base, tip: [base[0] + fbd.accel.dir[0] * 0.6, base[1] + fbd.accel.dir[1] * 0.6] };
   }
-  return { forces, accel, axes: { angle: 0 } };
+  return { forces, accel, axes: { angle: 0, committed: true } };
 }
 
 // Process-level hint for an FBD — guides the student through the drawing method without naming
@@ -418,6 +469,7 @@ export function fbdHint(reason) {
   switch (reason.type) {
     case "missing-force": return "You're missing at least one force. Go through every object touching the body: surfaces it rests against or pushes on, ropes or cords, applied pushes/pulls. And don't forget gravity (the weight). Each contact is a force.";
     case "extra-force":   return "You've drawn a force that doesn't belong. Every force on the body must have a physical source actually touching it (or be gravity). If you can't name what's pushing or pulling, remove that arrow.";
+    case "axes":          return "Set your positive axes and confirm them. Any orientation is fine (tilt them to line up with an incline if that helps) - the diagram just needs a frame to measure angles against.";
     case "accel":         return "Re-check your acceleration arrow (the one off to the side). Which way is the body's velocity changing? If the body isn't accelerating, mark “no acceleration (equilibrium)” instead of drawing an arrow.";
     default:              return "Re-examine your free-body diagram.";
   }

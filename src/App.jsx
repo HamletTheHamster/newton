@@ -170,6 +170,13 @@ export default function App() {
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [activeHomework, setActiveHomework] = useState(null);
   const [practiceMode, setPracticeMode] = useState(false);
+  // Who launched the quiz OR homework runner: "student" (the student portal) or "instructor"
+  // (previewing from the Modules editor). One state serves both runners because they are separate
+  // screens that are never active at once. It is the single source of truth for BOTH halves of the
+  // difference — where "Back" returns to, and whether the run is an instructor preview — so the
+  // two can never disagree (e.g. an instructor stranded on the student portal after previewing).
+  // An instructor preview is always practice, so nothing it does is ever saved for any student.
+  const [runnerFrom, setRunnerFrom] = useState("student");
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
   const [qIdx, setQIdx] = useState(0); const [apiHist, setApiHist] = useState([]);
   const [messages, setMessages] = useState([]); const [qScores, setQScores] = useState([]);
@@ -221,6 +228,28 @@ export default function App() {
   ].map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
   const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueDates[h.id] || null, grading: { ...HW_GRADING_DEFAULTS, ...(homeworkSettings[h.id] || {}) } }));
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
+  // A student only ever reaches a quiz/homework through its module item, so an
+  // assignment is open exactly when some visible item points at it from a module
+  // whose timed release has passed. An assignment no module references has
+  // nothing gating it, so it stays open (it is absent from this map).
+  //   { [refId]: { locked, releaseDate } }  releaseDate = the module's, when that's what locked it
+  const assignmentLocks = (() => {
+    const now = new Date();
+    const map = {};
+    for (const m of mergedModules) {
+      const releaseAt = m.releaseDate ? dueToDate(m.releaseDate) : null;
+      const moduleLocked = !!(releaseAt && now < releaseAt);
+      for (const it of m.items || []) {
+        if ((it.type !== "quiz" && it.type !== "homework") || !it.refId) continue;
+        if (map[it.refId] && !map[it.refId].locked) continue;   // an already-open occurrence wins
+        map[it.refId] = {
+          locked: moduleLocked || !!it._hidden,
+          releaseDate: moduleLocked ? m.releaseDate : null,
+        };
+      }
+    }
+    return map;
+  })();
   const currentQ = activeQuiz?.questions[qIdx];
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
   const isChoiceQ = !!currentQ?.choices, isSurveyQ = !!currentQ?.survey;
@@ -283,12 +312,16 @@ export default function App() {
     };
   })();
 
+  // An assignment still gated by its module's timed release stays listed (its due
+  // date is real and the student should see it coming) but isn't clickable — the
+  // rail shows when it opens instead.
   const toStudentTodo = list => list
     .filter(t => !completedQuizIds.has(t.id))
-    .map(({ ref, ...t }) => ({
-      ...t,
-      onClick: t.kind === "quiz" ? () => startQuiz(ref, false) : () => startHomework(ref),
-    }));
+    .map(({ ref, ...t }) => {
+      const lock = assignmentLocks[t.id];
+      if (lock?.locked) return { ...t, locked: true, releaseDate: lock.releaseDate };
+      return { ...t, onClick: t.kind === "quiz" ? () => startQuiz(ref, false) : () => startHomework(ref) };
+    });
   const todoItems = loggedInStudent ? toStudentTodo(upcomingAssignments) : [];
   const todoOverdue = loggedInStudent ? toStudentTodo(overdueAssignments) : [];
 
@@ -545,14 +578,16 @@ export default function App() {
   useLayoutEffect(() => { doScroll(); }, [messages]);
   useLayoutEffect(() => { doScroll(); }, [busy]);
   useEffect(() => { if (screen === "quiz" && usesTextInput && !quizDone) requestAnimationFrame(() => inputRef.current?.focus()); }, [qIdx, screen, quizDone]);
-  const navStateRef = useRef({ screen, quizDone, showStudentSettings });
-  useEffect(() => { navStateRef.current = { screen, quizDone, showStudentSettings }; }, [screen, quizDone, showStudentSettings]);
+  const navStateRef = useRef({ screen, quizDone, showStudentSettings, runnerFrom });
+  useEffect(() => { navStateRef.current = { screen, quizDone, showStudentSettings, runnerFrom }; }, [screen, quizDone, showStudentSettings, runnerFrom]);
   useEffect(() => {
     const go = next => { navStateRef.current = { ...navStateRef.current, screen: next, showStudentSettings: false }; setScreen(next); };
     const onPop = () => {
-      const { screen, quizDone, showStudentSettings } = navStateRef.current;
-      if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go("student-portal") : setShowLeaveConfirm(true); }
-      else if (screen === "homework") { go("student-portal"); }
+      const { screen, quizDone, showStudentSettings, runnerFrom } = navStateRef.current;
+      // Browser-back out of either runner returns to whoever launched it (see runnerReturnScreen).
+      const runnerBack = runnerFrom === "instructor" ? "instructor" : "student-portal";
+      if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go(runnerBack) : setShowLeaveConfirm(true); }
+      else if (screen === "homework") { go(runnerBack); }
       else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }
       else if (screen === "student-pw") { history.pushState({ newton: "student-pw" }, "", ""); setSelectedStudent(null); go("student-search"); }
       else if (screen === "inst-login") { history.pushState({ newton: "inst-login" }, "", ""); go("student-search"); }
@@ -1109,29 +1144,57 @@ export default function App() {
       setQIdx(nextIdx); setApiHist([]); setAttemptCount(0); setCompletedParts([]);
     }
   };
-  const startQuiz = (quiz, isPractice = false) => {
-    setPracticeMode(isPractice); setActiveQuiz(quiz); setQIdx(0); setApiHist([]); setAttemptCount(0); setCompletedParts([]);
+  // `from` is "student" or "instructor" (a Modules-editor preview). An instructor preview is
+  // FORCED to practice regardless of the caller, since there is no student to save a run for —
+  // finishQuiz's submission path reads loggedInStudent, which is null on the instructor side.
+  const startQuiz = (quiz, isPractice = false, from = "student") => {
+    const preview = from === "instructor";
+    setRunnerFrom(from);
+    setPracticeMode(isPractice || preview); setActiveQuiz(quiz); setQIdx(0); setApiHist([]); setAttemptCount(0); setCompletedParts([]);
     setQScores(new Array(quiz.questions.length).fill(null));
     setQuizDone(false); setInput(""); setPendingFile(null); setBusy(false); setShowLeaveConfirm(false); setSubSaveError(false); setPendingSub(null);
     const late = isLate(quiz.dueDate);
+    const banner = preview
+      ? "Instructor preview: this is exactly what students see. Nothing here is saved or graded.\n\n"
+      : isPractice ? "Practice Mode: this run will not be submitted for a grade\n\n" : "";
+    const taker = preview ? "Instructor preview" : (loggedInStudent.altName || loggedInStudent.fullName);
     setMessages([
-      { id: 0, type: "system", text: (isPractice ? "Practice Mode: this run will not be submitted for a grade\n\n" : "") + "📚 " + quiz.title + "  •  " + (loggedInStudent.altName || loggedInStudent.fullName) + (late && !isPractice ? "\n\n⚠️ This quiz is past the due date. Your score will be halved." : "") },
+      { id: 0, type: "system", text: banner + "📚 " + quiz.title + "  •  " + taker + (late && !isPractice && !preview ? "\n\n⚠️ This quiz is past the due date. Your score will be halved." : "") },
       { id: 1, type: "question", q: quiz.questions[0], num: 1, total: quiz.questions.length, pts: ptsPer(quiz.questions.length)[0] },
     ]);
     setScreen("quiz");
     history.pushState({ newton: "quiz" }, "", "");
   };
-  const startHomework = (hw, isPractice = false) => {
-    setPracticeMode(isPractice);
+  // Same contract as startQuiz: an instructor preview is FORCED to practice, which is what keeps
+  // HomeworkRunner off every per-student path (drafts, attempt counts, work uploads, the
+  // submission itself all read loggedInStudent, which is null on the instructor side).
+  const startHomework = (hw, isPractice = false, from = "student") => {
+    const preview = from === "instructor";
+    setRunnerFrom(from);
+    setPracticeMode(isPractice || preview);
     setActiveHomework(hw);
     setScreen("homework");
     history.pushState({ newton: "homework" }, "", "");
   };
+  // Calendar → assignment, mirroring what clicking the module item does. Only
+  // called for events the calendar left clickable (not completed, not locked).
+  const openAssignment = (id, kind) => {
+    if (kind === "homework") {
+      const hw = homeworks.find(h => h.id === id);
+      if (hw) startHomework(hw);
+      return;
+    }
+    const quiz = quizzes.find(q => q.id === id);
+    if (quiz) startQuiz(quiz, false);
+  };
   // Persist a completed-homework submission (reuses the quiz submissions array/paths).
   // Throws on failure so HomeworkRunner can show a retry affordance.
   const saveHomeworkSub = async sub => { await saveSubs([...submissions, sub], sub.studentId); };
-  const handleLeaveQuiz = () => { if (quizDone && !subSaveError) { setScreen("student-portal"); return; } if (!quizDone) setShowLeaveConfirm(true); };
-  const confirmLeave = () => { setShowLeaveConfirm(false); setScreen("student-portal"); };
+  // Leaving the quiz lands back where it was launched from, not unconditionally on the student
+  // portal (an instructor previewing from Modules has no business being dropped there).
+  const runnerReturnScreen = runnerFrom === "instructor" ? "instructor" : "student-portal";
+  const handleLeaveQuiz = () => { if (quizDone && !subSaveError) { setScreen(runnerReturnScreen); return; } if (!quizDone) setShowLeaveConfirm(true); };
+  const confirmLeave = () => { setShowLeaveConfirm(false); setScreen(runnerReturnScreen); };
   const onFileSelect = async e => {
     const file = e.target.files[0]; if (!file) return;
     if (!ACCEPTED_IMG.includes(file.type)) { alert("Please upload PNG, JPG, WEBP, or GIF."); e.target.value = ""; return; }
@@ -1263,7 +1326,7 @@ export default function App() {
   const finishQuiz = async (quiz, scores, curMsgs) => {
     const raw = scores.reduce((a, b) => a + (b || 0), 0), late = isLate(quiz.dueDate);
     const final = late ? parseFloat((raw * 0.5).toFixed(1)) : raw;
-    const resultMsg = { id: Date.now() + 10, type: "result", raw, final, late, scores, questions: quiz.questions, pts: ptsPer(quiz.questions.length), practiceMode };
+    const resultMsg = { id: Date.now() + 10, type: "result", raw, final, late, scores, questions: quiz.questions, pts: ptsPer(quiz.questions.length), practiceMode, preview: runnerFrom === "instructor" };
     setQuizDone(true); setMessages([...curMsgs, resultMsg]);
     if (!practiceMode) {
       const sub = { id: "sub_" + Date.now(), studentName: loggedInStudent.fullName, studentId: loggedInStudent.studentId, quizId: quiz.id, quizTitle: quiz.title, rawScore: raw, score: final, late, timestamp: new Date().toISOString(), dialogue: [...curMsgs, resultMsg].map(({ imageUrl, ...m }) => m) };
@@ -1506,7 +1569,7 @@ export default function App() {
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
-      mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} completedQuizIds={completedQuizIds} />;
+      mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} completedQuizIds={completedQuizIds} locks={assignmentLocks} onOpen={openAssignment} />;
     } else if (studentSection === "grades") {
       mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
@@ -1545,8 +1608,9 @@ export default function App() {
           classId={currentClassId}
           loggedInStudent={loggedInStudent}
           practice={practiceMode}
+          preview={runnerFrom === "instructor"}
           onFinish={saveHomeworkSub}
-          onLeave={() => setScreen("student-portal")}
+          onLeave={() => setScreen(runnerReturnScreen)}
         />
       </ThemeContext.Provider>
     );
@@ -1562,8 +1626,8 @@ export default function App() {
       {showLeaveConfirm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
-            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>Leave quiz?</h3>
-            <p style={{ ...s.muted, marginBottom: 20 }}>Your progress will be lost and this attempt will not be saved.</p>
+            <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>{runnerFrom === "instructor" ? "Leave preview?" : "Leave quiz?"}</h3>
+            <p style={{ ...s.muted, marginBottom: 20 }}>{runnerFrom === "instructor" ? "Your progress through the preview will be lost. Nothing was going to be saved either way." : "Your progress will be lost and this attempt will not be saved."}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeaveConfirm(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
               <button onClick={confirmLeave} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
@@ -1576,8 +1640,8 @@ export default function App() {
           <button onClick={handleLeaveQuiz} disabled={subSaveError} title={subSaveError ? "Please retry saving before leaving" : ""} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto", opacity: subSaveError ? 0.35 : 1, cursor: subSaveError ? "not-allowed" : "pointer" }}>← Back</button>
           <div style={{ width: 1, height: 20, background: BORDER }} />
           <div>
-            <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>{activeQuiz?.title}{practiceMode && <span style={s.badge(TEAL)}>Practice</span>}</div>
-            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{loggedInStudent?.fullName}</p>
+            <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>{activeQuiz?.title}{practiceMode && <span style={s.badge(TEAL)}>{runnerFrom === "instructor" ? "Preview" : "Practice"}</span>}</div>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{runnerFrom === "instructor" ? "Instructor preview · not saved" : loggedInStudent?.fullName}</p>
           </div>
         </div>
         {!quizDone && (
@@ -1597,7 +1661,7 @@ export default function App() {
             <button onClick={retrySaveSub} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>Retry saving submission</button>
           </div>
         )}
-        {quizDone && <button onClick={() => setScreen("student-portal")} style={{ ...s.btnPri, marginTop: 8 }}>Back to Course</button>}
+        {quizDone && <button onClick={() => setScreen(runnerReturnScreen)} style={{ ...s.btnPri, marginTop: 8 }}>{runnerFrom === "instructor" ? "Back to Modules" : "Back to Course"}</button>}
       </div>
       {!quizDone && (
         <div style={{ background: CARD, borderTop: `1px solid ${BORDER}`, padding: 16, flexShrink: 0 }}>
@@ -1965,6 +2029,11 @@ export default function App() {
               }
             }}
             onDeleteCustomQuiz={deleteCustomQuiz}
+            // Clicking an item's title opens it the way a student would. Quiz/homework run the
+            // REAL student runners in preview mode; a page opens the same PageViewer students get.
+            onPreviewQuiz={q => startQuiz(q, true, "instructor")}
+            onPreviewHomework={hw => startHomework(hw, true, "instructor")}
+            onViewPage={p => setViewingPage({ title: p.title, content: p.content || "" })}
           />
         )}
 
@@ -2359,6 +2428,10 @@ export default function App() {
             </div>
           );
         })()}
+        {/* Same viewer the student portal renders, so clicking a page item's title in the
+            Modules editor shows the page exactly as students read it (the ⋮ → Edit route
+            shows the editor instead, which is a different thing). */}
+        {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
       </Shell>
       </ThemeContext.Provider>
     );
