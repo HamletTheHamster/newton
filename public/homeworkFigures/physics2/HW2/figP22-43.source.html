@@ -1,0 +1,59 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>html,body{margin:0;padding:0;background:#fff}</style>
+</head><body>
+<svg xmlns="http://www.w3.org/2000/svg" width="460" height="540" viewBox="0 0 460 540">
+  <defs>
+    <linearGradient id="sheetG" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%"   stop-color="#f7edc4"/>
+      <stop offset="45%"  stop-color="#efe0a6"/>
+      <stop offset="100%" stop-color="#d9c47c"/>
+    </linearGradient>
+    <linearGradient id="barG" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%"   stop-color="#dcdcdc"/>
+      <stop offset="100%" stop-color="#bdbdbd"/>
+    </linearGradient>
+    <radialGradient id="ballG" cx="35%" cy="30%" r="75%">
+      <stop offset="0%"   stop-color="#e8776a"/>
+      <stop offset="55%"  stop-color="#c9403a"/>
+      <stop offset="100%" stop-color="#96201e"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="460" height="540" fill="#ffffff"/>
+
+  <!-- large charged insulating sheet, seen edge-on -->
+  <rect x="24" y="8" width="22" height="524" fill="url(#sheetG)" stroke="#b9a45f" stroke-width="1.2"/>
+  <g fill="#a8863c" font-family="Helvetica, Arial, sans-serif" font-size="17" text-anchor="middle">
+    <text x="35" y="52">+</text><text x="35" y="112">+</text><text x="35" y="172">+</text>
+    <text x="35" y="232">+</text><text x="35" y="292">+</text><text x="35" y="352">+</text>
+    <text x="35" y="412">+</text><text x="35" y="472">+</text><text x="35" y="524">+</text>
+  </g>
+  <text x="62" y="300" font-family="Times New Roman, Times, serif" font-style="italic"
+        font-size="26" fill="#333">&#963;</text>
+
+  <!-- ceiling support -->
+  <rect x="96" y="12" width="180" height="72" fill="url(#barG)" stroke="#8f8f8f" stroke-width="1.5"/>
+
+  <!-- vertical reference through the attachment point -->
+  <line x1="186" y1="84" x2="186" y2="252" stroke="#9a9a9a" stroke-width="2.4"
+        stroke-dasharray="7 6"/>
+
+  <!-- thread, hanging AWAY from the sheet: the sheet and the ball are both positive, so the
+       electric force on the ball pushes it away from the sheet -->
+  <line x1="186" y1="84" x2="376" y2="413" stroke="#8a8a8a" stroke-width="3.2"
+        stroke-linecap="round"/>
+
+  <!-- angle of the thread from the vertical -->
+  <path d="M 186 162 A 78 78 0 0 0 225 151.5" fill="none" stroke="#333" stroke-width="2"/>
+  <text x="216" y="181" font-family="Times New Roman, Times, serif" font-style="italic"
+        font-size="27" fill="#222">&#952;</text>
+
+  <!-- the small charged sphere -->
+  <circle cx="376" cy="413" r="21" fill="url(#ballG)" stroke="#7c1a18" stroke-width="1.2"/>
+  <g stroke="#fff" stroke-width="3.4" stroke-linecap="round">
+    <line x1="367" y1="413" x2="385" y2="413"/>
+    <line x1="376" y1="404" x2="376" y2="422"/>
+  </g>
+</svg>
+</body></html>

@@ -101,3 +101,29 @@ $m_p = 1.673\times10^{-27}\text{ kg}$, $g = 9.81\text{ m/s}^2$.
 21.34 $E_1$/$E_2$ magnitudes, 21.45(i), the Clock answer (**3:30** — verified by direct vector
 summation as well as the pairing argument), 21.73 (3.41×10⁴ N/C at $g=9.81$), and all of 21.87
 (0.418 m, 2.89 m, and the symbolic forms).
+
+## HW2 — Gauss's Law (verified 2026-08-11)
+
+Every value independently re-derived from the problem statements. **This key is numerically
+clean: every boxed value agrees with the verified value to the sig figs printed.** Only one row
+below, and it is a rounding-convention note rather than an error. Constants as for HW1, with
+$\epsilon_0 = 8.8542\times10^{-12}\ \text{C}^2/(\text{N}\cdot\text{m}^2)$ (the key uses
+$8.85\times10^{-12}$, a 0.05% difference that never reaches the third sig fig).
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| 22.1 (a) — flux through the sheet | 1.8 N·m²/C | **1.75 N·m²/C** (exact) | Raw gap is 2.9%, but see note | Not an error: $EA\cos60° = 1.75$ exactly, and 1.8 is its correct 2-sig-fig rounding (14 N/C carries only 2 sf). The app stores 1.75 and reveals "1.8"; **both entries grade correct** (1.8 via `numericMatch`'s sig-fig leniency). Listed only because a bare numeric comparison trips the ±2% check. | n/a |
+
+**The figure for 22.43 is wrong in the textbook and is NOT reproduced.** Fig. P22.43 draws the
+positive sphere deflected *toward* the positively charged sheet, i.e. attracted, which contradicts
+the problem's own $\sigma = +2.50\times10^{-9}\text{ C/m}^2$ and the repulsion the solution
+assumes. The app serves a figure drawn for this purpose
+(`public/homeworkFigures/physics2/HW2/figP22-43.png`, source SVG beside it) with the sphere pushed
+*away* from the sheet and the sheet's positive charge marked. Nothing else about the problem
+changed. **This one is worth raising with the publisher's figure, not just the key.**
+
+**Confirmed correct (no discrepancy):** 22.3 (3.53×10⁵ N·m²/C, 3.13 μC), 22.4 (1.36×10⁵ twice,
+2.71×10⁵), 22.10 (0, −678, −226 N·m²/C), 22.14 (7.43 N/C, 0), 22.15 (0.0810 N), 22.26
+(6.56×10⁻²¹ J, 1.20×10⁵ m/s), 22.42 (all symbolic: $\rho r/2\epsilon_0$,
+$\lambda/2\pi\epsilon_0 r$, and their agreement at $r=R$), 22.43 (10.2°), 22.51
+($qQ/4\pi\epsilon_0r^2$ inward, and zero inside).

@@ -205,6 +205,52 @@ export const ANSWER_KEYS = {
       hw1_p10c_h: { answerType: "numeric", answer: 0.4175874, sigFigs: 3, unit: "m", nonNegative: true },
       hw1_p10c_d: { answerType: "numeric", answer: 2.893130, sigFigs: 3, unit: "m", nonNegative: true },
     },
+    // Y&F Ch. 22 (Gauss's law). Same constants; eps0 = 8.8541878e-12 C²/(N·m²) throughout.
+    // 22.42 and 22.51 are entirely symbolic (math/text/graph) — 22.42's graph key lives in
+    // physics2.js, so neither problem contributes a numeric entry here.
+    hw2: {
+      // 22.1 — Phi = EA cos(60 deg) = 1.75 exactly; 14 N/C limits it to 2 sig figs, so the
+      // reveal reads "1.8" (which is also what the instructor key boxes).
+      hw2_p1a: { answerType: "numeric", answer: 1.75, sigFigs: 2, unit: "N·m²/C", nonNegative: true },
+      hw2_p1b: { answerType: "text", answer: "No. For a flat sheet in a uniform field the flux is $\\Phi_E = \\vec E \\cdot \\vec A = EA\\cos\\phi$, which depends only on the magnitude of the field, the area of the sheet, and the angle between the field and the normal to the sheet. The outline of the sheet appears nowhere in that expression, so a square, a circle, a triangle or any other shape of the same $0.250\\text{ m}^2$ held at the same $60°$ orientation intercepts the same number of field lines and gives the same flux, $1.8\\text{ N}\\cdot\\text{m}^2/\\text{C}$." },
+      hw2_p1c: { answerType: "text", answer: "The magnitude of the flux is largest at $\\phi = 0°$ and smallest at $\\phi = 90°$. Since $\\Phi_E = EA\\cos\\phi$, the flux is proportional to $\\cos\\phi$, whose magnitude runs from 1 down to 0 as $\\phi$ goes from $0°$ to $90°$. At $\\phi = 0°$ the normal is parallel to the field, so the sheet is face-on to the field and intercepts as many field lines as it possibly can: $\\Phi_E = EA$, the maximum. At $\\phi = 90°$ the normal is perpendicular to the field, so the sheet is edge-on and the field lines skim along its surface without passing through it: $\\cos 90° = 0$ and the flux is zero." },
+      // 22.3 — Phi = E(4 pi r^2); q = Phi eps0 = 4 pi eps0 r^2 E = 3.13 microcoulombs
+      hw2_p2a: { answerType: "numeric", answer: 353429.17, sigFigs: 3, unit: "N·m²/C", sci: true, nonNegative: true },
+      hw2_p2b: { answerType: "numeric", answer: 3.129329, sigFigs: 3, unit: "μC", nonNegative: true },
+      // 22.4 — Phi = Q_encl/eps0 = lambda*l/eps0. (b) is deliberately the SAME number as (a).
+      hw2_p3a: { answerType: "numeric", answer: 135528.9, sigFigs: 3, unit: "N·m²/C", sci: true, nonNegative: true },
+      hw2_p3b: { answerType: "numeric", answer: 135528.9, sigFigs: 3, unit: "N·m²/C", sci: true, nonNegative: true },
+      hw2_p3c: { answerType: "numeric", answer: 271057.8, sigFigs: 3, unit: "N·m²/C", sci: true, nonNegative: true },
+      hw2_p3d: { answerType: "text", answer: "Gauss's law says the flux depends only on the charge enclosed, $\\Phi_E = Q_{encl}/\\epsilon_0$, so the flux changes only if the change puts a different amount of the line inside the cylinder. Widening the cylinder from $r = 0.250\\text{ m}$ to $r = 0.500\\text{ m}$ encloses exactly the same $0.400\\text{ m}$ of line, so the enclosed charge, and hence the flux, is unchanged at $1.36\\times10^{5}\\text{ N}\\cdot\\text{m}^2/\\text{C}$. Working it out the long way through $\\Phi_E = EA$ shows the same thing from the other side: doubling the radius doubles the area of the curved surface, $A = 2\\pi r l$, but the field there, $E = \\lambda/2\\pi\\epsilon_0 r$, drops to half its former value, and the two changes cancel exactly. Doubling the length from $0.400\\text{ m}$ to $0.800\\text{ m}$ is different: it puts twice as much of the line inside the cylinder, so the enclosed charge doubles and the flux doubles with it, to $2.71\\times10^{5}\\text{ N}\\cdot\\text{m}^2/\\text{C}$." },
+      // 22.10 — signed flux. (a) encloses neither charge, (b) only q2, (c) both.
+      hw2_p4a: { answerType: "numeric", answer: 0, sigFigs: 1, unit: "N·m²/C" },
+      hw2_p4b: { answerType: "numeric", answer: -677.6452, sigFigs: 3, unit: "N·m²/C" },
+      hw2_p4c: { answerType: "numeric", answer: -225.8817, sigFigs: 3, unit: "N·m²/C" },
+      // 22.14 — outside: r = 0.450 + 0.100 = 0.550 m. Inside a conductor: exactly zero.
+      hw2_p5a: { answerType: "numeric", answer: 7.427729, sigFigs: 3, unit: "N/C", nonNegative: true },
+      hw2_p5b: { answerType: "numeric", answer: 0, sigFigs: 1, unit: "N/C", nonNegative: true },
+      hw2_p5c: { answerType: "text", answer: "Any net charge on a conductor in electrostatic equilibrium sits entirely on its outer surface. The charges in a conductor are free to move and they repel one another, so they spread as far apart as they can get, which puts all of them on the surface. A spherical Gaussian surface drawn inside the metal, at radius $0.350\\text{ m}$, therefore encloses no charge at all, so Gauss's law gives $\\oint \\vec E \\cdot d\\vec A = Q_{encl}/\\epsilon_0 = 0$. By the spherical symmetry the field has the same magnitude everywhere on that surface and is radial, so $4\\pi r^2 E = 0$ and $E = 0$ at every point inside. Equivalently: if the field inside were not zero it would push the free charges around, and the conductor would not be in equilibrium." },
+      // 22.15 — F = (lambda*L) * E where E = lambda/(2 pi eps0 d) is the field of the other line
+      hw2_p6: { answerType: "numeric", answer: 0.08100776, sigFigs: 3, unit: "N", nonNegative: true },
+      // 22.26 — E = sigma/2eps0 = 0.1638 N/C (independent of distance), so W = eE(0.250 m).
+      // The work is POSITIVE: the electron is negative and the sheet positive, so the force on it
+      // points toward the sheet, the same way it moves.
+      hw2_p7a: { answerType: "numeric", answer: 6.559477e-21, sigFigs: 3, unit: "J", sci: true, nonNegative: true },
+      hw2_p7b: { answerType: "numeric", answer: 120008.6, sigFigs: 3, unit: "m/s", sci: true, nonNegative: true },
+      // 22.42 — symbolic. (d)'s sketch is graded client-side from the `graph` key in physics2.js.
+      hw2_p8a: { answerType: "math", answer: "E = \\frac{\\rho r}{2\\epsilon_0}" },
+      hw2_p8b: { answerType: "math", answer: "E = \\frac{\\lambda}{2\\pi\\epsilon_0 r}" },
+      hw2_p8c: { answerType: "text", answer: "They agree. Putting $r = R$ in the part (a) result gives $E = \\rho R/2\\epsilon_0$. The charge per unit length of the cylinder is the charge density times its cross-sectional area, $\\lambda = \\rho\\pi R^2$, so putting $r = R$ in the part (b) result gives $E = \\lambda/2\\pi\\epsilon_0 R = \\rho\\pi R^2/2\\pi\\epsilon_0 R = \\rho R/2\\epsilon_0$, the same value. (Equivalently, multiplying the part (b) expression by $\\pi R^2$ in the right place, or substituting $\\lambda = \\pi R^2\\rho$, turns one into the other.) So the two models agree at the boundary: the field is continuous at the surface of the cylinder, which is what must happen for a charge distribution with no infinitely thin surface layer of charge. The field rises linearly to its maximum $\\rho R/2\\epsilon_0$ at the surface and then falls off as $1/r$ beyond it." },
+      // 22.43 — theta = arctan(q*sigma / (2 m g eps0)). Degree-valued, so `angle: true`.
+      // (a) is the free-body diagram, graded client-side from the `fbd` key in physics2.js.
+      hw2_p9_ang: { answerType: "numeric", answer: 10.19783, sigFigs: 3, unit: "°", angle: true },
+      hw2_p9_why: { answerType: "text", answer: "No, the angle would not change in either case. Gauss's law gives the field of a very large uniformly charged sheet as $E = \\sigma/2\\epsilon_0$, which contains no distance: the field has the same magnitude everywhere near the sheet. (Applying Gauss's law to a box straddling the sheet, the flux $2EA$ equals $\\sigma A/\\epsilon_0$, and the area cancels.) So the horizontal electric force on the sphere, $F = qE = q\\sigma/2\\epsilon_0$, is the same no matter how far from the sheet it hangs. Equilibrium requires $T\\sin\\theta = qE$ and $T\\cos\\theta = mg$, so $\\tan\\theta = qE/mg = q\\sigma/2mg\\epsilon_0$, which depends only on the charge, the surface charge density, and the weight. Lengthening the thread or starting the sphere nearer the sheet moves where the sphere ends up, but the thread still settles at the same $10.2°$ from the vertical." },
+      // 22.51 — outside, the shell acts exactly like a point charge -Q at its center; inside, a
+      // concentric Gaussian sphere encloses nothing, so the field and the force are exactly zero.
+      hw2_p10a_m: { answerType: "math", answer: "F = \\frac{qQ}{4\\pi\\epsilon_0 r^2}" },
+      hw2_p10a_d: { answerType: "text", answer: "The force is directed radially inward, toward the center of the shell: it is attractive. A concentric spherical Gaussian surface of radius $r > R$ encloses the whole charge $-Q$, and by the spherical symmetry the field on it is radial with a single magnitude, so $4\\pi r^2 E = -Q/\\epsilon_0$ and the field points inward, exactly as if a point charge $-Q$ sat at the center. The point charge $q$ is positive, so the force $q\\vec E$ on it is in the same direction as $\\vec E$, that is, straight in toward the center of the shell. This also follows from the signs alone: opposite charges attract." },
+      hw2_p10b: { answerType: "text", answer: "The force is zero. Draw a concentric spherical Gaussian surface of radius $r < R$. All of the charge $-Q$ lies on the shell at radius $R$, which is outside this surface, so the surface encloses no charge at all: $Q_{encl} = 0$. By the spherical symmetry the field on that surface is radial and of a single magnitude, so Gauss's law gives $\\oint \\vec E \\cdot d\\vec A = 4\\pi r^2 E = Q_{encl}/\\epsilon_0 = 0$, and therefore $E = 0$. Since this holds for every radius $r < R$, the field vanishes everywhere inside the shell, and the force on the point charge is $\\vec F = q\\vec E = 0$." },
+    },
   },
 };
 

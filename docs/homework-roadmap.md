@@ -118,6 +118,19 @@ length 0.75 has a 16.8° worst case and simply cannot be placed within 5° of th
 directions are always exactly reachable; tilted ones (an incline normal, a string tension) are the
 ones to verify.
 
+**The one exception: an angle the problem has not yet fixed.** Widen the tolerance when the
+drawn angle is the problem's *unknown* rather than something the given data determine. PHY 215's
+22.43 is the case — the FBD comes first and the thread's angle is exactly what parts (b) asks for,
+so a ±5° window would grade an answer the student is not yet in a position to have. Its tension is
+keyed at the figure's schematic 25° from vertical with **±22°**, which grades the qualitative fact
+the FBD does establish (the tension leans back along the thread, so a straight-up arrow — the real
+misconception, since nothing would then balance the electric force — is still rejected) and nothing
+more. Pair the wide tolerance with **`angleSymbol`** on that force so the annotation reads `θ`
+instead of a measured number, and so `snapFBDDirections` leaves the arrow where it was drawn.
+Contrast 21.73, which asks the same physics but *states* the angle: there the tension is keyed at
+±5° and annotated with its number. **The distinguishing test is not how hard the angle is to aim at,
+it is whether the problem has given the student what they need to know it.**
+
 ### Prose style for prompts and answers
 
 `MathText` renders KaTeX (`$…$`, `\(…\)`, `\[…\]`) and nothing else — there is **no markdown
@@ -225,6 +238,20 @@ labels, a multi-panel figure) genuinely needs it. Scale to the figure's *content
 pixel count. The image keeps `maxWidth: 100%` and `height: auto`, so an explicit width never
 breaks the mobile layout or distorts the aspect ratio.
 
+**When the textbook's figure is wrong, draw your own.** Step 2 of the procedure (check the figure
+against what you solved) exists to catch a figure that contradicts the problem, and it does happen:
+Y&F's Fig. P22.43 draws a positive ball deflected *toward* a positively charged sheet, i.e.
+attracted, when the problem's own $\sigma > 0$ requires repulsion. Do not ship a figure that
+teaches the wrong physics, and do not silently drop it either if the problem reads better with one.
+Author a replacement: write it as an inline SVG in a small HTML file, render with headless Chrome
+(`--headless --screenshot --force-device-scale-factor=2 --window-size=W,H`) for a 2x PNG, and keep
+the HTML source **beside the PNG** in `public/homeworkFigures/<courseType>/HWn/` as
+`<name>.source.html` so the figure can be edited later. Keep it on a white background so it sits
+consistently beside the textbook screenshots, and keep any *drawn* angle schematic rather than
+equal to the answer. Then log the correction in
+[answer-key-discrepancies.md](answer-key-discrepancies.md) — a bad figure is worth reporting to the
+publisher, not just to the instructor. First instance: `figP22-43.png` (PHY 215 hw2).
+
 Per-course verification history — which sets have been verified, on what date, and what was
 corrected — lives in the course docs: [courses/phy115.md](courses/phy115.md) and
 [courses/phy215.md](courses/phy215.md). When you verify a set, do it the same way and record the
@@ -239,7 +266,8 @@ date there.
    - **PHY 115 (`physics1`)** — `hw1`–`hw4` are authored and verified; `hw5…hw14` are stubs.
      Per-assignment notes (problem numbers, figures, which parts are text/graph/vector/fbd and
      why): [courses/phy115.md](courses/phy115.md).
-   - **PHY 215 (`physics2`)** — scaffolded, nothing authored yet:
+   - **PHY 215 (`physics2`)** — `hw1` (Ch. 21) and `hw2` (Ch. 22, Gauss's law) are authored and
+     verified; later weeks are added as each is prepped. Per-assignment notes:
      [courses/phy215.md](courses/phy215.md).
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
@@ -321,10 +349,19 @@ date there.
    friction is taught in HW5). Wired through the runner exactly like graph/vector (in the
    `GRAPHICAL` set: no Submit, live-grade-and-freeze, free Hint via `fbdHint`, Show-answer reveal
    via `keyToFBDValue`) and re-rendered read-only in `SubmissionView`. First used in `hw4`
-   (4.27, 4.34, 4.57 — two boxes on a vertical rope, one FBD per box, no normal force). **Angle grading** (a force off the axes, with a required numeric angle) is
-   speced in `gradeFBD` but not yet exercised by content — HW4's FBD forces are all axis-aligned;
-   first real use will be an incline problem (e.g. HW5). **Future:** richer per-force angle inputs,
-   optional required equilibrium/Newton's-second-law check, label text per force.
+   (4.27, 4.34, 4.57 — two boxes on a vertical rope, one FBD per box, no normal force). Off-axis
+   forces arrived with PHY 215's 21.73 (tension along a string at a *given* 17.4°, graded ±5° and
+   annotated with its number).
+   - **Symbolic angles (2026-08-11):** `angleSymbol` on the `fbd` config labels every off-axis arc
+     with a name (`θ`, or `θ_1`/`θ_2` when several forces are off-axis) instead of a measured
+     number, and step 3's note tells the student to carry the symbol through their equations. On a
+     *force* it also excludes that arrow from `matchedDir`, so `snapFBDDirections` leaves it as
+     drawn. This is what makes an FBD askable **before** the angle is known — the ordering the
+     lecture method actually teaches (diagram → equations → solve). First used in PHY 215's 22.43,
+     which without it could not have had an FBD part at all: the annotation would have printed the
+     answer. See § Angular tolerance for the tolerance that goes with it.
+   - **Future:** richer per-force angle inputs, optional required equilibrium/Newton's-second-law
+     check, label text per force.
 6. **Image-answer problems** — homework supports `numeric` / `text` / `math` / `graph`. Add an
    `image` `answerType` reusing `compressImage` / `checkImageReadability` (`utils.js`) and
    the quiz upload UI.
@@ -339,6 +376,13 @@ date there.
 - FBD method steps: forces and acceleration are graded from the drawing; the positive-axis
   choice must be **committed** ("Use these axes"), which greens steps 2 and 3 together and
   leaves the acceleration as the last open step. Orientation itself is never graded.
+- The runner's top bar carries the app's **light/dark toggle** (`lightMode` / `onToggleTheme` props,
+  wired to App.jsx's `setLightMode`). It is a full-screen takeover with no portal header around it,
+  so this is the only way to switch theme without leaving the assignment — and homework is where a
+  student is most likely to want to: the figures are white-background textbook screenshots and the
+  drawing fields are the finest-detail UI in the app. The **quiz** screen has the same toggle for
+  the same reason (inline in App.jsx, since it is not a separate component). Keep the two in sync:
+  if one gains a control here, ask whether the other needs it.
 - Runner: `src/screens/student/HomeworkRunner.jsx`; math I/O: `MathField` (MathLive),
   `MathText` (KaTeX); graph I/O: `GraphField` (`src/components/GraphField.jsx`).
   MathLive's virtual keyboard never closes itself — `hideMathKeyboard()` is wired to focusout,

@@ -1,9 +1,11 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–3 and homework 1 (Ch. 21) are authored; later weeks are added as each is
-// prepped. Source material (quiz documents, homework problem screenshots, the instructor answer
-// key, lecture notes) lives OUTSIDE the repo in `source/phy215/{quizzes,hw/HWn,lectures}/`
-// (gitignored). Figures the app actually serves go in `public/homeworkFigures/physics2/HWn/`.
+// STATUS: quizzes 1–3, homework 1 (Ch. 21) and homework 2 (Ch. 22) are authored; later weeks are
+// added as each is prepped. Source material (quiz documents, homework problem screenshots, the
+// instructor answer key, lecture notes) lives OUTSIDE the repo in
+// `source/phy215/{quizzes,hw/HWn,lectures}/` (gitignored). Figures the app actually serves go in
+// `public/homeworkFigures/physics2/HWn/` — usually textbook screenshots, but HW2's figP22-43.png
+// is drawn for this app (its SVG source sits beside it) because the textbook's figure is wrong.
 //
 // See src/courses/physics1.js for a fully populated example of every shape below, and
 // docs/courses/phy215.md for this course's weekly plan and per-assignment notes.
@@ -208,13 +210,16 @@ export const MODULES_PHYSICS2 = [];
 //   once the part resolves.
 // - fbd:     student builds a free-body diagram from a force bank in FBDField; graded
 //   deterministically by gradeFBD. Carries `fbd: { xMin,xMax,yMin,yMax,xTick,yTick,snapDiv?,
-//                      origin?:[x,y], bodyLabel?, bank:["F","T","N","w","f"],
-//                      forces:[{ type, dir:[x,y], angleTol? }],
+//                      origin?:[x,y], bodyLabel?, bank:["F","T","N","w","f"], angleSymbol?,
+//                      forces:[{ type, dir:[x,y], angleTol?, angleSymbol? }],
 //                      prefill?:[{ type, dir }],        // app-supplied, counts as satisfied
 //                      accel:{ dir:[x,y], angleTol? } | { none: true } }`
 //   instead of `answer`. Forces are matched as a MULTISET by type+direction (any draw order;
 //   missing/extra flagged without naming them); the acceleration arrow is graded by direction;
 //   the positive-axes orientation is a required but UNGRADED step.
+//   `angleSymbol` (on the config, e.g. "θ") labels off-axis angles by NAME instead of measuring
+//   them, for a problem where that angle is the unknown; on a FORCE it additionally keeps
+//   snapFBDDirections off that arrow, since the key direction is then only a sketch angle.
 //
 // Graph / vector / fbd keys stay in this file (they are graded client-side — an accepted
 // tradeoff, since a sketch shape is far less copy-pasteable than a number) and have NO
@@ -471,6 +476,186 @@ export const HOMEWORKS_PHYSICS2 = [
               },
             },
           },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hw2",
+    title: "Homework 2: Gauss's Law",
+    problems: [
+      // 22.1 — flux through a flat sheet in a uniform field
+      {
+        id: "hw2_p1",
+        prompt: "A flat sheet of paper of area $0.250\\text{ m}^2$ is oriented so that the normal to the sheet is at an angle of $60°$ to a uniform electric field of magnitude $14\\text{ N/C}$.",
+        parts: [
+          { id: "hw2_p1a", prompt: "(a) Find the magnitude of the electric flux through the sheet.", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p1b", prompt: "(b) Does the answer to part (a) depend on the shape of the sheet? Why or why not?", answerType: "text" },
+          { id: "hw2_p1c", prompt: "(c) For what angle $\\phi$ between the normal to the sheet and the electric field is the magnitude of the flux through the sheet (i) largest and (ii) smallest? Explain your answers.", answerType: "text" },
+        ],
+      },
+      // 22.3 — flux through a sphere around a point charge, then the charge itself
+      {
+        id: "hw2_p2",
+        prompt: "You measure an electric field of $1.25\\times10^{6}\\text{ N/C}$ at a distance of $0.150\\text{ m}$ from a point charge. There is no other source of electric field in the region other than this point charge.",
+        parts: [
+          { id: "hw2_p2a", prompt: "(a) What is the magnitude of the electric flux through the surface of a sphere that has this charge at its center and that has radius $0.150\\text{ m}$?", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p2b", prompt: "(b) What is the magnitude of this charge? Give your answer in microcoulombs ($\\mu\\text{C}$).", answerType: "numeric", unit: "μC" },
+        ],
+      },
+      // 22.4 — flux through a cylinder around an infinite line, then the two "what if" variations
+      {
+        id: "hw2_p3",
+        prompt: "It was shown in Example 21.11 (Section 21.5) that the electric field due to an infinite line of charge is perpendicular to the line and has magnitude $E = \\lambda/2\\pi\\epsilon_0 r$. Consider an imaginary cylinder with radius $r = 0.250\\text{ m}$ and length $l = 0.400\\text{ m}$ that has an infinite line of positive charge running along its axis. The charge per unit length on the line is $\\lambda = 3.00\\ \\mu\\text{C/m}$.",
+        parts: [
+          { id: "hw2_p3a", prompt: "(a) What is the electric flux through the cylinder due to this infinite line of charge?", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p3b", prompt: "(b) What is the flux through the cylinder if its radius is increased to $r = 0.500\\text{ m}$?", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p3c", prompt: "(c) What is the flux through the cylinder if its length is increased to $l = 0.800\\text{ m}$ (with the radius back at $0.250\\text{ m}$)?", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p3d", prompt: "(d) Explain why changing the radius does not change the flux, while changing the length does. Address both the enclosed charge and what happens to $E$ and to the area of the curved surface when the radius is doubled.", answerType: "text" },
+        ],
+      },
+      // 22.10 — flux through three spheres enclosing different subsets of two point charges.
+      // Deliberately SIGNED (no nonNegative in the key): which charges are enclosed, and the sign
+      // that results, is the whole question.
+      {
+        id: "hw2_p4",
+        prompt: "A point charge $q_1 = 4.00\\text{ nC}$ is located on the $x$-axis at $x = 2.00\\text{ m}$, and a second point charge $q_2 = -6.00\\text{ nC}$ is on the $y$-axis at $y = 1.00\\text{ m}$. What is the total electric flux due to these two point charges through a spherical surface centered at the origin with the radius given in each part?\n\nElectric flux is a signed quantity: give each answer with its sign, where a negative value means a net flux inward.",
+        parts: [
+          { id: "hw2_p4a", prompt: "(a) Radius $0.500\\text{ m}$.", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p4b", prompt: "(b) Radius $1.50\\text{ m}$.", answerType: "numeric", unit: "N·m²/C" },
+          { id: "hw2_p4c", prompt: "(c) Radius $2.50\\text{ m}$.", answerType: "numeric", unit: "N·m²/C" },
+        ],
+      },
+      // 22.14 — field outside and inside a charged conductor
+      {
+        id: "hw2_p5",
+        prompt: "A solid metal sphere with radius $0.450\\text{ m}$ carries a net charge of $0.250\\text{ nC}$.",
+        parts: [
+          { id: "hw2_p5a", prompt: "(a) Find the magnitude of the electric field at a point $0.100\\text{ m}$ outside the surface of the sphere.", answerType: "numeric", unit: "N/C" },
+          { id: "hw2_p5b", prompt: "(b) Find the magnitude of the electric field at a point inside the sphere, $0.100\\text{ m}$ below the surface.", answerType: "numeric", unit: "N/C" },
+          { id: "hw2_p5c", prompt: "(c) Justify your answer to part (b) using Gauss's law. Where does the net charge on a conductor sit, and what does that imply about the charge enclosed by a Gaussian surface drawn inside the metal?", answerType: "text" },
+        ],
+      },
+      // 22.15 — force between two parallel line charges
+      {
+        id: "hw2_p6",
+        prompt: "Two very long uniform lines of charge are parallel and are separated by $0.300\\text{ m}$. Each line of charge has charge per unit length $+5.20\\ \\mu\\text{C/m}$. What magnitude of force does one line of charge exert on a $0.0500\\text{-m}$ section of the other line of charge?",
+        answerType: "numeric", unit: "N",
+      },
+      // 22.26 — work-energy theorem in the (distance-independent) field of a charged sheet
+      {
+        id: "hw2_p7",
+        prompt: "An electron is released from rest at a distance of $0.300\\text{ m}$ from a large insulating sheet of charge that has uniform surface charge density $+2.90\\times10^{-12}\\text{ C/m}^2$. Use $e = 1.602\\times10^{-19}\\text{ C}$ and $m_e = 9.109\\times10^{-31}\\text{ kg}$.",
+        parts: [
+          { id: "hw2_p7a", prompt: "(a) How much work is done on the electron by the electric field of the sheet as the electron moves from its initial position to a point $0.050\\text{ m}$ from the sheet?", answerType: "numeric", unit: "J" },
+          { id: "hw2_p7b", prompt: "(b) What is the speed of the electron when it is $0.050\\text{ m}$ from the sheet?", answerType: "numeric", unit: "m/s" },
+        ],
+      },
+      // 22.42 — uniformly charged solid cylinder: symbolic inside/outside fields, the match at the
+      // surface, and the sketch. No numbers anywhere in this problem, so no numeric parts.
+      {
+        id: "hw2_p8",
+        prompt: "A very long, solid cylinder with radius $R$ has positive charge uniformly distributed throughout it, with charge per unit volume $\\rho$.",
+        parts: [
+          { id: "hw2_p8a", prompt: "(a) Derive the expression for the electric field inside the volume at a distance $r$ from the axis of the cylinder, in terms of the charge density $\\rho$. Enter your expression for $E$ (you may use $\\epsilon_0$ or $k$).", answerType: "math" },
+          { id: "hw2_p8b", prompt: "(b) What is the electric field at a point outside the volume, in terms of the charge per unit length $\\lambda$ in the cylinder? Enter your expression for $E$.", answerType: "math" },
+          { id: "hw2_p8c", prompt: "(c) Compare the answers to parts (a) and (b) for $r = R$. Use the relationship between $\\lambda$ and $\\rho$ for this cylinder, and say what your comparison means about the field at the surface.", answerType: "text" },
+          {
+            id: "hw2_p8d",
+            prompt: "(d) Graph the electric-field magnitude as a function of $r$ from $r = 0$ to $r = 3R$.\n\nThe axes are scaled so no numbers are needed: measure $r$ in units of $R$ (so the surface is at $1$), and measure $E$ in units of its value at the surface, $\\rho R/2\\epsilon_0$ (so the field at the surface is $1$). Sketch the inside and the outside pieces as two separate curves.",
+            answerType: "graph",
+            graph: {
+              xLabel: "r  (in units of R)", yLabel: "E  (in units of ρR/2ε₀)",
+              xMin: 0, xMax: 3, yMin: 0, yMax: 1.2, xTick: 0.5, yTick: 0.2,
+              curves: [
+                { id: "inside", label: "Inside (r ≤ R)", color: "#60a5fa" },
+                { id: "outside", label: "Outside (r ≥ R)", color: "#f59e0b" },
+              ],
+              // Inside: E = ρr/2ε₀, so E/E_R = r/R — a straight line from the origin to (1, 1).
+              // Outside: E = λ/2πε₀r with λ = ρπR², so E/E_R = R/r — a 1/r decay through
+              // (1.5, 0.667), (2, 0.5), (3, 0.333), convex (concave up).
+              key: {
+                inside: { points: [[0, 0], [0.5, 0.5], [1, 1]], shape: "line", yTolFrac: 0.08 },
+                outside: { points: [[1, 1], [1.5, 0.6667], [2, 0.5], [3, 0.3333]], shape: "curveUp", yTolFrac: 0.08 },
+              },
+              guide: {
+                title: "How to plot it",
+                steps: [
+                  {
+                    curve: "inside", minPoints: 2, shape: "line",
+                    label: "From the axis out to the surface: place the value at $r = 0$ and at $r = R$; shape “Straight”.",
+                    note: "Use your part (a) result. A Gaussian cylinder of radius $r < R$ encloses only the fraction of the charge that lies inside it, and that enclosed charge grows as $r^2$ while the area it is spread over grows as $r$.",
+                  },
+                  {
+                    curve: "outside", minPoints: 3, shape: "curveUp",
+                    label: "From the surface out to $3R$: place the value at $r = R$, at $r = 2R$ and at $r = 3R$; shape “Curve ↑”.",
+                    note: "Use your part (b) result. Outside the cylinder the whole charge is enclosed no matter how large the Gaussian surface is, so only the area it is spread over changes. Your part (c) comparison fixes where this curve has to start.",
+                  },
+                ],
+              },
+            },
+          },
+        ],
+      },
+      // 22.43 — charged ball on a thread beside a charged sheet.
+      // FIGURE NOTE: Y&F's Fig. P22.43 is WRONG — it draws the positive ball deflected TOWARD the
+      // positively charged sheet, i.e. attracted. The figure served here is drawn for this app
+      // (source SVG alongside the PNG) with the ball pushed AWAY from the sheet, and marks the
+      // sheet's charge as positive so the direction is checkable rather than asserted.
+      // Opens with an `fbd` part, like 21.73, but with the tension's angle SYMBOLIC (`angleSymbol`).
+      // The difference between the two problems is which quantities are given: 21.73 states the
+      // string angle, so the tension direction can be keyed at ±5° and annotated with its number.
+      // Here that angle is the unknown, so the diagram names it θ and the tension is graded on the
+      // qualitative fact the FBD actually establishes — that it leans back along the string, up and
+      // toward the sheet. See the wide angleTol below.
+      {
+        id: "hw2_p9",
+        figure: "/homeworkFigures/physics2/HW2/figP22-43.png", figureWidth: 260,  // natural 920×1080 (drawn at 2x for retina)
+        prompt: "A small sphere with a mass of $4.00\\times10^{-6}\\text{ kg}$ and carrying a charge of $5.00\\times10^{-8}\\text{ C}$ hangs from a thread near a very large, charged insulating sheet, as shown in the figure. The charge density on the surface of the sheet is uniform and equal to $2.50\\times10^{-9}\\text{ C/m}^2$. Use $g = 9.81\\text{ m/s}^2$.\n\nIn the figure the sheet is on the left and the sphere hangs to the right of the vertical.",
+        parts: [
+          {
+            id: "hw2_p9_fbd", answerType: "fbd",
+            prompt: "(a) Draw a complete, labeled free-body diagram for the sphere. Add every force from the bank, assign your positive axes, and show the sphere's acceleration. You do not know the thread's angle yet, so draw the tension roughly along the thread as pictured; the diagram will mark that angle $\\theta$ for you to solve for in part (b).",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "sphere",
+              bank: ["F", "T", "N", "w"],
+              // Label the off-axis angle rather than measuring it: it is this problem's unknown.
+              angleSymbol: "θ",
+              forces: [
+                // Tension runs from the sphere back up the thread toward the support, so it leans
+                // TOWARD the sheet (up and to the left) while the electric force pushes away.
+                //
+                // The key direction is 25° from vertical, [-sin 25°, cos 25°], which is the figure's
+                // schematic thread angle, and the tolerance is deliberately wide (±22°, accepting
+                // roughly 3° to 47° from the vertical) rather than the house ±5°. That is not
+                // laxness: at FBD time the given data have not yet fixed this angle, so a tight
+                // window would grade an answer the student is not yet in a position to have. What
+                // the FBD does establish is graded, and the band enforces it — the arrow must lean
+                // toward the sheet, so a straight-up tension (25° away, outside the band) is
+                // rejected, which is the real error: with no horizontal component nothing balances
+                // the electric force. `angleSymbol` also keeps snapFBDDirections off this arrow, so
+                // it stays exactly where the student drew it.
+                { type: "T", dir: [-0.42262, 0.90631], angleTol: 22, angleSymbol: "θ" },
+                { type: "F", dir: [1, 0], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
+              ],
+              accel: { none: true },   // the sphere hangs in equilibrium
+            },
+          },
+          { id: "hw2_p9_ang", prompt: "(b) Find the angle $\\theta$ of the thread, measured from the vertical.", answerType: "numeric", unit: "°" },
+          { id: "hw2_p9_why", prompt: "(c) Would the angle change if the thread were made longer, or if the sphere started out closer to the sheet? Explain, using what Gauss's law gives for the field of a very large charged sheet.", answerType: "text" },
+        ],
+      },
+      // 22.51 — force from a uniformly charged spherical shell, outside and inside. Symbolic, so
+      // the magnitude is `math` and the direction (the part worth justifying) is `text`.
+      {
+        id: "hw2_p10",
+        prompt: "Negative charge $-Q$ is distributed uniformly over the surface of a thin spherical insulating shell with radius $R$. Calculate the force (magnitude and direction) that the shell exerts on a positive point charge $q$ located as described in each part. Give your expressions in terms of $q$, $Q$, $r$ and $R$ (you may use $\\epsilon_0$ or $k$).",
+        parts: [
+          { id: "hw2_p10a_m", prompt: "(a) The point charge is a distance $r > R$ from the center of the shell (outside the shell). Enter an expression for the magnitude $F$ of the force.", answerType: "math" },
+          { id: "hw2_p10a_d", prompt: "(a) In what direction does that force point? Justify your answer.", answerType: "text" },
+          { id: "hw2_p10b", prompt: "(b) Now the point charge is a distance $r < R$ from the center of the shell (inside the shell). Find the force on it, and justify your answer with a Gaussian surface.", answerType: "text" },
         ],
       },
     ],

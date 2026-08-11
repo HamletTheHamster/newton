@@ -1153,13 +1153,14 @@ export default function App() {
     setPracticeMode(isPractice || preview); setActiveQuiz(quiz); setQIdx(0); setApiHist([]); setAttemptCount(0); setCompletedParts([]);
     setQScores(new Array(quiz.questions.length).fill(null));
     setQuizDone(false); setInput(""); setPendingFile(null); setBusy(false); setShowLeaveConfirm(false); setSubSaveError(false); setPendingSub(null);
-    const late = isLate(quiz.dueDate);
-    const banner = preview
-      ? "Instructor preview: this is exactly what students see. Nothing here is saved or graded.\n\n"
-      : isPractice ? "Practice Mode: this run will not be submitted for a grade\n\n" : "";
-    const taker = preview ? "Instructor preview" : (loggedInStudent.altName || loggedInStudent.fullName);
+    // The chat opens straight on question 1. There used to be a leading `system` message repeating
+    // the quiz title, the taker's name, and the practice/preview banner — all of which the top bar
+    // already shows, so it was a box of duplicated text between the student and the first question.
+    // Its one piece of unique information, the past-due warning, moved to the top bar's subtitle
+    // (mirroring HomeworkRunner, which already reported "past due" there rather than in the body).
+    // ChatMessages KEEPS its `system` branch: submissions saved before this change still carry one
+    // in their stored dialogue, and the gradebook re-renders those.
     setMessages([
-      { id: 0, type: "system", text: banner + "📚 " + quiz.title + "  •  " + taker + (late && !isPractice && !preview ? "\n\n⚠️ This quiz is past the due date. Your score will be halved." : "") },
       { id: 1, type: "question", q: quiz.questions[0], num: 1, total: quiz.questions.length, pts: ptsPer(quiz.questions.length)[0] },
     ]);
     setScreen("quiz");
@@ -1611,6 +1612,8 @@ export default function App() {
           preview={runnerFrom === "instructor"}
           onFinish={saveHomeworkSub}
           onLeave={() => setScreen(runnerReturnScreen)}
+          lightMode={lightMode}
+          onToggleTheme={() => setLightMode(!lightMode)}
         />
       </ThemeContext.Provider>
     );
@@ -1641,16 +1644,30 @@ export default function App() {
           <div style={{ width: 1, height: 20, background: BORDER }} />
           <div>
             <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>{activeQuiz?.title}{practiceMode && <span style={s.badge(TEAL)}>{runnerFrom === "instructor" ? "Preview" : "Practice"}</span>}</div>
-            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{runnerFrom === "instructor" ? "Instructor preview · not saved" : loggedInStudent?.fullName}</p>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>
+              {runnerFrom === "instructor" ? "Instructor preview · not saved" : loggedInStudent?.fullName}
+              {!practiceMode && isLate(activeQuiz?.dueDate) ? " · ⚠️ past due (50% penalty)" : ""}
+            </p>
           </div>
         </div>
-        {!quizDone && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-            <div style={{ ...s.muted, fontFamily: "monospace" }}>Q{qIdx + 1}/{activeQuiz?.questions.length}</div>
-            {currentParts && completedParts.length > 0 && <div style={{ color: TEAL, fontFamily: "monospace", fontSize: 11 }}>Part{completedParts.length > 1 ? "s" : ""} {completedParts.join(", ")} done · {currentParts.filter(p => !completedParts.includes(p)).join(", ")} remaining</div>}
-            {showsAttempts && <div style={{ ...s.muted, fontFamily: "monospace", fontSize: 11 }}>{Math.max(0, 5 - attemptCount)} attempt{Math.max(0, 5 - attemptCount) !== 1 ? "s" : ""} left</div>}
-          </div>
-        )}
+        {/* The quiz screen is a full-screen takeover with no portal header, so it carries its own
+            copy of the theme toggle (same setLightMode as everywhere else). Deliberately OUTSIDE
+            the !quizDone guard: a student reading their graded results and feedback wants it as
+            much as one answering questions. */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <button
+            onClick={() => setLightMode(!lightMode)}
+            title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+            style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", color: MUTED, fontSize: 16, lineHeight: 1 }}
+          >{lightMode ? "☀" : "☽"}</button>
+          {!quizDone && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+              <div style={{ ...s.muted, fontFamily: "monospace" }}>Q{qIdx + 1}/{activeQuiz?.questions.length}</div>
+              {currentParts && completedParts.length > 0 && <div style={{ color: TEAL, fontFamily: "monospace", fontSize: 11 }}>Part{completedParts.length > 1 ? "s" : ""} {completedParts.join(", ")} done · {currentParts.filter(p => !completedParts.includes(p)).join(", ")} remaining</div>}
+              {showsAttempts && <div style={{ ...s.muted, fontFamily: "monospace", fontSize: 11 }}>{Math.max(0, 5 - attemptCount)} attempt{Math.max(0, 5 - attemptCount) !== 1 ? "s" : ""} left</div>}
+            </div>
+          )}
+        </div>
       </div>
       <div ref={chatRef} style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
         <ChatMessages messages={messages} busy={busy} />

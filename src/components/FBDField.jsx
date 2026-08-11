@@ -18,6 +18,11 @@ import { InfoDot } from "./InfoDot.jsx";
 // Grading is deterministic (`gradeFBD` in homework.js): forces matched as a multiset by
 // type+direction, acceleration by direction. Axes orientation is a required step but ungraded.
 //
+// Off-axis forces are annotated with the angle they make with the nearest chosen axis. Setting
+// `config.angleSymbol` (e.g. "θ") replaces those measured numbers with a NAME — for a problem
+// where that angle is the unknown being solved for, so a measured label would either hand over
+// the answer or assert a number the diagram has no business asserting.
+//
 // Props mirror VectorField: { config, value (JSON string), onChange, disabled, readOnly, grade }.
 // config.fbd shape is documented in homework.js (gradeFBD).
 const FORCE_COLOR = "#3b82f6";   // all forces share one color — the label disambiguates them
@@ -201,6 +206,15 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
   const offAxis = rendered
     .map(r => ({ r, a: angleToNearestAxis(r.tip) }))
     .filter(({ a }) => a && Math.abs(a.delta) >= OFF_AXIS_MIN);
+  // `angleSymbol` (e.g. "θ") switches those annotations from a measured number to a NAME. Use it
+  // when the off-axis angle is the problem's unknown rather than something the given data fixes:
+  // printing "10°" there would hand over the answer, and printing whatever the student happened
+  // to draw would be a number the diagram has no business asserting. Naming it is what a person
+  // does by hand — mark the angle θ, then solve for it. Several off-axis forces get subscripts.
+  const angleSymbol = fbd.angleSymbol || null;
+  const angleLabel = (a, i) => angleSymbol
+    ? (offAxis.length > 1 ? `${angleSymbol}_${i + 1}` : angleSymbol)
+    : `${Math.round(Math.abs(a.delta))}°`;
   const accelArmed = tool === "accel";
 
   // ── Guide / process checklist state ─────────────────────────────────────────────
@@ -279,21 +293,8 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
                 </button>
               ))}
             </div>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              <span style={{ color: muted, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
-                Acceleration:
-                <InfoDot title="Acceleration arrow">
-                  After your forces, show the direction of the body's acceleration with a small arrow placed <em>off to the side</em> (two clicks: tail, then tip), not from the body like the forces. If the body is in equilibrium (not accelerating), press “No acceleration” instead.
-                </InfoDot>
-              </span>
-              <button type="button" onClick={() => setTool(accelArmed ? null : "accel")} style={toolBtn(accelArmed, ACCEL_COLOR)}>
-                <span style={{ width: 10, height: 10, borderRadius: 2, background: ACCEL_COLOR, display: "inline-block" }} />↗ Draw <MathText>{"$\\vec a$"}</MathText>
-              </button>
-              <button type="button" onClick={setNoAccel} style={toolBtn(data.accel?.none, muted)}>⊘ No acceleration</button>
-              {(data.accel?.none || Array.isArray(data.accel?.tip) || Array.isArray(data.accel?.tail)) && (
-                <button type="button" onClick={clearAccel} style={{ ...toolBtn(false), color: muted }}>Clear <MathText>{"$\\vec a$"}</MathText></button>
-              )}
-            </div>
+            {/* Toolbar rows follow the checklist beside them: forces (step 1), then axes
+                (step 2, which also settles step 3's angle labels), then acceleration (step 4). */}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
               <span style={{ color: muted, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
                 Positive axes:
@@ -311,6 +312,21 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
                 {axesCommitted ? "✓ Axes set" : "Use these axes"}
               </button>
             </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <span style={{ color: muted, fontSize: 13, display: "inline-flex", alignItems: "center", gap: 4 }}>
+                Acceleration:
+                <InfoDot title="Acceleration arrow">
+                  After your forces, show the direction of the body's acceleration with a small arrow placed <em>off to the side</em> (two clicks: tail, then tip), not from the body like the forces. If the body is in equilibrium (not accelerating), press “No acceleration” instead.
+                </InfoDot>
+              </span>
+              <button type="button" onClick={() => setTool(accelArmed ? null : "accel")} style={toolBtn(accelArmed, ACCEL_COLOR)}>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: ACCEL_COLOR, display: "inline-block" }} />↗ Draw <MathText>{"$\\vec a$"}</MathText>
+              </button>
+              <button type="button" onClick={setNoAccel} style={toolBtn(data.accel?.none, muted)}>⊘ No acceleration</button>
+              {(data.accel?.none || Array.isArray(data.accel?.tip) || Array.isArray(data.accel?.tail)) && (
+                <button type="button" onClick={clearAccel} style={{ ...toolBtn(false), color: muted }}>Clear <MathText>{"$\\vec a$"}</MathText></button>
+              )}
+            </div>
           </>
         )}
 
@@ -327,7 +343,6 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
 
           {/* the body (origin) */}
           <rect x={ox - 17} y={oy - 17} width={34} height={34} rx={5} fill={isLight ? "#fde9cf" : "#3a3326"} stroke={axisColor} strokeWidth={1.5} />
-          {fbd.bodyLabel && <text x={ox} y={oy + 1} fill={text} fontSize={15} fontWeight={700} textAnchor="middle" dominantBaseline="middle">{fbd.bodyLabel}</text>}
 
           {/* axes gizmo (positive-axis indicator) */}
           <g pointerEvents="none">
@@ -344,6 +359,20 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
               accent={interactive && r.key === activeId && !isFrozen(r.key)} />
           ))}
 
+          {/* Body label, drawn AFTER the forces: every arrow starts at the body's center, so an
+              arrow through the label is unavoidable and would otherwise strike through the text.
+              The halo keeps it legible on top. Long labels shrink to stay inside the 34px body
+              box ("sphere" at the base size spills out either side); 4 characters or fewer keep
+              the base size, so existing diagrams are unchanged. */}
+          {fbd.bodyLabel && (
+            <text x={ox} y={oy + 1} fill={text} fontWeight={700} textAnchor="middle" dominantBaseline="middle"
+              pointerEvents="none"
+              fontSize={fbd.bodyLabel.length <= 4 ? 15 : Math.max(9.5, 60 / fbd.bodyLabel.length)}
+              style={{ paintOrder: "stroke", stroke: isLight ? "#fde9cf" : "#3a3326", strokeWidth: 3.5, strokeLinejoin: "round" }}>
+              {fbd.bodyLabel}
+            </text>
+          )}
+
           {/* Angle annotations: an arc from the nearest axis to each off-axis force, labeled with
               the angle between them. Radii are staggered so several arcs don't overlap. */}
           {offAxis.map(({ r, a }, i) => {
@@ -357,10 +386,11 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
               <g key={"ang" + r.key} pointerEvents="none">
                 <line x1={ox} y1={oy} x2={pt(a.axDeg)[0]} y2={pt(a.axDeg)[1]} stroke={axisColor} strokeWidth={1} strokeDasharray="3 3" />
                 <path d={`M${x1},${y1} A${rad},${rad} 0 0,${sweep} ${x2},${y2}`} fill="none" stroke={axisColor} strokeWidth={1.5} />
-                <text x={ox + (lx - ox) * out} y={oy + (ly - oy) * out} fill={text} fontSize={12.5} fontWeight={700}
+                <text x={ox + (lx - ox) * out} y={oy + (ly - oy) * out} fill={text}
+                  fontSize={angleSymbol ? 15 : 12.5} fontWeight={700} fontStyle={angleSymbol ? "italic" : "normal"}
                   textAnchor="middle" dominantBaseline="middle"
                   style={{ paintOrder: "stroke", stroke: svgBg, strokeWidth: 3, strokeLinejoin: "round" }}>
-                  {Math.round(Math.abs(a.delta))}°
+                  {axisLabelTspans(angleLabel(a, i))}
                 </text>
               </g>
             );
@@ -400,7 +430,11 @@ export function FBDField({ config, value, onChange, disabled = false, readOnly =
                 : "Choose which way is $+x$ and $+y$ (rotate them to line up with an incline if that helps), then press “Use these axes”. Any orientation is fine; the choice fixes the frame your angles are measured against."} />
             <GuideStep n={3} state={axesState} text={text} muted={muted} border={border} info
               label="Describe any angles" note={offAxis.length
-                ? `Done with your axes: each force that isn't along one is labeled on the diagram with the angle it makes with the nearest axis (${offAxis.map(({ r, a }) => `${r.label.replace(/_\{?(\w+)\}?/, "$1")} is ${Math.round(Math.abs(a.delta))}° from ${a.name}`).join("; ")}).`
+                ? (angleSymbol
+                  // Symbolic: the angle is the unknown, so the diagram names it instead of
+                  // measuring it, and the note says plainly that solving for it comes later.
+                  ? `Done with your axes: each force that isn't along one is marked on the diagram with a name for the angle it makes with the nearest axis (${offAxis.map(({ r, a }, i) => `$${angleLabel(a, i)}$ from ${a.name} for ${r.label.replace(/_\{?(\w+)\}?/, "$1")}`).join("; ")}). Its value is what the rest of the problem is for: carry the symbol through your force equations and solve for it.`
+                  : `Done with your axes: each force that isn't along one is labeled on the diagram with the angle it makes with the nearest axis (${offAxis.map(({ r, a }) => `${r.label.replace(/_\{?(\w+)\}?/, "$1")} is ${Math.round(Math.abs(a.delta))}° from ${a.name}`).join("; ")}).`)
                 : "Any force that isn't along an axis is labeled automatically with its angle to the nearest one. Nothing you've drawn is off-axis, so there's nothing to label."} />
             <GuideStep n={4} state={accelState} text={text} muted={muted} border={border}
               label="Show the acceleration direction" note="A small arrow off to the side for the body's acceleration, or mark “no acceleration” if it's in equilibrium." />

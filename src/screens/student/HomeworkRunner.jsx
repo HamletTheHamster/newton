@@ -66,7 +66,13 @@ function itemsOf(p) {
 // the caller always pairs it with `practice`, and `practice` is what actually keeps the runner off
 // every per-student path (drafts, attempt counts, work upload, submission), all of which read
 // `loggedInStudent` — null on the instructor side. Never gate behaviour on `preview` alone.
-export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, preview = false, onFinish, onLeave }) {
+//
+// `lightMode` / `onToggleTheme` put the app's theme switch in the runner's top bar. The runner is
+// a full-screen takeover with no portal header, so without it a student who needs the other mode
+// mid-assignment would have to leave the homework to get it. That matters more here than on most
+// screens: homework figures are white-background textbook screenshots, and the drawing fields
+// (graph / vector / FBD) are the finest-detail thing in the app.
+export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, preview = false, onFinish, onLeave, lightMode = false, onToggleTheme }) {
   const whoLabel = preview ? "Instructor preview · not saved" : (loggedInStudent?.fullName || "");
   const backLabel = preview ? "Back to Modules" : "Back to Course";
   const { s, text, muted, border, teal, card, isLight } = useTheme();
@@ -900,9 +906,18 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{whoLabel}{!practice && late ? " · ⚠️ past due (50% penalty)" : ""}</p>
           </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-          <div style={{ ...s.muted, fontFamily: "monospace" }}>Problem {idx + 1}/{total}</div>
-          <div style={{ color: teal, fontFamily: "monospace", fontSize: 12 }}>Score: {runningScore.toFixed(2)} / {total}</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {onToggleTheme && (
+            <button
+              onClick={onToggleTheme}
+              title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
+              style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", color: muted, fontSize: 16, lineHeight: 1 }}
+            >{lightMode ? "☀" : "☽"}</button>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
+            <div style={{ ...s.muted, fontFamily: "monospace" }}>Problem {idx + 1}/{total}</div>
+            <div style={{ color: teal, fontFamily: "monospace", fontSize: 12 }}>Score: {runningScore.toFixed(2)} / {total}</div>
+          </div>
         </div>
       </div>
 

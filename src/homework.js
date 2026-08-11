@@ -365,8 +365,16 @@ export function gradeFBD(raw, fbd) {
       const a = _angleBetween(sf.dir, kf.dir);
       if (a <= (kf.angleTol ?? DEFAULT_ANGLE_TOL) && a < bestAng) { best = sf; bestAng = a; }
     }
-    if (best) { matched[kf._i] = true; usedStudent.add(best.id); pass[best.id] = true; matchedDir[best.id] = kf.dir; }
-    else reasons.push({ type: "missing-force", forceType: kf.type });
+    if (best) {
+      matched[kf._i] = true; usedStudent.add(best.id); pass[best.id] = true;
+      // A key force flagged `angleSymbol` is one whose angle the problem does NOT determine at
+      // FBD time (it is the unknown being solved for). Its key direction is therefore only a
+      // representative sketch angle, so it is deliberately left OUT of matchedDir: snapping the
+      // student's arrow onto it would assert an angle the physics hasn't fixed, and would hint
+      // at the answer. Nothing is lost, because the field labels that arc with the symbol
+      // rather than a number — there is no displayed degree value that could be made wrong.
+      if (!kf.angleSymbol) matchedDir[best.id] = kf.dir;
+    } else reasons.push({ type: "missing-force", forceType: kf.type });
   }
   for (const sf of studentForces) {
     if (!usedStudent.has(sf.id)) { pass[sf.id] = false; reasons.push({ type: "extra-force", id: sf.id }); }
