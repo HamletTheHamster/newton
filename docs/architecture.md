@@ -25,7 +25,7 @@ classes/
     studentPws/                    {studentId: {hash, salt}}
     submissions/                   {studentId: [submission, ...]}  — quiz submissions carry `dialogue`; homework submissions carry `type:"homework"`, `rawScore`/`nativeTotal`, a `problems[]` per-problem/per-part breakdown, `workFiles[]` (uploaded written-work proof: `{storagePath, downloadUrl, mime, size, name}`), and `integrity` (`{flagged, reason, checkedAt, model, error?}` from the Claude sniff-check). Both use `quizId` (= quiz or homework id) and a `score` out of 10.
     checkedSubs/                   {submissionId: true}
-    dueDates/                      {quizId: "YYYY-MM-DD HH:mm"}
+    dueDates/                      {quizId: "YYYY-MM-DD HH:mm" | "YYYY-MM-DD"}  — BOTH shapes are valid and both are written by the app: the Modules editor's date picker stores date-only (meaning 11:59 PM ET), the Assignments hub's datetime-local stores date+time. Anything reading a due date must handle both — parse with `dueToDate` (utils.js), never `new Date(due)`, and note that a raw date-only string is NOT a legal `datetime-local` input value (it renders blank)
     modules/                       ordered array of {id, title, items: [...]}
     moduleConfig/                  {[moduleId]: {releaseDate?, hiddenItems: {[itemId]: true}}}
     pages/                         {[pageId]: {title, body, createdAt}}

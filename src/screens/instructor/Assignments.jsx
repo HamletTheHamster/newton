@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "../../theme.js";
 import { HW_GRADING_DEFAULTS } from "../../homework.js";
+import { dueToDate } from "../../utils.js";
 
 const QUIZ_COLOR = "#34d399";
 const HW_COLOR = "#60a5fa";
@@ -9,8 +10,12 @@ const TYPES = [{ id: "quiz", label: "Quiz", color: QUIZ_COLOR }, { id: "homework
 
 function formatDt(raw) {
   if (!raw) return "";
-  // "YYYY-MM-DD HH:MM" → datetime-local value "YYYY-MM-DDTHH:MM"
-  return raw.replace(" ", "T");
+  // Stored due dates come in two shapes (see dueToDate in utils.js): "YYYY-MM-DD HH:MM",
+  // and date-only "YYYY-MM-DD" (written by the Modules editor), which means 11:59 PM.
+  // datetime-local rejects the date-only form and renders blank, so fill in the implied time.
+  if (raw.length === 10) return raw + "T23:59";
+  if (raw.length === 16 && raw[10] === " ") return raw.replace(" ", "T");
+  return raw;
 }
 
 function parseDt(dtLocal) {
@@ -160,8 +165,9 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
     .sort((a, b) => {
       if (sort === "name-asc") return a.title.localeCompare(b.title, undefined, { numeric: true });
       if (sort === "name-desc") return b.title.localeCompare(a.title, undefined, { numeric: true });
-      const da = a.dueDate ? new Date(a.dueDate) : null;
-      const db = b.dueDate ? new Date(b.dueDate) : null;
+      // dueToDate understands both stored shapes and the ET convention; `new Date` does not.
+      const da = a.dueDate ? dueToDate(a.dueDate) : null;
+      const db = b.dueDate ? dueToDate(b.dueDate) : null;
       if (sort === "due-asc") {
         if (!da && !db) return 0;
         if (!da) return 1;
