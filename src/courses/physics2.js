@@ -1,6 +1,6 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–3, homework 1 (Ch. 21) and homework 2 (Ch. 22) are authored; later weeks are
+// STATUS: quizzes 1–4, homework 1 (Ch. 21) and homework 2 (Ch. 22) are authored; later weeks are
 // added as each is prepped. Source material (quiz documents, homework problem screenshots, the
 // instructor answer key, lecture notes) lives OUTSIDE the repo in
 // `source/phy215/{quizzes,hw/HWn,lectures}/` (gitignored). Figures the app actually serves go in
@@ -124,6 +124,27 @@ export const QUIZZES_PHYSICS2 = [
         // No $…$ math here: quiz question text renders as PLAIN TEXT (ChatMessages.jsx), unlike
         // homework prompts, which go through MathText. A "$q$" would reach students literally.
         text: "A spherical Gaussian surface encloses a point charge q. The point charge is now moved from the center of the sphere to a point away from the center.\n\n(a) Does the electric field at a point on the surface change? Explain.\n\n(b) Does the total flux through the Gaussian surface change? Explain.",
+      },
+    ],
+  },
+  // Week 4 quiz — covers week 3 (Ch. 23): electric potential. Both questions are free response,
+  // for the same reason as q3: each opens on a yes/no verdict but the graded content is the
+  // justification, which `yesNo`/`choices` would never read. Neither is split into labelled parts
+  // (unlike q3_4) — see docs/courses/phy215.md for why the halves of Q2 are one idea, not two.
+  {
+    id: "q4",
+    title: "Quiz 4: Electric Potential",
+    questions: [
+      {
+        id: "q4_1",
+        text: "The potential (relative to a point at infinity) midway between two charges of equal magnitude and opposite sign is zero. Is it possible to bring a test charge from infinity to this midpoint in such a way that no work is done in any part of the displacement? If so, describe how it can be done. If it is not possible, explain why.",
+      },
+      {
+        id: "q4_2",
+        // Plain text, no LaTeX: the source document writes this one with \vec{E} and \textit{can},
+        // neither of which a quiz question renders (ChatMessages.jsx posts the text raw), so the
+        // field is named in words and the emphasis is dropped per the house no-emphasis style.
+        text: "If the electric field is zero throughout a certain region of space, is the potential necessarily also zero in this region? Why or why not? If not, what can be said about the potential?",
       },
     ],
   },
