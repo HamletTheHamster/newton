@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, Fragment } from "react";
 import { useTheme } from "../../theme.js";
-import { fmtDueTime, dueToDate } from "../../utils.js";
+import { dueToDate } from "../../utils.js";
 import { newId } from "../../courses/ids.js";
 import { ItemIcon } from "../../components/lms/itemIcons.jsx";
+import { DueDateField } from "../../components/lms/DueDateField.jsx";
 
 const fmtBytes = bytes => {
   if (!bytes || bytes < 1024) return (bytes || 0) + " B";
@@ -36,7 +37,6 @@ export function Modules({
   const moduleMenuRef = useRef(null);
   const [itemMenuFor, setItemMenuFor] = useState(null);     // "moduleId::itemId"
   const itemMenuRef = useRef(null);
-  const [editingTimeFor, setEditingTimeFor] = useState(null);
   const [renamingItemKey, setRenamingItemKey] = useState(null); // "moduleId::itemId"
   const [renamingItemDraft, setRenamingItemDraft] = useState("");
 
@@ -506,8 +506,6 @@ export function Modules({
                     : (item.title || (item.type === "link" ? item.url : (upload?.name || "Untitled")));
 
                   const quizDueDate = schedulable ? (dueDates?.[item.refId] || null) : null;
-                  const quizDateVal = quizDueDate ? quizDueDate.slice(0, 10) : "";
-                  const quizTimeVal = quizDueDate && quizDueDate.length === 16 && quizDueDate[10] === ' ' ? quizDueDate.slice(11) : "23:59";
                   const quizLate = quizDueDate ? dueToDate(quizDueDate) < new Date() : false;
 
                   // Mirrors the student's ModuleItem meta line (counts · pts · due).
@@ -613,25 +611,15 @@ export function Modules({
                             onRename={item.type === "file" ? () => { setItemMenuFor(null); setRenamingItemKey(itemKey); setRenamingItemDraft(item.title || upload?.name || ""); } : undefined}
                             onReplaceFile={item.type === "file" && !replacingThis ? () => { setItemMenuFor(null); startReplaceFile(mod, item); } : undefined}
                             dueField={schedulable ? (
-                              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                                <input
-                                  type="date"
-                                  style={{ ...s.input, width: "100%", padding: "6px 10px", fontSize: 12 }}
-                                  value={quizDateVal}
-                                  onChange={async e => {
-                                    const nd = { ...(dueDates || {}) };
-                                    if (e.target.value) nd[item.refId] = e.target.value;
-                                    else delete nd[item.refId];
-                                    setEditingTimeFor(null);
-                                    await onSaveDueDates(nd);
-                                  }}
-                                />
-                                {quizDueDate && (editingTimeFor === item.refId
-                                  ? <input type="time" autoFocus style={{ ...s.input, width: "100%", padding: "6px 10px", fontSize: 12 }} value={quizTimeVal} onChange={async e => { if (!e.target.value) return; await onSaveDueDates({ ...(dueDates || {}), [item.refId]: quizDateVal + ' ' + e.target.value }); }} onBlur={() => setEditingTimeFor(null)} />
-                                  : <button onClick={() => setEditingTimeFor(item.refId)} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, fontSize: 12, cursor: "pointer", padding: "6px 10px", borderRadius: 10, width: "100%", textAlign: "left" }}>{fmtDueTime(quizDueDate)}</button>
-                                )}
-                                {quizDueDate && <span style={s.badge(quizLate ? "#f87171" : "#4ade80")}>{quizLate ? "Past due" : "Active"}</span>}
-                              </div>
+                              <DueDateField
+                                value={quizDueDate}
+                                onChange={async next => {
+                                  const nd = { ...(dueDates || {}) };
+                                  if (next) nd[item.refId] = next;
+                                  else delete nd[item.refId];
+                                  await onSaveDueDates(nd);
+                                }}
+                              />
                             ) : null}
                             isHidden={isHidden}
                             onToggleHidden={() => { setItemMenuFor(null); toggleHidden(mod, item.id); }}

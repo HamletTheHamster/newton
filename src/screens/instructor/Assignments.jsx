@@ -2,27 +2,19 @@ import { useState } from "react";
 import { useTheme } from "../../theme.js";
 import { HW_GRADING_DEFAULTS } from "../../homework.js";
 import { dueToDate } from "../../utils.js";
+import { categoryColor } from "../../category-colors.js";
+import { DueDateField } from "../../components/lms/DueDateField.jsx";
 
-const QUIZ_COLOR = "#34d399";
-const HW_COLOR = "#60a5fa";
-const TYPE_META = { quiz: { label: "Quiz", color: QUIZ_COLOR }, homework: { label: "Homework", color: HW_COLOR } };
-const TYPES = [{ id: "quiz", label: "Quiz", color: QUIZ_COLOR }, { id: "homework", label: "Homework", color: HW_COLOR }];
+// Row types are "quiz", "homework", and — for manual assignments (exams, labs) — the
+// assignment's gradebook category id, so each category filters and colors separately.
+// Colors come from the shared palette, never redeclared here.
+const QUIZ_COLOR = categoryColor("cat_quiz");
+const HW_COLOR = categoryColor("cat_hw");
+const BASE_TYPES = [{ id: "quiz", label: "Quiz", color: QUIZ_COLOR }, { id: "homework", label: "Homework", color: HW_COLOR }];
 
-function formatDt(raw) {
-  if (!raw) return "";
-  // Stored due dates come in two shapes (see dueToDate in utils.js): "YYYY-MM-DD HH:MM",
-  // and date-only "YYYY-MM-DD" (written by the Modules editor), which means 11:59 PM.
-  // datetime-local rejects the date-only form and renders blank, so fill in the implied time.
-  if (raw.length === 10) return raw + "T23:59";
-  if (raw.length === 16 && raw[10] === " ") return raw.replace(" ", "T");
-  return raw;
-}
-
-function parseDt(dtLocal) {
-  if (!dtLocal) return "";
-  // "YYYY-MM-DDTHH:MM" → "YYYY-MM-DD HH:MM"
-  return dtLocal.replace("T", " ");
-}
+// Title · Type · Points · Due Date · Actions. The Due Date column holds DueDateField's row
+// layout: date (128) + time (96) + "Past due"/"Active" badge, plus its 6px gaps.
+const GRID_COLS = "1fr 118px 64px 300px 160px";
 
 const FIELDS = [
   { key: "freeAttempts",     label: "Free attempts",      help: "Attempts 1 – N earn full credit",                               isInt: true,  min: 1, max: null, step: 1 },
@@ -134,7 +126,7 @@ function HwGradingModal({ hwTitle, draft: initialDraft, isOverridden, onClose, o
   );
 }
 
-export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz }) {
+export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, gradeCategories = {}, customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onSaveManualAssignments, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz }) {
   const { s, text, muted, border } = useTheme();
 
   const [filterText, setFilterText] = useState("");
@@ -142,6 +134,7 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
   const [sort, setSort] = useState("name-asc");
   const [editingHwSettings, setEditingHwSettings] = useState(null);
   // null | { hwId: string, title: string, draft: { ...grading fields } }
+  const [ptsDraft, setPtsDraft] = useState({});   // { [assignmentId]: typed string }, committed on blur/Enter
 
   const toggleType = id => setFilterTypes(prev => {
     const next = new Set(prev);
@@ -152,10 +145,27 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
   const hasFilter = filterText || filterTypes.size > 0 || sort !== "name-asc";
   const canClear = filterText || filterTypes.size > 0;
 
+  // Manual assignments (exams, labs) live only in the gradebook — nothing to open and no
+  // submission — but they still need a date so they reach the calendar and To Do rail, and
+  // their own max points (exams are /100, labs /10).
+  const manualList = Object.values(manualAssignments || {}).filter(Boolean)
+    .map(ma => ({ id: ma.id, title: ma.title, maxPts: ma.maxPts || 10, dueDate: (dueDates || {})[ma.id] || null, _type: ma.catId || "cat_quiz", _manual: true }));
+
   const allAssignments = [
-    ...(quizzes || []).map(q => ({ ...q, _type: "quiz" })),
-    ...(homeworks || []).map(h => ({ ...h, _type: "homework" })),
+    ...(quizzes || []).map(q => ({ ...q, _type: "quiz", maxPts: 10 })),
+    ...(homeworks || []).map(h => ({ ...h, _type: "homework", maxPts: 10 })),
+    ...manualList,
   ];
+
+  // Quiz and homework chips are fixed; every manual category present gets its own chip, so
+  // 28 labs can be filtered away from the two exams.
+  const manualTypeIds = [...new Set(manualList.map(m => m._type))]
+    .sort((a, b) => (gradeCategories[a]?.order ?? 99) - (gradeCategories[b]?.order ?? 99));
+  const TYPES = [
+    ...BASE_TYPES,
+    ...manualTypeIds.map(id => ({ id, label: gradeCategories[id]?.name || id, color: categoryColor(id, muted) })),
+  ];
+  const typeMeta = id => TYPES.find(t => t.id === id) || TYPES[0];
 
   const displayed = allAssignments
     .filter(q =>
@@ -183,11 +193,24 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
       return 0;
     });
 
+  // `value` is already in stored form ("YYYY-MM-DD" or "YYYY-MM-DD HH:MM"), or null to clear.
   const setDueDate = (quizId, value) => {
     const updated = { ...dueDates };
-    if (value) updated[quizId] = parseDt(value);
+    if (value) updated[quizId] = value;
     else delete updated[quizId];
     onSaveDueDates(updated);
+  };
+
+  // Max points, manual assignments only (quizzes and homework are /10 by the grading engine).
+  // `maxPtsSet` records that the instructor chose this value, so the one-time exam migration
+  // in App.jsx leaves it alone from here on.
+  const commitMaxPts = id => {
+    const draft = ptsDraft[id];
+    setPtsDraft(d => { const { [id]: _, ...rest } = d; return rest; });
+    const ma = (manualAssignments || {})[id];
+    const n = parseFloat(draft);
+    if (!ma || draft === undefined || !isFinite(n) || n <= 0 || n === ma.maxPts) return;
+    onSaveManualAssignments({ ...manualAssignments, [id]: { ...ma, maxPts: n, maxPtsSet: true } });
   };
 
   return (
@@ -262,7 +285,7 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
           {/* Column headers */}
           <div style={{
             display: "grid",
-            gridTemplateColumns: "1fr 80px 190px 160px",
+            gridTemplateColumns: GRID_COLS,
             gap: 8,
             padding: "8px 14px",
             borderBottom: `1px solid ${border}`,
@@ -274,20 +297,21 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
           }}>
             <span>Title</span>
             <span>Type</span>
+            <span>Points</span>
             <span>Due Date</span>
             <span style={{ textAlign: "right" }}>Actions</span>
           </div>
 
           {displayed.map((q, i) => {
             const isCustom = q._type === "quiz" && !!(customQuizzes && customQuizzes[q.id]);
-            const tm = TYPE_META[q._type] || TYPE_META.quiz;
+            const tm = typeMeta(q._type);
             const hasOverride = q._type === "homework" && !!(homeworkSettings?.[q.id]);
             return (
               <div
                 key={q.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 80px 190px 160px",
+                  gridTemplateColumns: GRID_COLS,
                   gap: 8,
                   padding: "10px 14px",
                   alignItems: "center",
@@ -298,14 +322,28 @@ export function Assignments({ quizzes, homeworks = [], customQuizzes, dueDates, 
                 <span style={{ color: text, fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{q.title}</span>
 
                 {/* Type badge */}
-                <span style={{ ...s.badge(tm.color), fontSize: 11 }}>{tm.label}</span>
+                <span style={{ ...s.badge(tm.color), fontSize: 11, justifySelf: "start", whiteSpace: "nowrap" }}>{tm.label}</span>
 
-                {/* Due date */}
-                <input
-                  type="datetime-local"
-                  value={formatDt(dueDates[q.id] || "")}
-                  onChange={e => setDueDate(q.id, e.target.value)}
-                  style={{ ...s.input, padding: "4px 8px", fontSize: 12, height: "auto" }}
+                {/* Max points — editable for manual assignments, fixed at 10 for quizzes/homework */}
+                {q._manual ? (
+                  <input
+                    type="number" min="1" step="1"
+                    value={ptsDraft[q.id] ?? String(q.maxPts)}
+                    onChange={e => setPtsDraft(d => ({ ...d, [q.id]: e.target.value }))}
+                    onBlur={() => commitMaxPts(q.id)}
+                    onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                    title="Points this assignment is graded out of"
+                    style={{ ...s.input, padding: "4px 6px", fontSize: 12, height: "auto", width: "100%" }}
+                  />
+                ) : (
+                  <span style={{ color: muted, fontSize: 12 }}>10</span>
+                )}
+
+                {/* Due date — the same control as the Modules editor on the Home tab */}
+                <DueDateField
+                  value={dueDates[q.id] || null}
+                  onChange={next => setDueDate(q.id, next)}
+                  direction="row"
                 />
 
                 {/* Actions */}

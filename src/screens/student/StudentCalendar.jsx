@@ -37,6 +37,12 @@ function todayDateStr() {
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+// Legend order: recurring work first, then the two exams in the order they're sat — midterm
+// before final. Without this the legend inherits the incidental order events were added to
+// `eventMap` (which put the final first, since manual assignments arrive in RTDB key order).
+// A kind not listed here sorts to the end, keeping its relative position.
+const KIND_ORDER = ["quiz", "homework", "lab", "midterm", "final"];
+
 const shortDate = str => {
   const d = dueToDate(str);
   return d ? d.toLocaleDateString("en-US", { timeZone: "America/New_York", month: "short", day: "numeric" }) : null;
@@ -46,7 +52,10 @@ const shortDate = str => {
 //   module whose timed release hasn't arrived (or hidden) can't be opened yet.
 // `onOpen(id, kind)`: starts the assignment. Omitted (instructor preview) means no
 //   event is clickable.
-export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds, locks = {}, onOpen = null }) {
+// `manual`: gradebook-only assignments (exams, labs) that carry their own `kind`
+//   ("midterm"/"final"/"lab") and a date. They're never clickable and never locked —
+//   they happen in the room, so there is nothing to open and nothing to release.
+export function StudentCalendar({ quizzes, homeworks = [], manual = [], completedQuizIds, locks = {}, onOpen = null }) {
   const { s, text, muted, border, teal, hover } = useTheme();
   const isMobile = useIsMobile();
   const [viewDate, setViewDate] = useState(() => {
@@ -59,31 +68,36 @@ export function StudentCalendar({ quizzes, homeworks = [], completedQuizIds, loc
   const today = todayDateStr();
 
   const eventMap = {};
-  const addEvents = (items, kind) => {
+  // `kind` is a fixed string for quizzes/homework and per-item for manual assignments,
+  // whose kind comes from their gradebook category.
+  const addEvents = (items, kind, openable = true) => {
     for (const it of items) {
       if (!it.dueDate) continue;
       const key = it.dueDate.slice(0, 10);
       if (!eventMap[key]) eventMap[key] = [];
-      const done = completedQuizIds.has(it.id);
-      const lock = locks[it.id] || null;
+      const k = kind || it.kind;
+      const done = openable && completedQuizIds.has(it.id);
+      const lock = openable ? locks[it.id] || null : null;
       const locked = !!lock?.locked;
       eventMap[key].push({
         id: it.id,
         title: it.title,
-        kind,
+        kind: k,
         done,
         locked,
         unlocksOn: locked && lock.releaseDate ? shortDate(lock.releaseDate) : null,
-        onClick: !done && !locked && onOpen ? () => onOpen(it.id, kind) : null,
+        onClick: openable && !done && !locked && onOpen ? () => onOpen(it.id, k) : null,
       });
     }
   };
   addEvents(quizzes, "quiz");
   addEvents(homeworks, "homework");
+  addEvents(manual, null, false);
 
-  const hasAnyDueDates = quizzes.some(q => q.dueDate) || homeworks.some(h => h.dueDate);
+  const hasAnyDueDates = quizzes.some(q => q.dueDate) || homeworks.some(h => h.dueDate) || manual.some(m => m.dueDate);
   const grid = buildGrid(year, month);
-  const kindsPresent = [...new Set(Object.values(eventMap).flat().map(e => e.kind))];
+  const kindsPresent = [...new Set(Object.values(eventMap).flat().map(e => e.kind))]
+    .sort((a, b) => (KIND_ORDER.indexOf(a) + 1 || 99) - (KIND_ORDER.indexOf(b) + 1 || 99));
 
   const navHeader = (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>

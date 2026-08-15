@@ -175,7 +175,11 @@ export function parseRoster(text) {
 // ── Gradebook utilities ───────────────────────────────────────────────────────
 const DEFAULT_GRADEBOOK_CAT_BY_TYPE = { quiz: "cat_quiz", homework: "cat_hw" };
 
-export function buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments = {}, assignmentNameOverrides = {}, assignmentOrderOverrides = {}) {
+// `dueDates` is the same node quizzes and homework read: a manual assignment (exam, lab)
+// is dated by its own id, so it reaches the calendar and To Do rail exactly like the rest.
+// Its `maxPts` is per-assignment (exams are /100, labs and quizzes /10), so every reader
+// must scale by `a.maxPts` rather than assuming 10.
+export function buildGradebookAssignments(mergedModules, quizzes, assignmentCategories, manualAssignments = {}, assignmentNameOverrides = {}, assignmentOrderOverrides = {}, dueDates = {}) {
   const gradableTypes = new Set(["quiz", "homework"]);
   const quizById = Object.fromEntries((quizzes || []).map(q => [q.id, q]));
   const seen = new Set();
@@ -200,7 +204,7 @@ export function buildGradebookAssignments(mergedModules, quizzes, assignmentCate
       const title = (assignmentNameOverrides || {})[id] || ma.title || id;
       const catId = (assignmentCategories || {})[id] || ma.catId || "cat_quiz";
       const naturalOrder = ma.order ?? 9999;
-      manual.push({ id, title, type: "manual", catId, maxPts: ma.maxPts || 10, dueDate: null, order: (assignmentOrderOverrides || {})[id] ?? naturalOrder });
+      manual.push({ id, title, type: "manual", catId, maxPts: ma.maxPts || 10, dueDate: (dueDates || {})[id] || null, order: (assignmentOrderOverrides || {})[id] ?? naturalOrder });
     }
   }
   return [...result, ...manual].sort((a, b) => a.order - b.order);
@@ -218,7 +222,10 @@ export function calcGrades({ assignments, categories, scores, excused }) {
       return { id: a.id, score: rawScore, maxPts: a.maxPts, excused: isExcused, dropped: false };
     });
 
-    const droppable = items.filter(it => !it.excused).sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
+    // Drop the lowest by PERCENTAGE, not raw points: a category can hold assignments with
+    // different maxPts, and raw points would call a 40/100 worse than a 3/10.
+    const pctOf = it => ((it.score ?? 0) / (it.maxPts || 10)) * 100;
+    const droppable = items.filter(it => !it.excused).sort((a, b) => pctOf(a) - pctOf(b));
     const numToDrop = Math.min(cat.dropLowest || 0, Math.max(0, droppable.length - 1));
     const droppedIds = new Set(droppable.slice(0, numToDrop).map(it => it.id));
     items.forEach(it => { if (droppedIds.has(it.id)) it.dropped = true; });

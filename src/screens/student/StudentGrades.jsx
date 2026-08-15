@@ -19,15 +19,18 @@ function overallLetter(pct) {
   return "F";
 }
 
-function scoreColor(score, excused, missing, muted) {
+// By percentage, not raw points: exams are out of 100 and everything else out of 10, so an
+// 85 and an 8.5 have to read the same green.
+function scoreColor(score, maxPts, excused, missing, muted) {
   if (excused || missing) return muted;
-  if (score >= 8) return "#4ade80";
-  if (score >= 6) return "#facc15";
-  if (score >= 4) return "#fb923c";
+  const pct = (maxPts || 10) > 0 ? (score / (maxPts || 10)) * 100 : 0;
+  if (pct >= 80) return "#4ade80";
+  if (pct >= 60) return "#facc15";
+  if (pct >= 40) return "#fb923c";
   return "#f87171";
 }
 
-export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, assignmentNameOverrides }) {
+export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, manualAssignments, dueDates, assignmentNameOverrides }) {
   const { s, text, muted, border, teal } = useTheme();
   const myId = loggedInStudent?.studentId;
   const [viewSub, setViewSub] = useState(null);  // { submission, title, id } — opens read-only SubViewModal
@@ -38,19 +41,25 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
     items: (mod.items || []).filter(it => !it._hidden),
   }));
 
-  const allAssignments = buildGradebookAssignments(visibleModules, quizzes, assignmentCategories, {}, assignmentNameOverrides);
+  const allAssignments = buildGradebookAssignments(visibleModules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, {}, dueDates);
 
+  const myOverrides = gradeOverrides[myId] || {};
   // Only count assignments the student has attempted or whose due date has passed.
+  // Manual assignments (exams, labs) are the exception: there is no submission to detect and
+  // scores are entered by hand days after the date, so they appear only once a score or an
+  // excusal exists. Showing them earlier would park a phantom zero on the student's grade.
   const submittedIds = new Set((submissions || []).filter(s => s.studentId === myId).map(s => s.quizId));
   const now = new Date();
   const assignments = allAssignments.filter(a =>
-    submittedIds.has(a.id) || (a.dueDate && dueToDate(a.dueDate) < now)
+    a.type === "manual"
+      ? myOverrides[a.id]?.score != null || !!myOverrides[a.id]?.excused
+      : submittedIds.has(a.id) || (a.dueDate && dueToDate(a.dueDate) < now)
   );
 
   const scores = {};
   const excused = {};
   for (const a of assignments) {
-    const ov = (gradeOverrides[myId] || {})[a.id];
+    const ov = myOverrides[a.id];
     const sub = (submissions || []).find(s => s.studentId === myId && s.quizId === a.id);
     // Shared resolver: whole-assignment override > per-part overrides > submission score,
     // then the upheld-integrity penalty — identical to the instructor Gradebook so what the
@@ -148,7 +157,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
             {data.assignments.map((item, i) => {
               const a = catAssignments.find(x => x.id === item.id);
               const isDropped = data.dropped.includes(item.id);
-              const sc = scoreColor(item.score, item.excused, item.score == null && !item.excused, muted);
+              const sc = scoreColor(item.score, item.maxPts, item.excused, item.score == null && !item.excused, muted);
               const mySub = (submissions || []).find(sub => sub.studentId === myId && sub.quizId === item.id);
               return (
                 <div
@@ -169,7 +178,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                     {mySub && <span style={{ color: teal, fontSize: 12 }}>View ›</span>}
                   </div>
                   <span style={{ fontFamily: "monospace", fontSize: 14, fontWeight: 600, color: sc }}>
-                    {item.excused ? "EX" : item.score == null ? "–" : `${item.score}/10`}
+                    {item.excused ? "EX" : item.score == null ? "–" : `${item.score}/${item.maxPts}`}
                   </span>
                 </div>
               );

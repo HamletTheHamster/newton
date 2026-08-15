@@ -16,20 +16,28 @@ function overallColor(pct) {
   return "#f87171";
 }
 
-function cellBg(score, isExcused, isMissing) {
+// Cell coloring is by PERCENTAGE, not raw points: exams are graded out of 100 and labs out
+// of 10, so an 85 and an 8.5 have to shade the same green.
+function pctOf(score, maxPts) {
+  const max = maxPts || 10;
+  return max > 0 ? (score / max) * 100 : 0;
+}
+function cellBg(score, maxPts, isExcused, isMissing) {
   if (isExcused) return "rgba(160,160,160,0.08)";
   if (isMissing) return "rgba(248,113,113,0.07)";
-  if (score >= 8)  return "rgba(74,222,128,0.07)";
-  if (score >= 6)  return "rgba(250,204,21,0.07)";
-  if (score >= 4)  return "rgba(251,146,60,0.08)";
+  const pct = pctOf(score, maxPts);
+  if (pct >= 80) return "rgba(74,222,128,0.07)";
+  if (pct >= 60) return "rgba(250,204,21,0.07)";
+  if (pct >= 40) return "rgba(251,146,60,0.08)";
   return "rgba(248,113,113,0.12)";
 }
-function cellFg(score, isExcused, isMissing) {
+function cellFg(score, maxPts, isExcused, isMissing) {
   if (isExcused) return MUTED;
   if (isMissing) return "#f87171";
-  if (score >= 8)  return "#4ade80";
-  if (score >= 6)  return "#facc15";
-  if (score >= 4)  return "#fb923c";
+  const pct = pctOf(score, maxPts);
+  if (pct >= 80) return "#4ade80";
+  if (pct >= 60) return "#facc15";
+  if (pct >= 40) return "#fb923c";
   return "#f87171";
 }
 
@@ -397,6 +405,113 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
   );
 }
 
+// ── BulkScoreModal ────────────────────────────────────────────────────────────
+// One input per student for a single assignment. This is how a paper exam or lab actually
+// gets entered — a whole column in one pass, Enter stepping to the next student — rather
+// than clicking cell by cell across a horizontally scrolling table.
+// Reports `{ [studentId]: number | null }` for CHANGED students only (null = clear the
+// score); the caller owns how that becomes a grade override.
+function BulkScoreModal({ assignment, students, scoreMap, excusedMap, onClose, onSave }) {
+  const { s, text, muted, border, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
+  const inputsRef = useRef([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const initial = {};
+  for (const stu of students) {
+    const sc = scoreMap[stu.studentId]?.[assignment.id];
+    initial[stu.studentId] = sc == null ? "" : String(sc);
+  }
+  const [draft, setDraft] = useState(initial);
+
+  useEffect(() => { inputsRef.current[0]?.focus(); }, []);
+
+  const maxPts = assignment.maxPts || 10;
+  const entered = students.filter(stu => String(draft[stu.studentId] ?? "").trim() !== "").length;
+  const invalid = students.filter(stu => {
+    const raw = String(draft[stu.studentId] ?? "").trim();
+    if (raw === "") return false;
+    const n = parseFloat(raw);
+    return !isFinite(n) || n < 0 || n > maxPts;
+  });
+
+  const handleSave = async () => {
+    if (invalid.length) { setError(`Scores must be between 0 and ${maxPts}.`); return; }
+    const changes = {};
+    for (const stu of students) {
+      const raw = String(draft[stu.studentId] ?? "").trim();
+      if (raw === initial[stu.studentId]) continue;
+      changes[stu.studentId] = raw === "" ? null : parseFloat(raw);
+    }
+    if (!Object.keys(changes).length) { onClose(); return; }
+    setSaving(true);
+    try { await onSave(changes); onClose(); }
+    catch (e) { setError(e?.message || "Save failed."); setSaving(false); }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 60, padding: 16 }}>
+      <div style={{ ...s.card, background: solidBg, padding: 0, width: "100%", maxWidth: 460, maxHeight: "86vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,0.5)" }}>
+        <div style={{ padding: "18px 22px 14px", borderBottom: `1px solid ${border}` }}>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>Enter Scores</h3>
+          <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{assignment.title} · out of {maxPts}</p>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: "6px 22px" }}>
+          {students.length === 0 && (
+            <p style={{ ...s.muted, fontSize: 13, padding: "16px 0", margin: 0 }}>No students in the roster yet.</p>
+          )}
+          {students.map((stu, i) => {
+            const isExcused = !!excusedMap[stu.studentId]?.[assignment.id];
+            const raw = String(draft[stu.studentId] ?? "").trim();
+            const n = parseFloat(raw);
+            const bad = raw !== "" && (!isFinite(n) || n < 0 || n > maxPts);
+            return (
+              <div key={stu.studentId} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < students.length - 1 ? `1px solid ${border}` : "none" }}>
+                <span style={{ color: text, fontSize: 13, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {stu.altName || stu.fullName}
+                </span>
+                {isExcused && <span style={{ ...s.badge(muted), fontSize: 10 }}>Excused</span>}
+                <input
+                  ref={el => { inputsRef.current[i] = el; }}
+                  type="text"
+                  inputMode="decimal"
+                  value={draft[stu.studentId] ?? ""}
+                  onChange={e => { setError(""); setDraft(d => ({ ...d, [stu.studentId]: e.target.value })); }}
+                  onFocus={e => e.target.select()}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); inputsRef.current[i + 1]?.focus(); }
+                    else if (e.key === "Escape") { e.preventDefault(); onClose(); }
+                  }}
+                  placeholder="–"
+                  style={{ ...s.input, width: 62, flexShrink: 0, padding: "4px 8px", fontSize: 13, height: "auto",
+                           textAlign: "center", fontFamily: "monospace",
+                           borderColor: bad ? "#f87171" : undefined }}
+                />
+                <span style={{ color: muted, fontSize: 11, width: 30, flexShrink: 0 }}>/{maxPts}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        <div style={{ padding: "14px 22px", borderTop: `1px solid ${border}` }}>
+          {error && <p style={{ color: "#f87171", fontSize: 12, margin: "0 0 10px" }}>{error}</p>}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <span style={{ color: muted, fontSize: 12 }}>{entered} of {students.length} entered</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={onClose} disabled={saving} style={{ ...s.btnSec, width: "auto", padding: "8px 16px" }}>Cancel</button>
+              <button onClick={handleSave} disabled={saving} style={{ ...s.btnPri, width: "auto", padding: "8px 20px" }}>
+                {saving ? "Saving…" : "Save Scores"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Gradebook ─────────────────────────────────────────────────────────────────
 export function Gradebook({
   roster,
@@ -407,10 +522,12 @@ export function Gradebook({
   gradeOverrides,
   assignmentCategories,
   manualAssignments,
+  dueDates,
   assignmentNameOverrides,
   assignmentOrderOverrides,
   onSaveGradeCategories,
   onSaveOverrideForStudent,
+  onSaveBulkOverrides,
   onClearSubmission,
   onSaveAssignmentCategories,
   onSaveManualAssignments,
@@ -438,6 +555,8 @@ export function Gradebook({
   const [addingAssignment, setAddingAssignment] = useState(false);
   const [newAsgTitle, setNewAsgTitle] = useState("");
   const [newAsgCat, setNewAsgCat] = useState("cat_quiz");
+  const [newAsgPts, setNewAsgPts] = useState("10");
+  const [bulkEntryFor, setBulkEntryFor] = useState(null);   // assignmentId — opens BulkScoreModal
 
   // Column drag/drop
   const [dragColId, setDragColId] = useState(null);
@@ -448,7 +567,7 @@ export function Gradebook({
   const [filterCatIds, setFilterCatIds] = useState(new Set());
   const [filterAssignment, setFilterAssignment] = useState("");
 
-  const assignments = buildGradebookAssignments(modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides);
+  const assignments = buildGradebookAssignments(modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides, dueDates);
 
   const displayedStudents = (roster || []).filter(stu =>
     !filterStudent || (stu.altName || stu.fullName).toLowerCase().includes(filterStudent.toLowerCase())
@@ -527,8 +646,15 @@ export function Gradebook({
     const submittedIds = new Set(
       (submissions || []).filter(s => s.studentId === stu.studentId).map(s => s.quizId)
     );
+    // A past-due quiz or homework with no submission is a real zero — the student didn't do it.
+    // A manual assignment (exam, lab) with no score is NOT: it means the instructor hasn't
+    // entered marks yet, which is normal for the days between sitting the exam and grading it.
+    // So manual work counts only once it's scored or excused. StudentGrades applies the same
+    // rule, which is what keeps the two Overall figures in agreement.
     const activeAssignments = assignments.filter(a =>
-      submittedIds.has(a.id) || (a.dueDate && dueToDate(a.dueDate) < now)
+      a.type === "manual"
+        ? scoreMap[stu.studentId]?.[a.id] != null || !!excusedMap[stu.studentId]?.[a.id]
+        : submittedIds.has(a.id) || (a.dueDate && dueToDate(a.dueDate) < now)
     );
     overallGrades[stu.studentId] = calcGrades({
       assignments: activeAssignments,
@@ -552,9 +678,11 @@ export function Gradebook({
     const existing = current[assignmentId] || {};
     const parsed = parseFloat(editScore);
     if (!isNaN(parsed)) {
-      // Typing a score clears excused status
+      // Typing a score clears excused status. Clamp to the assignment's own maximum —
+      // exams are out of 100, labs and quizzes out of 10.
+      const maxPts = assignments.find(a => a.id === assignmentId)?.maxPts || 10;
       const { excused: _e, previousScore: _p, ...rest } = existing;
-      current[assignmentId] = { ...rest, score: Math.max(0, Math.min(10, parsed)) };
+      current[assignmentId] = { ...rest, score: Math.max(0, Math.min(maxPts, parsed)) };
     } else {
       // No score entered — preserve existing override as-is (keeps excused, dueDate, etc.)
       const { score: _, ...rest } = existing;
@@ -648,13 +776,41 @@ export function Gradebook({
     await onSaveAssignmentNameOverrides({ ...(assignmentNameOverrides || {}), [id]: draft });
   };
 
+  // Apply a whole column of scores from BulkScoreModal. `byStudent` is { studentId: number|null }
+  // for changed students only; a null clears that student's score but preserves the rest of the
+  // override (deadline extension, integrity review), exactly like clearing a single cell does.
+  const saveBulkScores = async (assignmentId, byStudent) => {
+    const asgn = assignments.find(a => a.id === assignmentId);
+    const maxPts = asgn?.maxPts || 10;
+    const next = {};
+    for (const [studentId, value] of Object.entries(byStudent)) {
+      const current = { ...(gradeOverrides[studentId] || {}) };
+      const existing = current[assignmentId] || {};
+      if (value == null) {
+        const { score: _s, ...rest } = existing;
+        if (Object.keys(rest).length) current[assignmentId] = rest;
+        else delete current[assignmentId];
+      } else {
+        // Entering a score clears excused status, same rule as the single-cell editor.
+        const { excused: _e, previousScore: _p, ...rest } = existing;
+        current[assignmentId] = { ...rest, score: Math.max(0, Math.min(maxPts, value)) };
+      }
+      next[studentId] = current;
+    }
+    const n = Object.keys(next).length;
+    if (!n) return;
+    await onSaveBulkOverrides(next, `✓ ${n} score${n === 1 ? "" : "s"} saved: ${asgn?.title || "assignment"}`);
+  };
+
   const submitNewAssignment = async () => {
     const t = newAsgTitle.trim();
     if (!t) return;
+    const pts = parseFloat(newAsgPts);
     const id = newId("asgn");
-    const next = { ...(manualAssignments || {}), [id]: { id, title: t, catId: newAsgCat, maxPts: 10 } };
+    // maxPtsSet: the instructor chose these points, so the exam migration never rewrites them.
+    const next = { ...(manualAssignments || {}), [id]: { id, title: t, catId: newAsgCat, maxPts: isFinite(pts) && pts > 0 ? pts : 10, maxPtsSet: true } };
     await onSaveManualAssignments(next);
-    setAddingAssignment(false); setNewAsgTitle(""); setNewAsgCat("cat_quiz");
+    setAddingAssignment(false); setNewAsgTitle(""); setNewAsgCat("cat_quiz"); setNewAsgPts("10");
   };
 
   const dropColumn = async (fromId, toId) => {
@@ -673,7 +829,8 @@ export function Gradebook({
   const exportCsv = () => {
     const sorted = [...(roster || [])].sort((a, b) => a.lastName.localeCompare(b.lastName));
     const rows = [
-      ["Student", ...assignments.map(a => a.title), "Overall %"],
+      // Points vary per assignment (exams /100, labs and quizzes /10), so the header says which.
+      ["Student", ...assignments.map(a => `${a.title} (/${a.maxPts})`), "Overall %"],
       ...sorted.map(stu => [
         stu.altName || stu.fullName,
         ...assignments.map(a =>
@@ -777,6 +934,14 @@ export function Gradebook({
               <option key={c.id} value={c.id} style={{ background: bg }}>{c.name}</option>
             ))}
           </select>
+          <input
+            type="number" min="1" step="1"
+            value={newAsgPts} onChange={e => setNewAsgPts(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") submitNewAssignment(); if (e.key === "Escape") setAddingAssignment(false); }}
+            title="Points this assignment is graded out of"
+            style={{ ...s.input, width: 78, padding: "6px 10px", fontSize: 13 }}
+          />
+          <span style={{ color: muted, fontSize: 12 }}>points</span>
           <button onClick={submitNewAssignment} style={{ ...s.btnPri, width: "auto", padding: "6px 14px" }}>Add</button>
           <button onClick={() => setAddingAssignment(false)} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
         </div>
@@ -871,6 +1036,17 @@ export function Gradebook({
                         edit
                       </button>
                     )}
+                    {/* Manual assignments (exams, labs) have no submission to grade, so their
+                        scores are typed in — offer the whole column at once. */}
+                    {a.type === "manual" && (
+                      <button
+                        onClick={e => { e.stopPropagation(); setEditingCell(null); setBulkEntryFor(a.id); }}
+                        title={`Enter ${a.title} scores for every student`}
+                        style={{ display: "block", margin: "3px auto 0", background: isLight ? "rgba(0,0,0,0.06)" : "rgba(255,255,255,0.08)", border: "none", borderRadius: 3, color: muted, fontSize: 9, cursor: "pointer", padding: "1px 6px", lineHeight: 1.5 }}
+                      >
+                        enter scores
+                      </button>
+                    )}
                   </th>
                 );
               })}
@@ -933,8 +1109,8 @@ export function Gradebook({
 
                     const cellTitle = isFlagged ? "Integrity flag: full credit. Click to review the submitted work."
                       : isExcused ? "Excused · click to edit"
-                      : isMissing ? "No submission · click to override"
-                      : `${score}/10 · click to edit`;
+                      : isMissing ? (a.type === "manual" ? "No score yet · click to enter" : "No submission · click to override")
+                      : `${score}/${a.maxPts} · click to edit`;
                     return (
                       <td
                         key={a.id}
@@ -942,8 +1118,8 @@ export function Gradebook({
                         title={cellTitle}
                         style={{
                           backgroundColor: stickyBg,
-                          backgroundImage: `linear-gradient(${cellBg(score, isExcused, isMissing)}, ${cellBg(score, isExcused, isMissing)})`,
-                          color: cellFg(score, isExcused, isMissing),
+                          backgroundImage: `linear-gradient(${cellBg(score, a.maxPts, isExcused, isMissing)}, ${cellBg(score, a.maxPts, isExcused, isMissing)})`,
+                          color: cellFg(score, a.maxPts, isExcused, isMissing),
                           borderRight: cellBorder, borderBottom: cellBorder,
                           textAlign: "center", padding: "8px 4px",
                           fontSize: 13, fontFamily: "monospace", cursor: "pointer",
@@ -1017,6 +1193,16 @@ export function Gradebook({
           gradeCategories={gradeCategories}
           onSave={onSaveGradeCategories}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+      {bulkEntryFor && (
+        <BulkScoreModal
+          assignment={assignments.find(a => a.id === bulkEntryFor)}
+          students={displayedStudents}
+          scoreMap={scoreMap}
+          excusedMap={excusedMap}
+          onClose={() => setBulkEntryFor(null)}
+          onSave={changes => saveBulkScores(bulkEntryFor, changes)}
         />
       )}
       {viewSubModal && (

@@ -4,7 +4,8 @@ How a score travels from a submission, through instructor overrides, to what the
 student sees. Goal of this doc: make explicit where the **instructor and student
 sides compute the score independently**, so any override applied by the instructor
 is guaranteed to show up on the student side (both the grades list and the
-submission view) for **every** assignment type (quiz and homework).
+submission view) for **every** assignment type (quiz, homework, and the
+hand-entered manual assignments — exams and labs).
 
 ## Data sources
 
@@ -15,7 +16,8 @@ submission view) for **every** assignment type (quiz and homework).
 - **Override** — `gradeOverrides[studentId][assignmentId]`, written only by the
   instructor:
   `{ score?, excused?, previousScore?, dueDate?, partScores?, integrityReview? }`.
-  - `score` — whole-assignment manual score (0–10). Applies to quizzes **and** homework.
+  - `score` — whole-assignment manual score, `0`–`maxPts`. Applies to quizzes, homework
+    **and** manual assignments (where it is the *only* source — there is no submission).
   - `partScores` — `{ [itemId]: earnedValue }`, homework only (per-part edits from the
     submission view).
   - `excused` — omit from grade calc.
@@ -73,6 +75,38 @@ Before the shared resolver, the student grades list ignored `ov.partScores`, the
 submission view received no overrides at all, and the `SubViewModal` header hard-coded
 `submission.score` on both sides. Those three gaps are closed by routing every surface
 through `resolveScore` + the single `override` prop.
+
+## Manual assignments — exams and labs
+
+Assignments with no submission of any kind: they happen in the room and the instructor
+types the marks. They live in `classes/{classId}/manualAssignments`
+(`{ id, title, catId, maxPts, maxPtsSet?, order }`), are dated through the **same
+`dueDates` node** keyed by assignment id, and surface as `type: "manual"` out of
+`buildGradebookAssignments`. `resolveScore` needs no special case — with no submission it
+falls straight through to `ov.score`.
+
+Three things differ from quiz/homework and every reader must respect them:
+
+- **Points vary.** Exams are `maxPts: 100`, labs and everything else `10`. Nothing may
+  assume 10: the score clamp (`commitEdit`, `saveBulkScores`), the cell/row coloring
+  (percentage, not raw points), the `/N` display, and the CSV header all read `a.maxPts`.
+  `calcGrades` already weighted by `maxPts`, and its **drop-lowest now ranks by percentage**
+  — raw points would have called a 40/100 worse than a 3/10.
+- **No score ≠ zero.** A past-due quiz with no submission is a real zero. An ungraded exam
+  just means the instructor hasn't marked it yet, which is normal for the days between
+  sitting it and grading it. So a manual assignment enters the grade calc **only once it is
+  scored or excused** — applied identically in `Gradebook`'s `activeAssignments` and
+  `StudentGrades`' `assignments` filter, which is what keeps the two Overall figures equal.
+  It is also why the student's grades list shows no row until the score exists.
+- **Nothing to open.** They appear on the student calendar and in the To Do rail (upcoming
+  only, never past-due) but are never clickable and never module-gated.
+
+Scores are entered either cell-by-cell or, for a whole column at once, through
+`BulkScoreModal` (the "enter scores" link in a manual column's header). Bulk save goes
+through `onSaveBulkOverrides` → App.jsx's `saveOverridesForStudents`, which writes the whole
+`gradeOverrides` node once. It deliberately does **not** loop `saveOverrideForStudent`: each
+of those calls rebuilds its `updated` object from the same stale `gradeOverrides` closure, so
+only the last student's edit would survive in local state.
 
 ## Wiring reference (RTDB → UI)
 

@@ -57,12 +57,28 @@ function makeDefaultManualAssignments() {
     }
   }
   return {
-    asgn_midterm: { id: "asgn_midterm", title: "Midterm Exam", catId: "cat_midterm", maxPts: 10, order: 650 },
-    asgn_final:   { id: "asgn_final",   title: "Final Exam",   catId: "cat_final",   maxPts: 10, order: 1350 },
+    asgn_midterm: { id: "asgn_midterm", title: "Midterm Exam", catId: "cat_midterm", maxPts: 100, order: 650 },
+    asgn_final:   { id: "asgn_final",   title: "Final Exam",   catId: "cat_final",   maxPts: 100, order: 1350 },
     ...labs,
   };
 }
 const DEFAULT_MANUAL_ASSIGNMENTS = makeDefaultManualAssignments();
+
+// Exams are graded out of 100, labs and everything else out of 10. Classes seeded before
+// `maxPts` varied got exams at 10; this lifts them to 100 once. `maxPtsSet` is written
+// whenever the instructor edits the points themselves, and skipping those entries is what
+// keeps this from overwriting a deliberate choice on the next load.
+const EXAM_CATS = new Set(["cat_midterm", "cat_final"]);
+function migrateExamMaxPts(manualAsgn) {
+  let changed = false;
+  const next = { ...manualAsgn };
+  for (const [id, ma] of Object.entries(next)) {
+    if (!ma || !EXAM_CATS.has(ma.catId) || ma.maxPtsSet || ma.maxPts !== 10) continue;
+    next[id] = { ...ma, maxPts: 100 };
+    changed = true;
+  }
+  return changed ? next : null;
+}
 
 const DEFAULT_GRADE_CATEGORIES = {
   cat_lab:     { id: "cat_lab",     name: "Laboratory",   weight: 20, dropLowest: 1, order: 0 },
@@ -227,6 +243,18 @@ export default function App() {
     })),
   ].map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
   const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueDates[h.id] || null, grading: { ...HW_GRADING_DEFAULTS, ...(homeworkSettings[h.id] || {}) } }));
+  // Manual assignments (exams, labs) as dated events. They live only in the gradebook — there
+  // is nothing to open and no submission — but they still belong on the calendar and the To Do
+  // rail, so they're dated through the same `dueDates` node keyed by assignment id.
+  // `kind` is the category id minus its `cat_` prefix ("midterm", "final", "lab"), which is the
+  // spelling category-colors.js keys on, so an exam is the same amber everywhere.
+  const manualAssignmentList = Object.values(manualAssignments || {})
+    .filter(Boolean)
+    .map(ma => ({
+      ...ma,
+      kind: (ma.catId || "").replace(/^cat_/, "") || "assignment",
+      dueDate: dueDates[ma.id] || null,
+    }));
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
   // A student only ever reaches a quiz/homework through its module item, so an
   // assignment is open exactly when some visible item points at it from a module
@@ -299,25 +327,38 @@ export default function App() {
   // `upcoming` = due within the next 7 days, soonest first.
   // `overdue`  = already past due, most recent miss first. Kept (not dropped) so
   // the student's rail keeps nagging — late work still earns partial credit.
+  // Manual assignments (exams, labs) are `manual: true`: they appear while upcoming, since a
+  // date the student should see coming is exactly what the rail is for, but never in the
+  // past-due section — a missed exam isn't work you can still go and submit.
   const { upcoming: upcomingAssignments, overdue: overdueAssignments } = (() => {
     const now = new Date();
     const horizon = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
     const all = [
       ...quizzes.filter(q => q.dueDate).map(q => ({ id: q.id, title: q.title, due: q.dueDate, kind: "quiz", ref: q })),
       ...homeworks.filter(h => h.dueDate).map(h => ({ id: h.id, title: h.title, due: h.dueDate, kind: "homework", ref: h })),
+      ...manualAssignmentList.filter(m => m.dueDate).map(m => ({ id: m.id, title: m.title, due: m.dueDate, kind: m.kind, manual: true })),
     ].map(t => ({ t, due: dueToDate(t.due) })).filter(({ due }) => !!due);
     return {
       upcoming: all.filter(({ due }) => due >= now && due <= horizon).sort((a, b) => a.due - b.due).map(({ t }) => t),
-      overdue: all.filter(({ due }) => due < now).sort((a, b) => b.due - a.due).map(({ t }) => t),
+      overdue: all.filter(({ due, t }) => due < now && !t.manual).sort((a, b) => b.due - a.due).map(({ t }) => t),
     };
   })();
 
   // An assignment still gated by its module's timed release stays listed (its due
   // date is real and the student should see it coming) but isn't clickable — the
-  // rail shows when it opens instead.
+  // rail shows when it opens instead. A manual assignment is never clickable either:
+  // there's nothing to open, it happens in the room.
+  //
+  // Labs are dropped from the student rail entirely, upcoming AND past due. They run on
+  // shared in-person equipment that has to be set up for the session, so there are no
+  // makeups: a student can neither start one early nor do anything about one they missed.
+  // The rail is for work that is still actionable; a missed lab listed there would only
+  // prompt requests for a makeup that doesn't exist. Labs still appear on the calendar,
+  // which is where "when does my lab meet" belongs, and in the grades list once scored.
   const toStudentTodo = list => list
-    .filter(t => !completedQuizIds.has(t.id))
+    .filter(t => !completedQuizIds.has(t.id) && t.kind !== "lab")
     .map(({ ref, ...t }) => {
+      if (t.manual) return t;
       const lock = assignmentLocks[t.id];
       if (lock?.locked) return { ...t, locked: true, releaseDate: lock.releaseDate };
       return { ...t, onClick: t.kind === "quiz" ? () => startQuiz(ref, false) : () => startHomework(ref) };
@@ -377,6 +418,7 @@ export default function App() {
           else setGradeCategories(DEFAULT_GRADE_CATEGORIES);
           if (c.gradeOverrides && typeof c.gradeOverrides === 'object') setGradeOverrides(c.gradeOverrides);
           if (c.assignmentCategories && typeof c.assignmentCategories === 'object') setAssignmentCategories(c.assignmentCategories);
+          if (c.manualAssignments && typeof c.manualAssignments === 'object') setManualAssignments(c.manualAssignments);
           if (c.customQuizzes && typeof c.customQuizzes === 'object') setCustomQuizzes(c.customQuizzes);
           if (c.homeworkSettings && typeof c.homeworkSettings === 'object') setHomeworkSettings(c.homeworkSettings);
         } else if (storedId) {
@@ -445,6 +487,12 @@ export default function App() {
       if (Object.keys(manualAsgnObj).length === 0) {
         manualAsgnObj = { ...DEFAULT_MANUAL_ASSIGNMENTS };
         try { await fbSet(classPath(classId, 'manualAssignments'), manualAsgnObj); } catch (e) { console.warn("Manual assignment seed failed:", e?.message); }
+      } else {
+        const migrated = migrateExamMaxPts(manualAsgnObj);
+        if (migrated) {
+          manualAsgnObj = migrated;
+          try { await fbSet(classPath(classId, 'manualAssignments'), manualAsgnObj); } catch (e) { console.warn("Exam max-points migration failed:", e?.message); }
+        }
       }
       const nameOverrideObj = (nameOverrideData && typeof nameOverrideData === 'object') ? nameOverrideData : {};
       const orderOverrideObj = (orderOverrideData && typeof orderOverrideData === 'object') ? orderOverrideData : {};
@@ -491,7 +539,7 @@ export default function App() {
       setAssignmentOrderOverrides(orderOverrideObj);
       const hwSettingsObj = (hwSettingsData && typeof hwSettingsData === 'object') ? hwSettingsData : {};
       setHomeworkSettings(hwSettingsObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj } }));
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -509,7 +557,8 @@ export default function App() {
     refreshingRef.current = true;
     try {
       const [modulesData, moduleConfigData, pagesData, uploadsData, customQuizzesData,
-             datesData, hwSettingsData, annsData, gradeOverridesData, syllabusData] = await Promise.all([
+             datesData, hwSettingsData, annsData, gradeOverridesData, syllabusData,
+             manualAsgnData] = await Promise.all([
         fbGet(classPath(classId, 'modules')).catch(() => undefined),
         fbGet(classPath(classId, 'moduleConfig')).catch(() => undefined),
         fbGet(classPath(classId, 'pages')).catch(() => undefined),
@@ -520,6 +569,7 @@ export default function App() {
         fbGet(classPath(classId, 'announcements')).catch(() => undefined),
         fbGet(classPath(classId, 'gradeOverrides')).catch(() => undefined),
         fbGet(classPath(classId, 'syllabus')).catch(() => undefined),
+        fbGet(classPath(classId, 'manualAssignments')).catch(() => undefined),
       ]);
       // `undefined` = the fetch failed; skip that node rather than blanking it.
       // `null` = the node genuinely doesn't exist → normalize to empty, same as loadClassData.
@@ -544,6 +594,10 @@ export default function App() {
       take(annsData, setAnnouncements, 'announcements', obj);
       take(gradeOverridesData, setGradeOverrides, 'gradeOverrides', obj);
       take(syllabusData, setSyllabus, 'syllabus', d => (d && typeof d === 'object') ? d : null);
+      // Students consume manualAssignments too (exam/lab titles, points and dates feed their
+      // calendar and grades list), so it has to be re-polled like any other instructor node.
+      // Seeding stays loadClassData's job: a missing node normalizes to {} here, never seeds.
+      take(manualAsgnData, setManualAssignments, 'manualAssignments', obj);
       if (Object.keys(patch).length) {
         setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), ...patch } }));
       }
@@ -801,6 +855,7 @@ export default function App() {
   const saveManualAssignments = async next => {
     const cid = requireClass();
     setManualAssignments(next);
+    updateClassCache(cid, 'manualAssignments', next);
     await fbSave(classPath(cid, 'manualAssignments'), Object.keys(next).length ? next : null);
   };
   const saveAssignmentNameOverrides = async next => {
@@ -819,6 +874,23 @@ export default function App() {
     setGradeOverrides(updated);
     updateClassCache(cid, 'gradeOverrides', updated);
     await fbSave(classPath(cid, `gradeOverrides/${studentId}`), studentOverrides, label);
+  };
+
+  // Bulk grade entry — a whole exam or lab column at once. Deliberately NOT a loop over
+  // saveOverrideForStudent: every call there rebuilds `updated` from the same stale
+  // `gradeOverrides` closure, so only the last student's edit would survive in local state.
+  // gradeOverrides is instructor-written only (students never touch it), so writing the whole
+  // node once keeps local state and RTDB exactly in step with a single sync status.
+  const saveOverridesForStudents = async (byStudent, label) => {
+    const cid = requireClass();
+    const updated = { ...gradeOverrides };
+    for (const [sid, ov] of Object.entries(byStudent)) {
+      if (ov && Object.keys(ov).length) updated[sid] = ov;
+      else delete updated[sid];
+    }
+    setGradeOverrides(updated);
+    updateClassCache(cid, 'gradeOverrides', updated);
+    await fbSave(classPath(cid, 'gradeOverrides'), updated, label);
   };
 
   const saveSubs = async (newSubs, studentId = null) => {
@@ -1570,9 +1642,9 @@ export default function App() {
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
-      mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} completedQuizIds={completedQuizIds} locks={assignmentLocks} onOpen={openAssignment} />;
+      mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} manual={manualAssignmentList} completedQuizIds={completedQuizIds} locks={assignmentLocks} onOpen={openAssignment} />;
     } else if (studentSection === "grades") {
-      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} assignmentNameOverrides={assignmentNameOverrides} />;
+      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} manualAssignments={manualAssignments} dueDates={dueDates} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
       mainContent = <StudentSyllabus syllabus={syllabus} />;
     } else if (studentSection === "evals") {
@@ -1890,10 +1962,12 @@ export default function App() {
             gradeOverrides={gradeOverrides}
             assignmentCategories={assignmentCategories}
             manualAssignments={manualAssignments}
+            dueDates={dueDates}
             assignmentNameOverrides={assignmentNameOverrides}
             assignmentOrderOverrides={assignmentOrderOverrides}
             onSaveGradeCategories={saveGradeCategories}
             onSaveOverrideForStudent={saveOverrideForStudent}
+            onSaveBulkOverrides={saveOverridesForStudents}
             onClearSubmission={clearSubmission}
             onSaveAssignmentCategories={saveAssignmentCategories}
             onSaveManualAssignments={saveManualAssignments}
@@ -1912,11 +1986,14 @@ export default function App() {
           <Assignments
             quizzes={quizzes}
             homeworks={homeworks}
+            manualAssignments={manualAssignments}
+            gradeCategories={gradeCategories}
             customQuizzes={customQuizzes}
             dueDates={dueDates}
             homeworkSettings={homeworkSettings}
             onSaveDueDates={saveDueDates}
             onSaveHomeworkSettings={saveHomeworkSettingFor}
+            onSaveManualAssignments={saveManualAssignments}
             onEditCustomQuiz={quizId => {
               const cq = customQuizzes[quizId];
               if (cq) setEditingCustomQuiz({ quizId, title: cq.title, text: cq.text, moduleId: null });
@@ -2147,7 +2224,7 @@ export default function App() {
         )}
 
         {currentClassId && instructorSection === "calendar" && (
-          <StudentCalendar quizzes={quizzes} homeworks={homeworks} completedQuizIds={new Set()} />
+          <StudentCalendar quizzes={quizzes} homeworks={homeworks} manual={manualAssignmentList} completedQuizIds={new Set()} />
         )}
 
         {instructorSection === "settings" && (

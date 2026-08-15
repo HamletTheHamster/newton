@@ -12,6 +12,8 @@ import { categoryColor } from "../../category-colors.js";
 // `locked`: the assignment's module hasn't released yet (or its item is hidden),
 //   so it can't be opened. It stays listed — the due date is real and worth
 //   seeing coming — but has no `onClick` and shows when it opens instead.
+// `manual`: a gradebook-only assignment (exam, lab). Never clickable and never in the
+//   past-due section, and its date reads bare — "Due" is wrong for a date you show up on.
 // `kind` drives the color dot, via the shared category palette (src/category-colors.js) that the
 // calendar, gradebook, grades list and syllabus all read — so a quiz is the same green everywhere.
 
@@ -103,7 +105,7 @@ export function TodoRail({ items, overdue = [] }) {
       <div style={{ fontWeight: 500 }}>{it.title}</div>
       {it.due && (
         <div style={{ ...s.muted, fontSize: 12, marginTop: 3, color: late ? LATE : undefined }}>
-          {late ? "Was due " : "Due "}{fmtDue(it.due)}
+          {it.manual ? "" : late ? "Was due " : "Due "}{fmtDue(it.due)}
         </div>
       )}
       {it.locked && (
