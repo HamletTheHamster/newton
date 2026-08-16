@@ -127,3 +127,24 @@ changed. **This one is worth raising with the publisher's figure, not just the k
 (6.56×10⁻²¹ J, 1.20×10⁵ m/s), 22.42 (all symbolic: $\rho r/2\epsilon_0$,
 $\lambda/2\pi\epsilon_0 r$, and their agreement at $r=R$), 22.43 (10.2°), 22.51
 ($qQ/4\pi\epsilon_0r^2$ inward, and zero inside).
+
+## HW3 — Electric Potential (verified 2026-08-15)
+
+Every value independently re-derived from the problem statements. Constants as for HW1/HW2.
+**This is the least clean PHY 215 key so far: two rows below are outright wrong (one by a factor
+of ten), and a third boxes the wrong sign for the quantity the problem actually asks for.** All
+three are worth correcting in the source document before students see it.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| **23.8** — $U$ of the triangle | **7.77 mJ** (7.77×10⁻³ J) | **77.7 mJ** (0.077653 J) | **Yes** — off by a factor of **10** | Arithmetic slip in the key's own line: $3(8.99\times10^9)(1.20\times10^{-6})^2/0.500 = 7.77\times10^{-2}\text{ J}$, but it was written and boxed as $7.77\times10^{-3}$. Y&F's printed answer is 0.0777 J. | ☐ |
+| **23.19 (c)** — work on the 2.50 nC charge | **−82.5 nJ** | **+82.4 nJ** (8.2385×10⁻⁸ J) | **Yes** — wrong sign | The problem asks for the charge travelling **from $B$ to $A$**, so $W = q(V_B - V_A)$. The key wrote $W_{a\to b} = q(V_A - V_B)$, i.e. it computed $A \to B$, the reverse trip. Magnitude is right. | ☐ |
+| **23.4 (a)** — work to push the protons together | **−7.69×10⁻¹⁴ J** | **+7.69×10⁻¹⁴ J** | **Yes** — wrong sign for what is asked | The problem asks how much work it would **take** to push them together, i.e. the work done by the external agent, which is positive ($W_{ext} = \Delta U$). The key computed the work done by the *electric force*, which is the negative of that. Magnitude is right. The app names the agent in the prompt and marks the item `nonNegative`, so a student following the key gets a free no-cost nudge rather than a wrong verdict. | ☐ |
+| 23.50 — acceleration | 3.32×10⁴ m/s² | **3.31×10⁴ m/s²** (33068) | No (0.4%) | The key rounded the intermediate separation to $r_2 = 0.026\text{ m}$ and carried that into $a = kq_1q_2/mr_2^2$; at full precision $r_2 = 0.026067\text{ m}$. The app asks for $r_2$ as its own part, so both roundings grade correct. | ☐ |
+| 23.4 (b) — proton speed | 6.79×10⁶ m/s | **6.78×10⁶ m/s** (6.7799×10⁶) | No (0.15%) | Key used $m_p = 1.67\times10^{-27}\text{ kg}$; the course constant is $1.673\times10^{-27}$. | ☐ |
+
+**Confirmed correct (no discrepancy):** 23.1 (−0.356 J), 23.13 (7.42 m/s, moving faster), 23.19(a)
+(−737 V) and (b) (−704 V), 23.40 (1.5×10⁶ m), 23.50's separation (0.026 m), all of 23.56
+($v = e/\sqrt{4\pi\epsilon_0m_er}$, $K = e^2/8\pi\epsilon_0r$, $K = |U|/2$, $E = -2.18\times10^{-18}\text{ J} = -13.6\text{ eV}$),
+23.59 ($-1.46q^2/\pi\epsilon_0d$, verified both by direct summation over all 28 pairs and by the
+12/12/4 shell counts), and 23.62 (47.7 V).

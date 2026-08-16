@@ -282,9 +282,9 @@ date there.
    - **PHY 115 (`physics1`)** — `hw1`–`hw4` are authored and verified; `hw5…hw14` are stubs.
      Per-assignment notes (problem numbers, figures, which parts are text/graph/vector/fbd and
      why): [courses/phy115.md](courses/phy115.md).
-   - **PHY 215 (`physics2`)** — `hw1` (Ch. 21) and `hw2` (Ch. 22, Gauss's law) are authored and
-     verified; later weeks are added as each is prepped. Per-assignment notes:
-     [courses/phy215.md](courses/phy215.md).
+   - **PHY 215 (`physics2`)** — `hw1` (Ch. 21), `hw2` (Ch. 22, Gauss's law) and `hw3` (Ch. 23,
+     electric potential) are authored and verified; later weeks are added as each is prepped.
+     Per-assignment notes: [courses/phy215.md](courses/phy215.md).
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into

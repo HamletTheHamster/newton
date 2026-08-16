@@ -681,4 +681,141 @@ export const HOMEWORKS_PHYSICS2 = [
       },
     ],
   },
+  {
+    id: "hw3",
+    title: "Homework 3: Electric Potential",
+    problems: [
+      // 23.1 — work done by the electric force on a charge moving between two points.
+      // Deliberately SIGNED (no nonNegative in the key): the charges are opposite, the separation
+      // grows, and the resulting negative sign is the physics the problem is testing.
+      {
+        id: "hw3_p1",
+        prompt: "A point charge $q_1 = +2.40\\ \\mu\\text{C}$ is held stationary at the origin. A second point charge $q_2 = -4.30\\ \\mu\\text{C}$ moves from the point $x = 0.150\\text{ m}$, $y = 0$ to the point $x = 0.250\\text{ m}$, $y = 0.250\\text{ m}$. How much work is done by the electric force on $q_2$?\n\nWork is a signed quantity: give your answer with its sign.",
+        answerType: "numeric", unit: "J",
+      },
+      // 23.4 — pushing two protons together, then letting them fly apart.
+      // (a) asks for the work the EXTERNAL agent does, which is positive. The instructor key boxes
+      // the negative of this (the work done by the electric force), so the prompt names the agent
+      // explicitly and the key entry carries nonNegative so a sign slip is nudged, not penalized.
+      {
+        id: "hw3_p2",
+        prompt: "Two protons are pushed together, then released. Use $e = 1.602\\times10^{-19}\\text{ C}$ and $m_p = 1.673\\times10^{-27}\\text{ kg}$.",
+        parts: [
+          { id: "hw3_p2a", prompt: "(a) How much work would it take to push the two protons very slowly from a separation of $2.00\\times10^{-10}\\text{ m}$ (a typical atomic distance) to $3.00\\times10^{-15}\\text{ m}$ (a typical nuclear distance)? This is the work done by the external agent doing the pushing.", answerType: "numeric", unit: "J" },
+          { id: "hw3_p2b", prompt: "(b) If the protons are both released from rest at the closer distance in part (a), how fast is each one moving when they reach their original separation?", answerType: "numeric", unit: "m/s" },
+        ],
+      },
+      // 23.8 — U of three equal charges at the corners of an equilateral triangle: three identical
+      // pairs, so U = 3kq^2/r. The instructor key's boxed value is off by a factor of 10.
+      {
+        id: "hw3_p3",
+        prompt: "Three equal $1.20\\ \\mu\\text{C}$ point charges are placed at the corners of an equilateral triangle whose sides are $0.500\\text{ m}$ long. What is the potential energy of the system? (Take as zero the potential energy of the three charges when they are infinitely far apart.)",
+        answerType: "numeric", unit: "J",
+      },
+      // 23.13 — energy conservation with U = qV. The "faster or slower" half is the real content
+      // (a negative charge speeding up as it moves to HIGHER potential), so it is a text part.
+      {
+        id: "hw3_p4",
+        prompt: "A small particle has charge $-5.00\\ \\mu\\text{C}$ and mass $2.00\\times10^{-4}\\text{ kg}$. It moves from point $A$, where the electric potential is $V_A = +200\\text{ V}$, to point $B$, where the electric potential is $V_B = +800\\text{ V}$. The electric force is the only force acting on the particle. The particle has speed $5.00\\text{ m/s}$ at point $A$.",
+        parts: [
+          { id: "hw3_p4a", prompt: "(a) What is its speed at point $B$?", answerType: "numeric", unit: "m/s" },
+          { id: "hw3_p4b", prompt: "(b) Is it moving faster or slower at $B$ than at $A$? Explain, using the sign of the charge and what happens to its potential energy $U = qV$.", answerType: "text" },
+        ],
+      },
+      // 23.19 — potential from two point charges, then work from the potential difference.
+      // NOTE the direction in (c): the charge travels from B to A, so W = q(V_B - V_A) and the
+      // result is POSITIVE. The instructor key computed A -> B and boxed the opposite sign.
+      {
+        id: "hw3_p5",
+        figure: "/homeworkFigures/physics2/HW3/figE23-19.png", figureWidth: 400,  // natural 484×316
+        prompt: "Two point charges $q_1 = +2.40\\text{ nC}$ and $q_2 = -6.50\\text{ nC}$ are $0.100\\text{ m}$ apart. Point $A$ is midway between them; point $B$ is $0.080\\text{ m}$ from $q_1$ and $0.060\\text{ m}$ from $q_2$, as shown in the figure. Take the electric potential to be zero at infinity.\n\nElectric potential and work are both signed quantities: give each answer with its sign.",
+        parts: [
+          { id: "hw3_p5a", prompt: "(a) Find the potential at point $A$.", answerType: "numeric", unit: "V" },
+          { id: "hw3_p5b", prompt: "(b) Find the potential at point $B$.", answerType: "numeric", unit: "V" },
+          { id: "hw3_p5c", prompt: "(c) Find the work done by the electric field on a charge of $2.50\\text{ nC}$ that travels from point $B$ to point $A$. Watch the direction of travel carefully.", answerType: "numeric", unit: "J" },
+        ],
+      },
+      // 23.40 — E = V/d rearranged. The point of the problem is the absurdity of the number, so
+      // the interpretation is a second, text part rather than being left implicit.
+      {
+        id: "hw3_p6",
+        prompt: "Electrical Sensitivity of Sharks. Certain sharks can detect an electric field as weak as $1.0\\ \\mu\\text{V/m}$. To grasp how weak this field is, imagine producing it between two parallel metal plates by connecting an ordinary $1.5\\text{-V}$ AA battery across these plates.",
+        parts: [
+          { id: "hw3_p6a", prompt: "(a) How far apart would the plates have to be?", answerType: "numeric", unit: "m" },
+          { id: "hw3_p6b", prompt: "(b) Comment on your answer. Compare the separation you found to something familiar, and say what it tells you about how sensitive these sharks are.", answerType: "text" },
+        ],
+      },
+      // 23.50 — energy conservation gives the separation, then Coulomb's law gives the acceleration
+      // there. Split into two parts: the distance is a genuine intermediate result, and asking for
+      // it separately keeps a rounding slip in the first step from silently poisoning the second.
+      {
+        id: "hw3_p7",
+        prompt: "A point charge $q_1 = +5.00\\ \\mu\\text{C}$ is held fixed in space. From a horizontal distance of $6.00\\text{ cm}$, a small sphere with mass $4.00\\times10^{-3}\\text{ kg}$ and charge $q_2 = +2.00\\ \\mu\\text{C}$ is fired toward the fixed charge with an initial speed of $40.0\\text{ m/s}$. Gravity can be neglected.",
+        parts: [
+          { id: "hw3_p7a", prompt: "(a) How far is the sphere from the fixed charge at the instant its speed is $25.0\\text{ m/s}$? Use energy conservation.", answerType: "numeric", unit: "m" },
+          { id: "hw3_p7b", prompt: "(b) What is the magnitude of the acceleration of the sphere at that instant?", answerType: "numeric", unit: "m/s²" },
+        ],
+      },
+      // 23.56 — the Bohr atom, entirely symbolic until the last two parts. (c) is the "show that"
+      // step, which is reasoning rather than a formula, so it is text between two math parts.
+      {
+        id: "hw3_p8",
+        prompt: "In the Bohr model of the hydrogen atom, a single electron revolves around a single proton in a circle of radius $r$. Assume that the proton remains at rest.\n\nGive your symbolic answers in terms of $e$, $\\epsilon_0$, $m_e$ and $r$ (you may use $k$ in place of $\\epsilon_0$).",
+        parts: [
+          { id: "hw3_p8a", prompt: "(a) By equating the electric force to the electron mass times its acceleration, derive an expression for the electron's speed $v$.", answerType: "math" },
+          { id: "hw3_p8b", prompt: "(b) Obtain an expression for the electron's kinetic energy $K$.", answerType: "math" },
+          { id: "hw3_p8c", prompt: "(c) Show that the magnitude of the kinetic energy is just half that of the electric potential energy. Give the expression you get for $U$ and compare it to your part (b) result.", answerType: "text" },
+          { id: "hw3_p8d", prompt: "(d) Obtain an expression for the total energy $E$ of the atom.", answerType: "math" },
+          { id: "hw3_p8e", prompt: "(e) Evaluate the total energy for $r = 5.29\\times10^{-11}\\text{ m}$ (the Bohr radius). Give your result in joules.", answerType: "numeric", unit: "J" },
+          { id: "hw3_p8f", prompt: "(f) Give the same total energy in electron volts.", answerType: "numeric", unit: "eV" },
+        ],
+      },
+      // 23.59 — an eight-charge cube. Purely symbolic (no value of q or d is given), so (a) is a
+      // math expression rather than a number; the sum has 28 pairs falling into three shells:
+      // 12 edges at d (opposite sign), 12 face diagonals at d*sqrt2 (same sign), 4 body diagonals
+      // at d*sqrt3 (opposite sign).
+      {
+        id: "hw3_p9",
+        figure: "/homeworkFigures/physics2/HW3/figP23-59.png", figureWidth: 360,  // natural 454×464
+        prompt: "An Ionic Crystal. The figure shows eight point charges arranged at the corners of a cube with sides of length $d$. The values of the charges are $+q$ and $-q$, as shown. This is a model of one cell of a cubic ionic crystal. In sodium chloride (NaCl), for instance, the positive ions are $\\text{Na}^+$ and the negative ions are $\\text{Cl}^-$.",
+        parts: [
+          { id: "hw3_p9a", prompt: "(a) Calculate the potential energy $U$ of this arrangement. (Take as zero the potential energy of the eight charges when they are infinitely far apart.) Give your answer as a numerical coefficient times $q^2/\\pi\\epsilon_0 d$, or equivalently as a numerical coefficient times $kq^2/d$.", answerType: "math" },
+          { id: "hw3_p9b", prompt: "(b) In part (a) you should have found that $U < 0$. Explain the relationship between this result and the observation that such ionic crystals exist in nature.", answerType: "text" },
+        ],
+      },
+      // 23.62 — charged sphere hanging between parallel plates. Same shape as 22.43, but here the
+      // thread's angle is GIVEN, so (like 21.73) the tension is keyed at the house-standard +/-5 deg
+      // and the field is what gets solved for. (c) makes the plates' polarity an explicit deduction
+      // rather than something the figure quietly asserts.
+      {
+        id: "hw3_p10",
+        figure: "/homeworkFigures/physics2/HW3/figP23-62.png", figureWidth: 320,  // natural 474×404
+        prompt: "A small sphere with mass $1.50\\text{ g}$ hangs by a thread between two parallel vertical plates $5.00\\text{ cm}$ apart, as shown in the figure. The plates are insulating and have uniform surface charge densities $+\\sigma$ and $-\\sigma$. The charge on the sphere is $q = 8.90\\times10^{-6}\\text{ C}$. The thread hangs at $30.0°$ from the vertical, with the sphere displaced toward the right-hand plate. Use $g = 9.81\\text{ m/s}^2$.",
+        parts: [
+          {
+            id: "hw3_p10_fbd", answerType: "fbd",
+            prompt: "(a) Draw a complete, labeled free-body diagram for the sphere. Add every force from the bank, assign your positive axes, and show the sphere's acceleration.",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "sphere",
+              bank: ["F", "T", "N", "w"],
+              forces: [
+                // The thread runs from the sphere back up to the support, and the sphere hangs to
+                // the RIGHT of vertical, so the tension leans up and to the LEFT: 30.0 deg from
+                // vertical, [-sin 30, cos 30]. The angle is given here (unlike 22.43), so the
+                // standard +/-5 deg applies and the field's arc annotation states the real 30 deg.
+                { type: "T", dir: [-0.5, 0.86603], angleTol: 5 },
+                // The sphere is pushed toward the right-hand plate, so the electric force is +x.
+                { type: "F", dir: [1, 0], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
+              ],
+              accel: { none: true },   // the sphere hangs in equilibrium
+            },
+          },
+          { id: "hw3_p10_v", prompt: "(b) What is the magnitude of the potential difference between the plates that causes the thread to assume this angle?", answerType: "numeric", unit: "V" },
+          { id: "hw3_p10_p", prompt: "(c) Which plate is at the higher potential, the left one or the right one? Explain, using the sign of the sphere's charge and the direction it is pushed.", answerType: "text" },
+        ],
+      },
+    ],
+  },
 ];

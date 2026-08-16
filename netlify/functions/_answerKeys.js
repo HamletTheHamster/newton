@@ -251,6 +251,57 @@ export const ANSWER_KEYS = {
       hw2_p10a_d: { answerType: "text", answer: "The force is directed radially inward, toward the center of the shell: it is attractive. A concentric spherical Gaussian surface of radius $r > R$ encloses the whole charge $-Q$, and by the spherical symmetry the field on it is radial with a single magnitude, so $4\\pi r^2 E = -Q/\\epsilon_0$ and the field points inward, exactly as if a point charge $-Q$ sat at the center. The point charge $q$ is positive, so the force $q\\vec E$ on it is in the same direction as $\\vec E$, that is, straight in toward the center of the shell. This also follows from the signs alone: opposite charges attract." },
       hw2_p10b: { answerType: "text", answer: "The force is zero. Draw a concentric spherical Gaussian surface of radius $r < R$. All of the charge $-Q$ lies on the shell at radius $R$, which is outside this surface, so the surface encloses no charge at all: $Q_{encl} = 0$. By the spherical symmetry the field on that surface is radial and of a single magnitude, so Gauss's law gives $\\oint \\vec E \\cdot d\\vec A = 4\\pi r^2 E = Q_{encl}/\\epsilon_0 = 0$, and therefore $E = 0$. Since this holds for every radius $r < R$, the field vanishes everywhere inside the shell, and the force on the point charge is $\\vec F = q\\vec E = 0$." },
     },
+    // Y&F Ch. 23 (electric potential energy and electric potential). Same constants.
+    // 23.62's free-body diagram is graded client-side from the `fbd` key in physics2.js, so that
+    // part contributes no entry here.
+    hw3: {
+      // 23.1 — W = kq1q2(1/r_a - 1/r_b) with r_b = sqrt(2)(0.250) = 0.353553 m. Negative because
+      // the charges attract and the separation grows. SIGNED: no nonNegative.
+      hw3_p1: { answerType: "numeric", answer: -0.3560053, sigFigs: 3, unit: "J" },
+      // 23.4 — (a) is the work the EXTERNAL agent does, W = dU = ke^2(1/r_f - 1/r_i) > 0. The
+      // instructor key boxes the negative of this (the work done by the electric force); the prompt
+      // names the agent, and nonNegative turns a sign slip into a free nudge.
+      hw3_p2a: { answerType: "numeric", answer: 7.690181e-14, sigFigs: 3, unit: "J", sci: true, nonNegative: true },
+      // (b) both protons share the released energy equally, so 2*(1/2 m v^2) = W  ->  v = sqrt(W/m_p)
+      hw3_p2b: { answerType: "numeric", answer: 6779864, sigFigs: 3, unit: "m/s", sci: true, nonNegative: true },
+      // 23.8 — three identical pairs: U = 3kq^2/r = 0.0777 J. The instructor key boxes 7.77 mJ,
+      // a factor of 10 low (its own working line gives 7.77e-3 where 7.77e-2 is correct).
+      hw3_p3: { answerType: "numeric", answer: 0.07765286, sigFigs: 3, unit: "J", nonNegative: true },
+      // 23.13 — v_B = sqrt(v_A^2 + (2q/m)(V_A - V_B)) = sqrt(55)
+      hw3_p4a: { answerType: "numeric", answer: 7.416198, sigFigs: 3, unit: "m/s", nonNegative: true },
+      hw3_p4b: { answerType: "text", answer: "Faster: it speeds up from $5.00\\text{ m/s}$ to $7.42\\text{ m/s}$. The particle's charge is negative, so its potential energy $U = qV$ runs opposite to the potential, and moving to the higher potential at $B$ therefore lowers its potential energy: $U_A = (-5.00\\times10^{-6}\\text{ C})(200\\text{ V}) = -1.00\\times10^{-3}\\text{ J}$ falls to $U_B = (-5.00\\times10^{-6}\\text{ C})(800\\text{ V}) = -4.00\\times10^{-3}\\text{ J}$, a drop of $3.00\\times10^{-3}\\text{ J}$. The electric force is the only force acting, so mechanical energy is conserved and that lost potential energy reappears as kinetic energy: $K$ rises from $2.50\\times10^{-3}\\text{ J}$ to $5.50\\times10^{-3}\\text{ J}$, and the speed rises with it. Equivalently, the force on a negative charge points from low potential toward high potential, so here it pushes the particle along its way from $A$ to $B$ and does positive work on it. A positive charge making the same trip would have slowed down instead." },
+      // 23.19 — V = k*sum(q_i/r_i) at each point. Both potentials are negative (q2 dominates).
+      hw3_p5a: { answerType: "numeric", answer: -736.9832, sigFigs: 3, unit: "V" },
+      hw3_p5b: { answerType: "numeric", answer: -704.0294, sigFigs: 3, unit: "V" },
+      // (c) the charge travels B -> A, so W = q(V_B - V_A) = +8.24e-8 J. The instructor key
+      // computed A -> B and boxed -82.5 nJ; the direction stated in the problem is B -> A.
+      hw3_p5c: { answerType: "numeric", answer: 8.238457e-8, sigFigs: 3, unit: "J", sci: true },
+      // 23.40 — d = V/E = 1.5 V / 1.0e-6 V/m
+      hw3_p6a: { answerType: "numeric", answer: 1.5e6, sigFigs: 2, unit: "m", sci: true, nonNegative: true },
+      hw3_p6b: { answerType: "text", answer: "The plates would have to be $1.5\\times10^{6}\\text{ m}$, or $1500\\text{ km}$, apart. That is roughly the distance from New York to Miami, and about one eighth of the diameter of the Earth. Building a parallel-plate capacitor on that scale is out of the question, which is exactly the point of the comparison: an ordinary AA battery across plates any realistic distance apart produces a field enormously stronger than $1.0\\ \\mu\\text{V/m}$. At a normal laboratory spacing of $1.0\\text{ cm}$, for instance, the same $1.5\\text{-V}$ battery gives $E = 150\\text{ V/m}$, about $10^{8}$ times the field the shark can detect. The sharks' electroreceptors are therefore extraordinarily sensitive, able to pick up the very faint fields produced by the muscle activity of nearby prey." },
+      // 23.50 — (a) energy conservation: 1/2 m(v1^2 - v2^2) = kq1q2(1/r2 - 1/r1). The instructor
+      // key rounds this to 0.026 m and carries the rounded value into (b), giving 3.32e4 m/s^2;
+      // carried at full precision the acceleration is 3.31e4 m/s^2 (a 0.4% difference).
+      hw3_p7a: { answerType: "numeric", answer: 0.02606662, sigFigs: 3, unit: "m", nonNegative: true },
+      hw3_p7b: { answerType: "numeric", answer: 33068.47, sigFigs: 3, unit: "m/s²", sci: true, nonNegative: true },
+      // 23.56 — the Bohr atom. m_e v^2/r = ke^2/r^2 gives (a); K = 1/2 m_e v^2 gives (b);
+      // U = -ke^2/r, so K = |U|/2 and E = K + U = -ke^2/2r.
+      hw3_p8a: { answerType: "math", answer: "v = \\frac{e}{\\sqrt{4\\pi\\epsilon_0 m_e r}}" },
+      hw3_p8b: { answerType: "math", answer: "K = \\frac{e^2}{8\\pi\\epsilon_0 r}" },
+      hw3_p8c: { answerType: "text", answer: "Setting the electric force equal to the mass times the centripetal acceleration gives $\\dfrac{1}{4\\pi\\epsilon_0}\\dfrac{e^2}{r^2} = \\dfrac{m_e v^2}{r}$, so $m_e v^2 = \\dfrac{e^2}{4\\pi\\epsilon_0 r}$ and the kinetic energy is $K = \\tfrac12 m_e v^2 = \\dfrac{e^2}{8\\pi\\epsilon_0 r}$. The electric potential energy of the proton and electron, taking $U = 0$ at infinite separation, is $U = \\dfrac{1}{4\\pi\\epsilon_0}\\dfrac{(+e)(-e)}{r} = -\\dfrac{e^2}{4\\pi\\epsilon_0 r}$, so its magnitude is $|U| = \\dfrac{e^2}{4\\pi\\epsilon_0 r}$. Comparing the two, $K = \\tfrac12 |U|$: the kinetic energy is exactly half the magnitude of the potential energy, or equivalently $K = -U/2$, since $K$ is positive while $U$ is negative. The factor of two is not an accident of hydrogen; it is the virial theorem for an inverse-square attractive force, and it is what makes the total energy $E = K + U = -|U|/2$ negative, so the atom is bound." },
+      hw3_p8d: { answerType: "math", answer: "E = -\\frac{e^2}{8\\pi\\epsilon_0 r}" },
+      hw3_p8e: { answerType: "numeric", answer: -2.180598e-18, sigFigs: 3, unit: "J", sci: true },
+      hw3_p8f: { answerType: "numeric", answer: -13.61033, sigFigs: 3, unit: "eV" },
+      // 23.59 — 28 pairs in three shells: 12 edges at d (opposite sign), 12 face diagonals at
+      // d*sqrt2 (same sign), 4 body diagonals at d*sqrt3 (opposite sign), so the sum is
+      // (-12 + 12/sqrt2 - 4/sqrt3) q^2/d = -5.8241 q^2/d, i.e. U = -5.8241 kq^2/d = -1.456 q^2/pi eps0 d.
+      hw3_p9a: { answerType: "math", answer: "U = -\\frac{1.46\\,q^2}{\\pi\\epsilon_0 d} = -5.82\\,\\frac{kq^2}{d}" },
+      hw3_p9b: { answerType: "text", answer: "A negative $U$ means the assembled cube has less energy than the same eight ions have when they are infinitely far apart, because that fully separated state is the zero of potential energy. To pull the ions apart to infinity you would have to supply that energy, $|U| = 1.46q^2/\\pi\\epsilon_0 d$ per cell, from outside. The arrangement is therefore bound, or stable: it will not fly apart on its own, and there is a real energy barrier against pulling it apart. That is why ionic crystals such as NaCl exist in nature, hold together as solids at ordinary temperatures, and have high melting points. The reason the sum comes out negative is geometric: every ion's nearest neighbors are of the opposite sign, and those closest pairs (12 of them, at the edge distance $d$) attract, while the like-sign pairs that repel sit farther away, on the face diagonals at $d\\sqrt2$ and the body diagonals at $d\\sqrt3$. Since each contribution goes as $1/r$, the nearby attractions outweigh the more distant repulsions." },
+      // 23.62 — equilibrium gives F_E = mg tan(30 deg), then E = F_E/q and dV = Ed.
+      // (a) is the free-body diagram, graded client-side from the `fbd` key in physics2.js.
+      hw3_p10_v: { answerType: "numeric", answer: 47.72865, sigFigs: 3, unit: "V", nonNegative: true },
+      hw3_p10_p: { answerType: "text", answer: "The left-hand plate is at the higher potential. The sphere's charge is positive, $q = +8.90\\times10^{-6}\\text{ C}$, so the electric force $q\\vec E$ on it points in the same direction as $\\vec E$. The thread hangs toward the right-hand plate, so that force points to the right, and therefore $\\vec E$ between the plates points to the right as well, from the left plate toward the right plate. The electric field always points from higher potential toward lower potential (it is the direction in which $V$ decreases most steeply), so the left plate is the high-potential plate, carrying the $+\\sigma$ surface charge, while the right plate carries $-\\sigma$. The same conclusion follows from the signs alone: a positive sphere is repelled by the positive plate and attracted toward the negative one, which is exactly the deflection shown in the figure." },
+    },
   },
 };
 
