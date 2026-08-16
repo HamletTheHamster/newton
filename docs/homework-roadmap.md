@@ -68,6 +68,22 @@ decision is `gradeOverrides[...].integrityReview`. Shared logic: `integrityState
 `Gradebook.jsx` and `StudentGrades.jsx`. The Gradebook flags such cells with a red `*` marker;
 students never see the AI verdict (`SubViewModal` is passed `showIntegrity={false}`).
 
+### ~~Prompts are not copyable~~ ✅ Done
+Every problem statement in the runner (the shared multipart stem and each part's prompt)
+renders through `HomeworkRunner`'s local `Prompt` component, which wraps `MathText` in the
+`.hw-no-copy` class (`index.css`: `user-select: none` + `-webkit-user-select` for Safari
+< 16.4 + `-webkit-touch-callout: none` to kill the iOS long-press Copy callout) plus
+`onCopy`/`onCut` blockers. This is the homework counterpart to the quiz question's inline
+`userSelect: "none"` in `ChatMessages.jsx`, and it applies to every homework assignment at
+once — nothing is configured per assignment. Browsers exclude unselectable text from a
+Select All range, so that route is covered too; the handlers are belt-and-braces for one
+that doesn't. **It is a speed bump, not a boundary** — the text is still in the DOM for
+anyone who opens dev tools, and a phone camera defeats any version of this. The goal is
+only to make pasting a problem into a chatbot deliberate rather than reflexive. Deliberately
+**not** applied to `SubmissionView.jsx`, which renders prompts for instructors grading and
+for students reviewing already-submitted work; nor to the `guide` step labels inside
+`GraphField`/`VectorField`/`FBDField`, which are drawing instructions rather than the problem.
+
 ### ~~Students can view their own submissions~~ ✅ Done
 `SubViewModal` + `HomeworkItemRow` were extracted from `Gradebook.jsx` into the shared
 `src/components/SubmissionView.jsx`. In `StudentGrades.jsx`, each assignment row the student

@@ -38,6 +38,20 @@ import {
 
 const GRAPHICAL = new Set(["graph", "vector", "fbd"]);
 
+// Every problem statement the runner shows — the shared multipart stem and each part's
+// prompt — goes through here so it renders identically AND non-copyable (`.hw-no-copy`
+// in index.css). The copy/cut handlers are belt-and-braces for a browser that still lets
+// unselectable text into a Select All range; they can only fire if one does.
+function Prompt({ children }) {
+  const { text } = useTheme();
+  const block = e => e.preventDefault();
+  return (
+    <div className="hw-no-copy" onCopy={block} onCut={block} style={{ color: text, fontSize: 15, lineHeight: 1.6 }}>
+      <MathText>{children}</MathText>
+    </div>
+  );
+}
+
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
 const HW_INTEGRITY_MODEL = "claude-opus-4-8";
 
@@ -601,7 +615,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     return (
       <div key={item.id} ref={rootRef} style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: partLabel ? 12 : 0, borderTop: partLabel ? `1px solid ${border}` : "none", marginTop: partLabel ? 12 : 0 }}>
         {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part {partLabel}</div>}
-        {item.prompt && <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{item.prompt}</MathText></div>}
+        {item.prompt && <Prompt>{item.prompt}</Prompt>}
         {renderInput(item, focusable)}
         {st !== "correct" && st !== "revealed" && GRAPHICAL.has(item.answerType) && (
           <div style={{ color: muted, fontSize: 12.5, lineHeight: 1.4 }}>
@@ -979,7 +993,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           )}
           {/* For multipart, render the shared prompt above the parts */}
           {problem.parts && problem.parts.length > 0 && problem.prompt && (
-            <div style={{ color: text, fontSize: 15, lineHeight: 1.6 }}><MathText>{problem.prompt}</MathText></div>
+            <Prompt>{problem.prompt}</Prompt>
           )}
           {(() => {
             // Sequential reveal: a part appears only once every earlier part is resolved

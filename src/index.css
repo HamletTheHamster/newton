@@ -22,4 +22,11 @@ button, input, select, textarea { font-family: inherit; }
 /* Yellow on hover for the homework graphical "Hint" button. */
 .hw-hint-btn { transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease; }
 .hw-hint-btn:hover { background: #fbbf24 !important; border-color: #fbbf24 !important; color: #1c1d1f !important; }
+/* Homework problem statements are not selectable, so the prompt can't be dragged over and
+   copy-pasted out of the runner (the quiz question does the same inline in ChatMessages).
+   -webkit-user-select covers Safari < 16.4; -webkit-touch-callout suppresses the iOS
+   long-press "Copy" callout. Browsers exclude user-select:none text from a Select All
+   range too, so that route is covered as well. A speed bump, not a security boundary:
+   the text is still in the DOM for anyone who opens dev tools. */
+.hw-no-copy { -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
