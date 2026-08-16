@@ -50,8 +50,9 @@ const shortDate = str => {
 
 // `locks`: { [assignmentId]: { locked, releaseDate } } — an assignment sitting in a
 //   module whose timed release hasn't arrived (or hidden) can't be opened yet.
-// `onOpen(id, kind)`: starts the assignment. Omitted (instructor preview) means no
-//   event is clickable.
+// `onOpen(id, kind)`: starts the assignment. Omit it to make no event clickable.
+//   The instructor calendar passes it too (an empty `completedQuizIds`/`locks`, so every
+//   quiz/homework stays clickable) and opens the instructor preview instead.
 // `manual`: gradebook-only assignments (exams, labs) that carry their own `kind`
 //   ("midterm"/"final"/"lab") and a date. They're never clickable and never locked —
 //   they happen in the room, so there is nothing to open and nothing to release.

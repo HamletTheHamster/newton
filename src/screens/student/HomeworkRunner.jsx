@@ -76,7 +76,8 @@ function itemsOf(p) {
 
 // MasteringPhysics-style homework runner. Owns all per-item state; on finish, builds a
 // submission object and calls onFinish(submission) (which persists it and may throw).
-// `preview` = an instructor is running this from the Modules editor. It is a labelling flag ONLY:
+// `preview` = an instructor is running this (from the Modules editor or the Calendar). It is a
+// labelling flag ONLY:
 // the caller always pairs it with `practice`, and `practice` is what actually keeps the runner off
 // every per-student path (drafts, attempt counts, work upload, submission), all of which read
 // `loggedInStudent` — null on the instructor side. Never gate behaviour on `preview` alone.
@@ -86,9 +87,11 @@ function itemsOf(p) {
 // mid-assignment would have to leave the homework to get it. That matters more here than on most
 // screens: homework figures are white-background textbook screenshots, and the drawing fields
 // (graph / vector / FBD) are the finest-detail thing in the app.
-export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, preview = false, onFinish, onLeave, lightMode = false, onToggleTheme }) {
+export function HomeworkRunner({ homework, courseType, classId, loggedInStudent, practice = false, preview = false, backLabel: backLabelProp, onFinish, onLeave, lightMode = false, onToggleTheme }) {
   const whoLabel = preview ? "Instructor preview · not saved" : (loggedInStudent?.fullName || "");
-  const backLabel = preview ? "Back to Modules" : "Back to Course";
+  // The caller names the return destination (a preview can be launched from Modules or the
+  // Calendar); fall back to the generic wording when it doesn't.
+  const backLabel = backLabelProp || (preview ? "Back to Modules" : "Back to Course");
   const { s, text, muted, border, teal, card, isLight } = useTheme();
   const solidBg = isLight ? "#fff" : "#252627";
   const G = homework.grading || HW_GRADING_DEFAULTS;

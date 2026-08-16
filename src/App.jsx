@@ -1251,21 +1251,33 @@ export default function App() {
   };
   // Calendar → assignment, mirroring what clicking the module item does. Only
   // called for events the calendar left clickable (not completed, not locked).
-  const openAssignment = (id, kind) => {
+  // `from` picks the launch context: "student" runs it for real, "instructor" runs the
+  // same screens as a preview (forced practice — see startQuiz/startHomework).
+  const openAssignment = (id, kind, from = "student") => {
     if (kind === "homework") {
       const hw = homeworks.find(h => h.id === id);
-      if (hw) startHomework(hw);
+      if (hw) startHomework(hw, false, from);
       return;
     }
     const quiz = quizzes.find(q => q.id === id);
-    if (quiz) startQuiz(quiz, false);
+    if (quiz) startQuiz(quiz, false, from);
   };
+  // The instructor calendar's click handler — the same preview the Modules editor's
+  // title click opens, so a quiz/homework can be checked from whichever screen the
+  // instructor happens to be on.
+  const previewAssignment = (id, kind) => openAssignment(id, kind, "instructor");
   // Persist a completed-homework submission (reuses the quiz submissions array/paths).
   // Throws on failure so HomeworkRunner can show a retry affordance.
   const saveHomeworkSub = async sub => { await saveSubs([...submissions, sub], sub.studentId); };
   // Leaving the quiz lands back where it was launched from, not unconditionally on the student
   // portal (an instructor previewing from Modules has no business being dropped there).
   const runnerReturnScreen = runnerFrom === "instructor" ? "instructor" : "student-portal";
+  // …and the button says where that is. A preview can be launched from Modules (an item title)
+  // or from the Calendar (an event), and returning restores whichever instructor section was
+  // active, so the label reads off `instructorSection` rather than assuming Modules.
+  const runnerBackLabel = runnerFrom !== "instructor"
+    ? "Back to Course"
+    : instructorSection === "calendar" ? "Back to Calendar" : "Back to Modules";
   const handleLeaveQuiz = () => { if (quizDone && !subSaveError) { setScreen(runnerReturnScreen); return; } if (!quizDone) setShowLeaveConfirm(true); };
   const confirmLeave = () => { setShowLeaveConfirm(false); setScreen(runnerReturnScreen); };
   const onFileSelect = async e => {
@@ -1682,6 +1694,7 @@ export default function App() {
           loggedInStudent={loggedInStudent}
           practice={practiceMode}
           preview={runnerFrom === "instructor"}
+          backLabel={runnerBackLabel}
           onFinish={saveHomeworkSub}
           onLeave={() => setScreen(runnerReturnScreen)}
           lightMode={lightMode}
@@ -1750,7 +1763,7 @@ export default function App() {
             <button onClick={retrySaveSub} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>Retry saving submission</button>
           </div>
         )}
-        {quizDone && <button onClick={() => setScreen(runnerReturnScreen)} style={{ ...s.btnPri, marginTop: 8 }}>{runnerFrom === "instructor" ? "Back to Modules" : "Back to Course"}</button>}
+        {quizDone && <button onClick={() => setScreen(runnerReturnScreen)} style={{ ...s.btnPri, marginTop: 8 }}>{runnerBackLabel}</button>}
       </div>
       {!quizDone && (
         <div style={{ background: CARD, borderTop: `1px solid ${BORDER}`, padding: 16, flexShrink: 0 }}>
@@ -2224,7 +2237,7 @@ export default function App() {
         )}
 
         {currentClassId && instructorSection === "calendar" && (
-          <StudentCalendar quizzes={quizzes} homeworks={homeworks} manual={manualAssignmentList} completedQuizIds={new Set()} />
+          <StudentCalendar quizzes={quizzes} homeworks={homeworks} manual={manualAssignmentList} completedQuizIds={new Set()} onOpen={previewAssignment} />
         )}
 
         {instructorSection === "settings" && (
