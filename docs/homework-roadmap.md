@@ -226,6 +226,51 @@ The procedure:
    diagram/sketch/direction questions, expression/reasoning answers) and choose a fitting
    `answerType` (`text`/`graph`/`vector`/`math`) — see the Workflow Rules in `CLAUDE.md`.
 10. **Size every figure** — see below.
+11. **Use the source problem's wording VERBATIM** — see below.
+
+### Wording — transcribe the problem, don't rewrite it
+
+**A problem's prompt is the textbook's sentence, copied.** Do not paraphrase it, do not
+"improve" it, do not add a formula or a structural hint to the stem, do not append unit
+instructions, and **do not invent parts the source does not ask** — even when an added part
+would be pedagogically nice. The instructor chose these problems as they are printed; a
+reworded prompt silently changes the assignment, and a scaffolded one hands over the method
+the problem exists to test. PHY 215's `hw4` is the reference set for this.
+
+Only four adaptations are legitimate, and each is forced by the app rather than chosen:
+
+- **Figure references.** "Fig. E24.16" becomes "the figure" — the served crops carry no caption
+  and the runner has no figure numbering, so a figure number names something the student can't see.
+- **One blank per value.** A part the source asks once about "each capacitor" becomes one item per
+  capacitor, since a numeric item holds one value. Name the blank using the source's own label
+  ($C_1$) or the value printed in its figure (the $150\text{-nF}$ capacitor), and add nothing else.
+  Give near-identical quantities **separate** blanks rather than one blank plus a note that they
+  agree, when *that* they agree is what the problem tests.
+- **Units.** Never write "give your answer in nC" — `HomeworkRunner` renders the item's `unit`
+  immediately to the right of the input box, so the prompt would duplicate what is already on
+  screen. Choose the `unit` (usually the one the instructor key boxes) and let the field say it.
+- **House style.** Plain text plus `$…$` math, no markdown, no em-dashes (see `CLAUDE.md`).
+
+This does not weaken step 9: when a numeric genuinely doesn't serve a part, still choose the
+fitting `answerType` — but grade *the question the source asks*, in its own words, rather than
+rewriting it into a different question. Anything you think genuinely *should* be added — a missing
+interpretation step, an unnoticed trap, a part worth splitting — goes in your summary to the user
+and in the course doc as a **recommendation**, not into the assignment.
+
+Two further things that look like wording but are not, and must also stay out of a prompt:
+
+- **Stated physical constants** ("Use $e = 1.602\times10^{-19}\text{ C}$", "Use $g = 9.81\text{ m/s}^2$").
+  The textbook prints these on its inside cover and does not restate them per problem, and the ±2%
+  band absorbs every plausible rounding — checked across PHY 215 `hw1`–`hw3`, where 2-sig-fig
+  constants and full CODATA values moved twelve constant-dependent answers by at most **0.14%**.
+  If you ever doubt it for a new set, recompute rather than restating the constant.
+- **Method hints appended to a `text` part** ("Explain, using the sign of the charge and what
+  happens to $U = qV$", "Address both the enclosed charge and what happens to $E$…"). These name
+  the method the part is meant to elicit. If the source says "Explain.", the prompt says "Explain."
+
+PHY 215 `hw1`–`hw3` were authored before this rule and were revised to comply on 2026-08-17; see
+[courses/phy215.md](courses/phy215.md) § Wording revision for the full list of what was reverted
+and what was deliberately kept.
 
 ### Figures — always scale to the page
 
@@ -282,9 +327,14 @@ date there.
    - **PHY 115 (`physics1`)** — `hw1`–`hw4` are authored and verified; `hw5…hw14` are stubs.
      Per-assignment notes (problem numbers, figures, which parts are text/graph/vector/fbd and
      why): [courses/phy115.md](courses/phy115.md).
-   - **PHY 215 (`physics2`)** — `hw1` (Ch. 21), `hw2` (Ch. 22, Gauss's law) and `hw3` (Ch. 23,
-     electric potential) are authored and verified; later weeks are added as each is prepped.
-     Per-assignment notes: [courses/phy215.md](courses/phy215.md).
+   - **PHY 215 (`physics2`)** — `hw1` (Ch. 21), `hw2` (Ch. 22, Gauss's law), `hw3` (Ch. 23,
+     electric potential) and `hw4` (Ch. 24, capacitance and dielectrics) are authored and
+     verified; later weeks are added as each is prepped.
+     Per-assignment notes: [courses/phy215.md](courses/phy215.md). `hw4` is the first set in
+     either course that is **entirely numeric** and has **no** graphical part — Ch. 24 has no field
+     direction to draw and no free body to isolate, and no `answerType` can grade a network
+     reduction, which is the real skill in its circuit problems. It is also the reference set for
+     **verbatim problem wording** (see below).
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into

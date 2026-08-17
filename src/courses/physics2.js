@@ -1,7 +1,7 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–4, homework 1 (Ch. 21) and homework 2 (Ch. 22) are authored; later weeks are
-// added as each is prepped. Source material (quiz documents, homework problem screenshots, the
+// STATUS: quizzes 1–5, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23) and 4 (Ch. 24) are authored;
+// later weeks are added as each is prepped. Source material (quiz documents, problem screenshots, the
 // instructor answer key, lecture notes) lives OUTSIDE the repo in
 // `source/phy215/{quizzes,hw/HWn,lectures}/` (gitignored). Figures the app actually serves go in
 // `public/homeworkFigures/physics2/HWn/` — usually textbook screenshots, but HW2's figP22-43.png
@@ -148,6 +148,27 @@ export const QUIZZES_PHYSICS2 = [
       },
     ],
   },
+  // Week 5 quiz — covers week 4 (Ch. 24): capacitance and dielectrics. Both free response again:
+  // Q1 asks "explain your reasoning" about three comparisons and Q2 asks for a mechanism, so the
+  // prose IS the answer in both cases. Q1 is labelled (a)/(b)/(c) so `detectParts` splits it into
+  // three graded parts — all three name the SAME capacitor, but by three different relations
+  // (E = V/d, Q = CV with C proportional to 1/d, u proportional to E squared), and a student can
+  // genuinely get one without the others. See docs/courses/phy215.md for the worked answers.
+  {
+    id: "q5",
+    title: "Quiz 5: Capacitance & Dielectrics",
+    questions: [
+      {
+        id: "q5_1",
+        text: "Two parallel plate capacitors are identical except that one has twice the plate separation of the other. Both are charged by the same voltage source.\n\n(a) Which capacitor has a stronger electric field between the plates? Explain your reasoning.\n\n(b) Which capacitor has a greater charge? Explain your reasoning.\n\n(c) Which capacitor has a greater energy density between the plates? Explain your reasoning.",
+      },
+      {
+        id: "q5_2",
+        // Bare "K" rather than "$K$": quiz text renders raw (see the note on q3_4 above).
+        text: "The freshness of fish can be measured by placing a fish between the plates of a capacitor and measuring the capacitance. How does this work? The dielectric constant K is about 1 for air and about 80 for water. (Hint: as time passes, the fish dries out.)",
+      },
+    ],
+  },
 ];
 
 // ── Modules ──────────────────────────────────────────────────────────────────────────────────
@@ -280,17 +301,17 @@ export const HOMEWORKS_PHYSICS2 = [
         prompt: "Lightning occurs when there is a flow of electric charge (principally electrons) between the ground and a thundercloud. The maximum rate of charge flow in a lightning bolt is about $20{,}000\\text{ C/s}$; this lasts for $100\\ \\mu\\text{s}$ or less.",
         parts: [
           { id: "hw1_p1a", prompt: "(a) How much charge flows between the ground and the cloud in this time?", answerType: "numeric", unit: "C" },
-          { id: "hw1_p1b", prompt: "(b) How many electrons flow during this time? Use $e = 1.602\\times10^{-19}\\text{ C}$.", answerType: "numeric", unit: "electrons" },
+          { id: "hw1_p1b", prompt: "(b) How many electrons flow during this time?", answerType: "numeric", unit: "electrons" },
         ],
       },
       // 21.9 — Coulomb's law solved for the charges
       {
         id: "hw1_p2",
-        prompt: "Two small plastic spheres are given positive electrical charges. When they are $15.0\\text{ cm}$ apart, the repulsive force between them has magnitude $0.220\\text{ N}$. Give each charge in microcoulombs ($\\mu\\text{C}$).",
+        prompt: "Two small plastic spheres are given positive electrical charges. When they are $15.0\\text{ cm}$ apart, the repulsive force between them has magnitude $0.220\\text{ N}$.",
         parts: [
           { id: "hw1_p2a", prompt: "(a) What is the charge on each sphere if the two charges are equal?", answerType: "numeric", unit: "μC" },
           { id: "hw1_p2b_small", prompt: "(b) If one sphere has four times the charge of the other, what is the smaller of the two charges?", answerType: "numeric", unit: "μC" },
-          { id: "hw1_p2b_large", prompt: "(b) And what is the larger of the two charges?", answerType: "numeric", unit: "μC" },
+          { id: "hw1_p2b_large", prompt: "(b) If one sphere has four times the charge of the other, what is the larger of the two charges?", answerType: "numeric", unit: "μC" },
         ],
       },
       // 21.22 — superposition of two Coulomb forces along a line
@@ -298,8 +319,8 @@ export const HOMEWORKS_PHYSICS2 = [
         id: "hw1_p3",
         prompt: "Two point charges are placed on the $x$-axis as follows: charge $q_1 = +4.00\\text{ nC}$ is located at $x = 0.200\\text{ m}$, and charge $q_2 = +5.00\\text{ nC}$ is at $x = -0.300\\text{ m}$. What are the magnitude and direction of the total force exerted by these two charges on a negative point charge $q_3 = -6.00\\text{ nC}$ that is placed at the origin?",
         parts: [
-          { id: "hw1_p3_m", prompt: "(a) Magnitude of the total force on $q_3$, in micronewtons ($\\mu\\text{N}$).", answerType: "numeric", unit: "μN" },
-          { id: "hw1_p3_d", prompt: "(b) In what direction does this total force point? Briefly justify your answer.", answerType: "text" },
+          { id: "hw1_p3_m", prompt: "(a) What is the magnitude of the total force exerted by these two charges on $q_3$?", answerType: "numeric", unit: "μN" },
+          { id: "hw1_p3_d", prompt: "(b) What is the direction of the total force exerted by these two charges on $q_3$?", answerType: "text" },
         ],
       },
       // 21.30 — field at the center of a square (symmetry + an algebraic magnitude)
@@ -340,11 +361,11 @@ export const HOMEWORKS_PHYSICS2 = [
       {
         id: "hw1_p5",
         figure: "/homeworkFigures/physics2/HW1/figE21-33.png", figureWidth: 400,  // natural 506×292
-        prompt: "An electron is projected with an initial speed $v_0 = 1.60\\times10^6\\text{ m/s}$ into the uniform field between the parallel plates in the figure. Assume that the field between the plates is uniform and directed vertically downward, and that the field outside the plates is zero. The electron enters the field at a point midway between the plates. Use $m_e = 9.109\\times10^{-31}\\text{ kg}$, $m_p = 1.673\\times10^{-27}\\text{ kg}$, and $e = 1.602\\times10^{-19}\\text{ C}$.",
+        prompt: "An electron is projected with an initial speed $v_0 = 1.60\\times10^6\\text{ m/s}$ into the uniform field between the parallel plates in the figure. Assume that the field between the plates is uniform and directed vertically downward, and that the field outside the plates is zero. The electron enters the field at a point midway between the plates.",
         parts: [
           { id: "hw1_p5a", prompt: "(a) If the electron just misses the upper plate as it emerges from the field, find the magnitude of the electric field.", answerType: "numeric", unit: "N/C" },
-          { id: "hw1_p5b_y", prompt: "(b) Suppose the electron is replaced by a proton with the same initial speed $v_0$. What is the magnitude of the proton's vertical displacement as it exits the region between the plates? Give your answer in micrometres ($\\mu\\text{m}$).", answerType: "numeric", unit: "μm" },
-          { id: "hw1_p5b_d", prompt: "(b) Would the proton hit one of the plates? In which direction is it deflected?", answerType: "text" },
+          { id: "hw1_p5b_d", prompt: "(b) Suppose that in the figure the electron is replaced by a proton with the same initial speed $v_0$. Would the proton hit one of the plates? If the proton would not hit one of the plates, what would be the direction of its vertical displacement as it exits the region between the plates?", answerType: "text" },
+          { id: "hw1_p5b_y", prompt: "(b) What would be the magnitude of its vertical displacement as it exits the region between the plates?", answerType: "numeric", unit: "μm" },
           { id: "hw1_p5c", prompt: "(c) Compare the paths traveled by the electron and the proton and explain the differences.", answerType: "text" },
           { id: "hw1_p5d", prompt: "(d) Discuss whether it is reasonable to ignore the effects of gravity for each particle.", answerType: "text" },
         ],
@@ -352,7 +373,7 @@ export const HOMEWORKS_PHYSICS2 = [
       // 21.34 — vector superposition of two fields, answered in unit-vector form
       {
         id: "hw1_p6",
-        prompt: "Point charge $q_1 = -5.00\\text{ nC}$ is at the origin and point charge $q_2 = +3.00\\text{ nC}$ is on the $x$-axis at $x = 3.00\\text{ cm}$. Point $P$ is on the $y$-axis at $y = 4.00\\text{ cm}$. Give each answer in unit-vector form, in N/C (for example, $(-1.20\\times10^{3})\\,\\hat{\\imath} + (4.50\\times10^{3})\\,\\hat{\\jmath}$).",
+        prompt: "Point charge $q_1 = -5.00\\text{ nC}$ is at the origin and point charge $q_2 = +3.00\\text{ nC}$ is on the $x$-axis at $x = 3.00\\text{ cm}$. Point $P$ is on the $y$-axis at $y = 4.00\\text{ cm}$. Express your results in terms of unit vectors. (Enter each answer in N/C, for example $(-1.20\\times10^{3})\\,\\hat{\\imath} + (4.50\\times10^{3})\\,\\hat{\\jmath}$.)",
         parts: [
           { id: "hw1_p6a_E1", prompt: "(a) Calculate the electric field $\\vec E_1$ at point $P$ due to charge $q_1$.", answerType: "math" },
           { id: "hw1_p6a_E2", prompt: "(a) Calculate the electric field $\\vec E_2$ at point $P$ due to charge $q_2$.", answerType: "math" },
@@ -438,7 +459,7 @@ export const HOMEWORKS_PHYSICS2 = [
       {
         id: "hw1_p9",
         figure: "/homeworkFigures/physics2/HW1/figP21-73.png", figureWidth: 180,  // natural 230×498 (tall/narrow)
-        prompt: "A small $12.3\\text{-g}$ plastic ball is tied to a very light $28.6\\text{-cm}$ string that is attached to the vertical wall of a room (see figure). A uniform horizontal electric field exists in this room. When the ball has been given an excess charge of $-1.11\\ \\mu\\text{C}$, you observe that it remains suspended, with the string making an angle of $17.4°$ with the wall. Use $g = 9.81\\text{ m/s}^2$.",
+        prompt: "A small $12.3\\text{-g}$ plastic ball is tied to a very light $28.6\\text{-cm}$ string that is attached to the vertical wall of a room (see figure). A uniform horizontal electric field exists in this room. When the ball has been given an excess charge of $-1.11\\ \\mu\\text{C}$, you observe that it remains suspended, with the string making an angle of $17.4°$ with the wall.",
         parts: [
           {
             id: "hw1_p9_fbd", answerType: "fbd",
@@ -460,7 +481,7 @@ export const HOMEWORKS_PHYSICS2 = [
             },
           },
           { id: "hw1_p9_m", prompt: "(b) Find the magnitude of the electric field in the room.", answerType: "numeric", unit: "N/C" },
-          { id: "hw1_p9_d", prompt: "(c) Find the direction of the electric field in the room. Justify your answer, being careful about the sign of the ball's charge.", answerType: "text" },
+          { id: "hw1_p9_d", prompt: "(c) Find the direction of the electric field in the room.", answerType: "text" },
         ],
       },
       // 21.87 — symbolic "electric projectile", then numbers, then the sketch
@@ -470,7 +491,7 @@ export const HOMEWORKS_PHYSICS2 = [
         parts: [
           { id: "hw1_p10a", prompt: "(a) Find the maximum distance $h_{max}$ that the proton descends vertically below its initial elevation. Give an expression in terms of $m_p$, $v_0$, $\\alpha$, $e$ and $E$.", answerType: "math" },
           { id: "hw1_p10b", prompt: "(b) After what horizontal distance $d$ does the proton return to its original elevation? Give an expression in terms of $m_p$, $v_0$, $\\alpha$, $e$ and $E$.", answerType: "math" },
-          { id: "hw1_p10c_h", prompt: "(c) Find the numerical value of $h_{max}$ if $E = 500\\text{ N/C}$, $v_0 = 4.00\\times10^5\\text{ m/s}$, and $\\alpha = 30.0°$. Use $m_p = 1.673\\times10^{-27}\\text{ kg}$ and $e = 1.602\\times10^{-19}\\text{ C}$.", answerType: "numeric", unit: "m" },
+          { id: "hw1_p10c_h", prompt: "(c) Find the numerical value of $h_{max}$ if $E = 500\\text{ N/C}$, $v_0 = 4.00\\times10^5\\text{ m/s}$, and $\\alpha = 30.0°$.", answerType: "numeric", unit: "m" },
           { id: "hw1_p10c_d", prompt: "(c) Find the numerical value of $d$ for the same values.", answerType: "numeric", unit: "m" },
           {
             id: "hw1_p10d",
@@ -521,7 +542,7 @@ export const HOMEWORKS_PHYSICS2 = [
         prompt: "You measure an electric field of $1.25\\times10^{6}\\text{ N/C}$ at a distance of $0.150\\text{ m}$ from a point charge. There is no other source of electric field in the region other than this point charge.",
         parts: [
           { id: "hw2_p2a", prompt: "(a) What is the magnitude of the electric flux through the surface of a sphere that has this charge at its center and that has radius $0.150\\text{ m}$?", answerType: "numeric", unit: "N·m²/C" },
-          { id: "hw2_p2b", prompt: "(b) What is the magnitude of this charge? Give your answer in microcoulombs ($\\mu\\text{C}$).", answerType: "numeric", unit: "μC" },
+          { id: "hw2_p2b", prompt: "(b) What is the magnitude of this charge?", answerType: "numeric", unit: "μC" },
         ],
       },
       // 22.4 — flux through a cylinder around an infinite line, then the two "what if" variations
@@ -532,7 +553,7 @@ export const HOMEWORKS_PHYSICS2 = [
           { id: "hw2_p3a", prompt: "(a) What is the electric flux through the cylinder due to this infinite line of charge?", answerType: "numeric", unit: "N·m²/C" },
           { id: "hw2_p3b", prompt: "(b) What is the flux through the cylinder if its radius is increased to $r = 0.500\\text{ m}$?", answerType: "numeric", unit: "N·m²/C" },
           { id: "hw2_p3c", prompt: "(c) What is the flux through the cylinder if its length is increased to $l = 0.800\\text{ m}$ (with the radius back at $0.250\\text{ m}$)?", answerType: "numeric", unit: "N·m²/C" },
-          { id: "hw2_p3d", prompt: "(d) Explain why changing the radius does not change the flux, while changing the length does. Address both the enclosed charge and what happens to $E$ and to the area of the curved surface when the radius is doubled.", answerType: "text" },
+          { id: "hw2_p3d", prompt: "(d) Explain why changing the radius does not change the flux, while changing the length does.", answerType: "text" },
         ],
       },
       // 22.10 — flux through three spheres enclosing different subsets of two point charges.
@@ -554,7 +575,7 @@ export const HOMEWORKS_PHYSICS2 = [
         parts: [
           { id: "hw2_p5a", prompt: "(a) Find the magnitude of the electric field at a point $0.100\\text{ m}$ outside the surface of the sphere.", answerType: "numeric", unit: "N/C" },
           { id: "hw2_p5b", prompt: "(b) Find the magnitude of the electric field at a point inside the sphere, $0.100\\text{ m}$ below the surface.", answerType: "numeric", unit: "N/C" },
-          { id: "hw2_p5c", prompt: "(c) Justify your answer to part (b) using Gauss's law. Where does the net charge on a conductor sit, and what does that imply about the charge enclosed by a Gaussian surface drawn inside the metal?", answerType: "text" },
+          { id: "hw2_p5c", prompt: "(c) Justify your answer to part (b) using Gauss's law.", answerType: "text" },
         ],
       },
       // 22.15 — force between two parallel line charges
@@ -566,7 +587,7 @@ export const HOMEWORKS_PHYSICS2 = [
       // 22.26 — work-energy theorem in the (distance-independent) field of a charged sheet
       {
         id: "hw2_p7",
-        prompt: "An electron is released from rest at a distance of $0.300\\text{ m}$ from a large insulating sheet of charge that has uniform surface charge density $+2.90\\times10^{-12}\\text{ C/m}^2$. Use $e = 1.602\\times10^{-19}\\text{ C}$ and $m_e = 9.109\\times10^{-31}\\text{ kg}$.",
+        prompt: "An electron is released from rest at a distance of $0.300\\text{ m}$ from a large insulating sheet of charge that has uniform surface charge density $+2.90\\times10^{-12}\\text{ C/m}^2$.",
         parts: [
           { id: "hw2_p7a", prompt: "(a) How much work is done on the electron by the electric field of the sheet as the electron moves from its initial position to a point $0.050\\text{ m}$ from the sheet?", answerType: "numeric", unit: "J" },
           { id: "hw2_p7b", prompt: "(b) What is the speed of the electron when it is $0.050\\text{ m}$ from the sheet?", answerType: "numeric", unit: "m/s" },
@@ -580,7 +601,7 @@ export const HOMEWORKS_PHYSICS2 = [
         parts: [
           { id: "hw2_p8a", prompt: "(a) Derive the expression for the electric field inside the volume at a distance $r$ from the axis of the cylinder, in terms of the charge density $\\rho$. Enter your expression for $E$ (you may use $\\epsilon_0$ or $k$).", answerType: "math" },
           { id: "hw2_p8b", prompt: "(b) What is the electric field at a point outside the volume, in terms of the charge per unit length $\\lambda$ in the cylinder? Enter your expression for $E$.", answerType: "math" },
-          { id: "hw2_p8c", prompt: "(c) Compare the answers to parts (a) and (b) for $r = R$. Use the relationship between $\\lambda$ and $\\rho$ for this cylinder, and say what your comparison means about the field at the surface.", answerType: "text" },
+          { id: "hw2_p8c", prompt: "(c) Compare the answers to parts (a) and (b) for $r = R$.", answerType: "text" },
           {
             id: "hw2_p8d",
             prompt: "(d) Graph the electric-field magnitude as a function of $r$ from $r = 0$ to $r = 3R$.\n\nThe axes are scaled so no numbers are needed: measure $r$ in units of $R$ (so the surface is at $1$), and measure $E$ in units of its value at the surface, $\\rho R/2\\epsilon_0$ (so the field at the surface is $1$). Sketch the inside and the outside pieces as two separate curves.",
@@ -632,7 +653,7 @@ export const HOMEWORKS_PHYSICS2 = [
       {
         id: "hw2_p9",
         figure: "/homeworkFigures/physics2/HW2/figP22-43.png", figureWidth: 260,  // natural 920×1080 (drawn at 2x for retina)
-        prompt: "A small sphere with a mass of $4.00\\times10^{-6}\\text{ kg}$ and carrying a charge of $5.00\\times10^{-8}\\text{ C}$ hangs from a thread near a very large, charged insulating sheet, as shown in the figure. The charge density on the surface of the sheet is uniform and equal to $2.50\\times10^{-9}\\text{ C/m}^2$. Use $g = 9.81\\text{ m/s}^2$.\n\nIn the figure the sheet is on the left and the sphere hangs to the right of the vertical.",
+        prompt: "A small sphere with a mass of $4.00\\times10^{-6}\\text{ kg}$ and carrying a charge of $5.00\\times10^{-8}\\text{ C}$ hangs from a thread near a very large, charged insulating sheet, as shown in the figure. The charge density on the surface of the sheet is uniform and equal to $2.50\\times10^{-9}\\text{ C/m}^2$.\n\nIn the figure the sheet is on the left and the sphere hangs to the right of the vertical.",
         parts: [
           {
             id: "hw2_p9_fbd", answerType: "fbd",
@@ -665,7 +686,7 @@ export const HOMEWORKS_PHYSICS2 = [
             },
           },
           { id: "hw2_p9_ang", prompt: "(b) Find the angle $\\theta$ of the thread, measured from the vertical.", answerType: "numeric", unit: "°" },
-          { id: "hw2_p9_why", prompt: "(c) Would the angle change if the thread were made longer, or if the sphere started out closer to the sheet? Explain, using what Gauss's law gives for the field of a very large charged sheet.", answerType: "text" },
+          { id: "hw2_p9_why", prompt: "(c) Would the angle change if the thread were made longer, or if the sphere started out closer to the sheet? Explain.", answerType: "text" },
         ],
       },
       // 22.51 — force from a uniformly charged spherical shell, outside and inside. Symbolic, so
@@ -675,8 +696,8 @@ export const HOMEWORKS_PHYSICS2 = [
         prompt: "Negative charge $-Q$ is distributed uniformly over the surface of a thin spherical insulating shell with radius $R$. Calculate the force (magnitude and direction) that the shell exerts on a positive point charge $q$ located as described in each part. Give your expressions in terms of $q$, $Q$, $r$ and $R$ (you may use $\\epsilon_0$ or $k$).",
         parts: [
           { id: "hw2_p10a_m", prompt: "(a) The point charge is a distance $r > R$ from the center of the shell (outside the shell). Enter an expression for the magnitude $F$ of the force.", answerType: "math" },
-          { id: "hw2_p10a_d", prompt: "(a) In what direction does that force point? Justify your answer.", answerType: "text" },
-          { id: "hw2_p10b", prompt: "(b) Now the point charge is a distance $r < R$ from the center of the shell (inside the shell). Find the force on it, and justify your answer with a Gaussian surface.", answerType: "text" },
+          { id: "hw2_p10a_d", prompt: "(a) In what direction does that force point?", answerType: "text" },
+          { id: "hw2_p10b", prompt: "(b) The point charge is a distance $r < R$ from the center of the shell (inside the shell). Calculate the force (magnitude and direction) that the shell exerts on it.", answerType: "text" },
         ],
       },
     ],
@@ -699,9 +720,9 @@ export const HOMEWORKS_PHYSICS2 = [
       // explicitly and the key entry carries nonNegative so a sign slip is nudged, not penalized.
       {
         id: "hw3_p2",
-        prompt: "Two protons are pushed together, then released. Use $e = 1.602\\times10^{-19}\\text{ C}$ and $m_p = 1.673\\times10^{-27}\\text{ kg}$.",
+        prompt: "Two protons are pushed together, then released.",
         parts: [
-          { id: "hw3_p2a", prompt: "(a) How much work would it take to push the two protons very slowly from a separation of $2.00\\times10^{-10}\\text{ m}$ (a typical atomic distance) to $3.00\\times10^{-15}\\text{ m}$ (a typical nuclear distance)? This is the work done by the external agent doing the pushing.", answerType: "numeric", unit: "J" },
+          { id: "hw3_p2a", prompt: "(a) How much work would it take to push the two protons very slowly from a separation of $2.00\\times10^{-10}\\text{ m}$ (a typical atomic distance) to $3.00\\times10^{-15}\\text{ m}$ (a typical nuclear distance)?", answerType: "numeric", unit: "J" },
           { id: "hw3_p2b", prompt: "(b) If the protons are both released from rest at the closer distance in part (a), how fast is each one moving when they reach their original separation?", answerType: "numeric", unit: "m/s" },
         ],
       },
@@ -719,7 +740,7 @@ export const HOMEWORKS_PHYSICS2 = [
         prompt: "A small particle has charge $-5.00\\ \\mu\\text{C}$ and mass $2.00\\times10^{-4}\\text{ kg}$. It moves from point $A$, where the electric potential is $V_A = +200\\text{ V}$, to point $B$, where the electric potential is $V_B = +800\\text{ V}$. The electric force is the only force acting on the particle. The particle has speed $5.00\\text{ m/s}$ at point $A$.",
         parts: [
           { id: "hw3_p4a", prompt: "(a) What is its speed at point $B$?", answerType: "numeric", unit: "m/s" },
-          { id: "hw3_p4b", prompt: "(b) Is it moving faster or slower at $B$ than at $A$? Explain, using the sign of the charge and what happens to its potential energy $U = qV$.", answerType: "text" },
+          { id: "hw3_p4b", prompt: "(b) Is it moving faster or slower at $B$ than at $A$? Explain.", answerType: "text" },
         ],
       },
       // 23.19 — potential from two point charges, then work from the potential difference.
@@ -732,7 +753,7 @@ export const HOMEWORKS_PHYSICS2 = [
         parts: [
           { id: "hw3_p5a", prompt: "(a) Find the potential at point $A$.", answerType: "numeric", unit: "V" },
           { id: "hw3_p5b", prompt: "(b) Find the potential at point $B$.", answerType: "numeric", unit: "V" },
-          { id: "hw3_p5c", prompt: "(c) Find the work done by the electric field on a charge of $2.50\\text{ nC}$ that travels from point $B$ to point $A$. Watch the direction of travel carefully.", answerType: "numeric", unit: "J" },
+          { id: "hw3_p5c", prompt: "(c) Find the work done by the electric field on a charge of $2.50\\text{ nC}$ that travels from point $B$ to point $A$.", answerType: "numeric", unit: "J" },
         ],
       },
       // 23.40 — E = V/d rearranged. The point of the problem is the absurdity of the number, so
@@ -742,7 +763,7 @@ export const HOMEWORKS_PHYSICS2 = [
         prompt: "Electrical Sensitivity of Sharks. Certain sharks can detect an electric field as weak as $1.0\\ \\mu\\text{V/m}$. To grasp how weak this field is, imagine producing it between two parallel metal plates by connecting an ordinary $1.5\\text{-V}$ AA battery across these plates.",
         parts: [
           { id: "hw3_p6a", prompt: "(a) How far apart would the plates have to be?", answerType: "numeric", unit: "m" },
-          { id: "hw3_p6b", prompt: "(b) Comment on your answer. Compare the separation you found to something familiar, and say what it tells you about how sensitive these sharks are.", answerType: "text" },
+          { id: "hw3_p6b", prompt: "(b) Comment on your answer: compare the separation you found to something familiar.", answerType: "text" },
         ],
       },
       // 23.50 — energy conservation gives the separation, then Coulomb's law gives the acceleration
@@ -752,8 +773,8 @@ export const HOMEWORKS_PHYSICS2 = [
         id: "hw3_p7",
         prompt: "A point charge $q_1 = +5.00\\ \\mu\\text{C}$ is held fixed in space. From a horizontal distance of $6.00\\text{ cm}$, a small sphere with mass $4.00\\times10^{-3}\\text{ kg}$ and charge $q_2 = +2.00\\ \\mu\\text{C}$ is fired toward the fixed charge with an initial speed of $40.0\\text{ m/s}$. Gravity can be neglected.",
         parts: [
-          { id: "hw3_p7a", prompt: "(a) How far is the sphere from the fixed charge at the instant its speed is $25.0\\text{ m/s}$? Use energy conservation.", answerType: "numeric", unit: "m" },
-          { id: "hw3_p7b", prompt: "(b) What is the magnitude of the acceleration of the sphere at that instant?", answerType: "numeric", unit: "m/s²" },
+          { id: "hw3_p7a", prompt: "(a) How far is the sphere from the fixed charge at the instant its speed is $25.0\\text{ m/s}$?", answerType: "numeric", unit: "m" },
+          { id: "hw3_p7b", prompt: "(b) What is the acceleration of the sphere at the instant when its speed is $25.0\\text{ m/s}$?", answerType: "numeric", unit: "m/s²" },
         ],
       },
       // 23.56 — the Bohr atom, entirely symbolic until the last two parts. (c) is the "show that"
@@ -764,10 +785,10 @@ export const HOMEWORKS_PHYSICS2 = [
         parts: [
           { id: "hw3_p8a", prompt: "(a) By equating the electric force to the electron mass times its acceleration, derive an expression for the electron's speed $v$.", answerType: "math" },
           { id: "hw3_p8b", prompt: "(b) Obtain an expression for the electron's kinetic energy $K$.", answerType: "math" },
-          { id: "hw3_p8c", prompt: "(c) Show that the magnitude of the kinetic energy is just half that of the electric potential energy. Give the expression you get for $U$ and compare it to your part (b) result.", answerType: "text" },
-          { id: "hw3_p8d", prompt: "(d) Obtain an expression for the total energy $E$ of the atom.", answerType: "math" },
-          { id: "hw3_p8e", prompt: "(e) Evaluate the total energy for $r = 5.29\\times10^{-11}\\text{ m}$ (the Bohr radius). Give your result in joules.", answerType: "numeric", unit: "J" },
-          { id: "hw3_p8f", prompt: "(f) Give the same total energy in electron volts.", answerType: "numeric", unit: "eV" },
+          { id: "hw3_p8c", prompt: "(b) Show that the magnitude of the kinetic energy is just half that of the electric potential energy.", answerType: "text" },
+          { id: "hw3_p8d", prompt: "(c) Obtain an expression for the total energy $E$ of the atom.", answerType: "math" },
+          { id: "hw3_p8e", prompt: "(c) Evaluate the total energy using $r = 5.29\\times10^{-11}\\text{ m}$. Give your numerical result in joules.", answerType: "numeric", unit: "J" },
+          { id: "hw3_p8f", prompt: "(c) Give the same numerical result in electron volts.", answerType: "numeric", unit: "eV" },
         ],
       },
       // 23.59 — an eight-charge cube. Purely symbolic (no value of q or d is given), so (a) is a
@@ -790,7 +811,7 @@ export const HOMEWORKS_PHYSICS2 = [
       {
         id: "hw3_p10",
         figure: "/homeworkFigures/physics2/HW3/figP23-62.png", figureWidth: 320,  // natural 474×404
-        prompt: "A small sphere with mass $1.50\\text{ g}$ hangs by a thread between two parallel vertical plates $5.00\\text{ cm}$ apart, as shown in the figure. The plates are insulating and have uniform surface charge densities $+\\sigma$ and $-\\sigma$. The charge on the sphere is $q = 8.90\\times10^{-6}\\text{ C}$. The thread hangs at $30.0°$ from the vertical, with the sphere displaced toward the right-hand plate. Use $g = 9.81\\text{ m/s}^2$.",
+        prompt: "A small sphere with mass $1.50\\text{ g}$ hangs by a thread between two parallel vertical plates $5.00\\text{ cm}$ apart, as shown in the figure. The plates are insulating and have uniform surface charge densities $+\\sigma$ and $-\\sigma$. The charge on the sphere is $q = 8.90\\times10^{-6}\\text{ C}$. In the figure the sphere is displaced toward the right-hand plate.",
         parts: [
           {
             id: "hw3_p10_fbd", answerType: "fbd",
@@ -812,8 +833,149 @@ export const HOMEWORKS_PHYSICS2 = [
               accel: { none: true },   // the sphere hangs in equilibrium
             },
           },
-          { id: "hw3_p10_v", prompt: "(b) What is the magnitude of the potential difference between the plates that causes the thread to assume this angle?", answerType: "numeric", unit: "V" },
-          { id: "hw3_p10_p", prompt: "(c) Which plate is at the higher potential, the left one or the right one? Explain, using the sign of the sphere's charge and the direction it is pushed.", answerType: "text" },
+          { id: "hw3_p10_v", prompt: "(b) What potential difference between the plates will cause the thread to assume an angle of $30.0°$ with the vertical?", answerType: "numeric", unit: "V" },
+          { id: "hw3_p10_p", prompt: "(c) Which plate is at the higher potential, the left one or the right one? Explain.", answerType: "text" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hw4",
+    title: "Homework 4: Capacitance & Dielectrics",
+    // WORDING: every prompt below is the Y&F problem text VERBATIM. The only adaptations are the
+    // two the app forces: "Fig. E24.16" etc. becomes "the figure" (the served crops carry no
+    // caption, and there is no figure numbering in the runner), and a part the textbook asks once
+    // about "each capacitor" becomes one blank per capacitor, naming it by its label or its
+    // printed value. Nothing is added: no unit instructions (the `unit` label renders beside the
+    // input field, which is the affordance), no method hints, and no parts beyond the textbook's.
+    problems: [
+      // 24.1 — parallel-plate basics: V = Ed, then C = Q/V and A from C = eps0 A/d
+      {
+        id: "hw4_p1",
+        prompt: "The plates of a parallel-plate capacitor are $2.50\\text{ mm}$ apart, and each carries a charge of magnitude $80.0\\text{ nC}$. The plates are in vacuum. The electric field between the plates has a magnitude of $4.00\\times10^{6}\\text{ V/m}$.",
+        parts: [
+          { id: "hw4_p1a", prompt: "(a) What is the potential difference between the plates?", answerType: "numeric", unit: "V" },
+          { id: "hw4_p1b", prompt: "(b) What is the area of each plate?", answerType: "numeric", unit: "cm²" },
+          { id: "hw4_p1c", prompt: "(c) What is the capacitance?", answerType: "numeric", unit: "pF" },
+        ],
+      },
+      // 24.10 — cylindrical capacitor: invert C = 2 pi eps0 L / ln(rb/ra) for the outer radius
+      {
+        id: "hw4_p2",
+        prompt: "A cylindrical capacitor consists of a solid inner conducting core with radius $0.250\\text{ cm}$, surrounded by an outer hollow conducting tube. The two conductors are separated by air, and the length of the cylinder is $12.0\\text{ cm}$. The capacitance is $36.7\\text{ pF}$.",
+        parts: [
+          { id: "hw4_p2a", prompt: "(a) Calculate the inner radius of the hollow tube.", answerType: "numeric", unit: "mm" },
+          { id: "hw4_p2b", prompt: "(b) When the capacitor is charged to $125\\text{ V}$, what is the charge per unit length $\\lambda$ on the capacitor?", answerType: "numeric", unit: "nC/m" },
+        ],
+      },
+      // 24.16 — one parallel pair, then that pair in series with a third
+      {
+        id: "hw4_p3",
+        figure: "/homeworkFigures/physics2/HW4/figE24-16.png", figureWidth: 220,  // natural 470x606 (tall/narrow)
+        prompt: "For the system of capacitors shown in the figure, find the equivalent capacitance.",
+        parts: [
+          { id: "hw4_p3a", prompt: "(a) Between $b$ and $c$.", answerType: "numeric", unit: "pF" },
+          { id: "hw4_p3b", prompt: "(b) Between $a$ and $c$.", answerType: "numeric", unit: "pF" },
+        ],
+      },
+      // 24.17 — the set's fullest network: series inside parallel inside series. Every capacitor is
+      // the same 4.00 uF, so nothing can be read off by size; the bookkeeping is the whole problem.
+      // "the charge on each capacitor" / "the potential difference across each capacitor" become
+      // one blank per capacitor. C1 and C2 each get their own blank rather than sharing one with a
+      // note that they match, since "they are in series so their charges are equal" is exactly what
+      // the problem is testing and must not be handed over in the prompt.
+      {
+        id: "hw4_p4",
+        figure: "/homeworkFigures/physics2/HW4/figE24-17.png", figureWidth: 340,  // natural 470x414
+        prompt: "In the figure, each capacitor has $C = 4.00\\ \\mu\\text{F}$ and $V_{ab} = +28.0\\text{ V}$.",
+        parts: [
+          { id: "hw4_p4a_q1", prompt: "(a) Calculate the charge on $C_1$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p4a_q2", prompt: "(a) Calculate the charge on $C_2$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p4a_q3", prompt: "(a) Calculate the charge on $C_3$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p4a_q4", prompt: "(a) Calculate the charge on $C_4$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p4b_v1", prompt: "(b) Calculate the potential difference across $C_1$.", answerType: "numeric", unit: "V" },
+          { id: "hw4_p4b_v2", prompt: "(b) Calculate the potential difference across $C_2$.", answerType: "numeric", unit: "V" },
+          { id: "hw4_p4b_v3", prompt: "(b) Calculate the potential difference across $C_3$.", answerType: "numeric", unit: "V" },
+          { id: "hw4_p4b_v4", prompt: "(b) Calculate the potential difference across $C_4$.", answerType: "numeric", unit: "V" },
+          { id: "hw4_p4c", prompt: "(c) Calculate the potential difference between points $a$ and $d$.", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 24.21 — two capacitors straight across ab, plus a three-capacitor series branch
+      {
+        id: "hw4_p5",
+        figure: "/homeworkFigures/physics2/HW4/figE24-21.png", figureWidth: 340,  // natural 470x414
+        prompt: "For the system of capacitors shown in the figure, a potential difference of $25\\text{ V}$ is maintained across $ab$.",
+        parts: [
+          { id: "hw4_p5a", prompt: "(a) What is the equivalent capacitance of this system between $a$ and $b$?", answerType: "numeric", unit: "nF" },
+          { id: "hw4_p5b", prompt: "(b) How much charge is stored by this system?", answerType: "numeric", unit: "nC" },
+          { id: "hw4_p5c", prompt: "(c) How much charge does the $6.5\\text{-nF}$ capacitor store?", answerType: "numeric", unit: "nC" },
+          { id: "hw4_p5d", prompt: "(d) What is the potential difference across the $7.5\\text{-nF}$ capacitor?", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 24.25 — energy density. The stated 5.80 uF is not needed (u = eps0 E^2 / 2 with E = V/d);
+      // the textbook leaves that unremarked, so the app does too. Single blank, no parts.
+      {
+        id: "hw4_p6",
+        prompt: "A $5.80\\text{-}\\mu\\text{F}$, parallel-plate, air capacitor has a plate separation of $5.00\\text{ mm}$ and is charged to a potential difference of $400\\text{ V}$. Calculate the energy density in the region between the plates, in units of $\\text{J/m}^3$.",
+        answerType: "numeric", unit: "J/m³",
+      },
+      // 24.30 — two capacitors in SERIES. Deliberately paired with the next problem (24.31), the
+      // same five questions asked of a PARALLEL network, so the two contrast directly.
+      {
+        id: "hw4_p7",
+        figure: "/homeworkFigures/physics2/HW4/figE24-30.png", figureWidth: 400,  // natural 464x138 (wide/short)
+        prompt: "For the capacitor network shown in the figure, the potential difference across $ab$ is $36\\text{ V}$.",
+        parts: [
+          { id: "hw4_p7a", prompt: "(a) Find the total charge stored in this network.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p7b_150", prompt: "(b) Find the charge on the $150\\text{-nF}$ capacitor.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p7b_120", prompt: "(b) Find the charge on the $120\\text{-nF}$ capacitor.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p7c", prompt: "(c) Find the total energy stored in the network.", answerType: "numeric", unit: "μJ" },
+          { id: "hw4_p7d_150", prompt: "(d) Find the energy stored in the $150\\text{-nF}$ capacitor.", answerType: "numeric", unit: "μJ" },
+          { id: "hw4_p7d_120", prompt: "(d) Find the energy stored in the $120\\text{-nF}$ capacitor.", answerType: "numeric", unit: "μJ" },
+          { id: "hw4_p7e_150", prompt: "(e) Find the potential difference across the $150\\text{-nF}$ capacitor.", answerType: "numeric", unit: "V" },
+          { id: "hw4_p7e_120", prompt: "(e) Find the potential difference across the $120\\text{-nF}$ capacitor.", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 24.31 — the same five questions as 24.30, now for a PARALLEL network: the charges differ
+      // and the voltages are equal, exactly the reverse of the series case.
+      {
+        id: "hw4_p8",
+        figure: "/homeworkFigures/physics2/HW4/figE24-31.png", figureWidth: 340,  // natural 478x290
+        prompt: "For the capacitor network shown in the figure, the potential difference across $ab$ is $220\\text{ V}$.",
+        parts: [
+          { id: "hw4_p8a", prompt: "(a) Find the total charge stored in this network.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p8b_35", prompt: "(b) Find the charge on the $35\\text{-nF}$ capacitor.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p8b_75", prompt: "(b) Find the charge on the $75\\text{-nF}$ capacitor.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p8c", prompt: "(c) Find the total energy stored in the network.", answerType: "numeric", unit: "mJ" },
+          { id: "hw4_p8d_35", prompt: "(d) Find the energy stored in the $35\\text{-nF}$ capacitor.", answerType: "numeric", unit: "mJ" },
+          { id: "hw4_p8d_75", prompt: "(d) Find the energy stored in the $75\\text{-nF}$ capacitor.", answerType: "numeric", unit: "mJ" },
+          { id: "hw4_p8e_35", prompt: "(e) Find the potential difference across the $35\\text{-nF}$ capacitor.", answerType: "numeric", unit: "V" },
+          { id: "hw4_p8e_75", prompt: "(e) Find the potential difference across the $75\\text{-nF}$ capacitor.", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 24.36 — the set's only dielectric problem
+      {
+        id: "hw4_p9",
+        prompt: "A parallel-plate capacitor has capacitance $C_0 = 5.00\\text{ pF}$ when there is air between the plates. The separation between the plates is $1.50\\text{ mm}$.",
+        parts: [
+          { id: "hw4_p9a", prompt: "(a) What is the maximum magnitude of charge $Q$ that can be placed on each plate if the electric field in the region between the plates is not to exceed $3.00\\times10^{4}\\text{ V/m}$?", answerType: "numeric", unit: "pC" },
+          { id: "hw4_p9b", prompt: "(b) A dielectric with $K = 2.70$ is inserted between the plates of the capacitor, completely filling the volume between the plates. Now what is the maximum magnitude of charge on each plate if the electric field between the plates is not to exceed $3.00\\times10^{4}\\text{ V/m}$?", answerType: "numeric", unit: "pC" },
+        ],
+      },
+      // 24.63 — a repeating ladder. It is not solvable by one series/parallel step: the network has
+      // to be collapsed from the far end inward, one rung at a time, and each rung happens to
+      // return the same 6.9 uF, which is what makes the reduction terminate cleanly. The textbook
+      // says "the three capacitors nearest a and b" — the two C1 rails and the C2 bridging them.
+      {
+        id: "hw4_p10",
+        figure: "/homeworkFigures/physics2/HW4/figP24-63.png", figureWidth: 400,  // natural 424x270
+        prompt: "In the figure, each capacitance $C_1$ is $6.9\\ \\mu\\text{F}$, and each capacitance $C_2$ is $4.6\\ \\mu\\text{F}$.",
+        parts: [
+          { id: "hw4_p10a", prompt: "(a) Compute the equivalent capacitance of the network between points $a$ and $b$.", answerType: "numeric", unit: "μF" },
+          { id: "hw4_p10b_c1a", prompt: "(b) When $V_{ab} = 420\\text{ V}$, compute the charge on the $C_1$ nearest $a$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p10b_c1b", prompt: "(b) When $V_{ab} = 420\\text{ V}$, compute the charge on the $C_1$ nearest $b$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p10b_c2", prompt: "(b) When $V_{ab} = 420\\text{ V}$, compute the charge on the $C_2$ nearest $a$ and $b$.", answerType: "numeric", unit: "μC" },
+          { id: "hw4_p10c", prompt: "(c) With $420\\text{ V}$ across $a$ and $b$, compute $V_{cd}$.", answerType: "numeric", unit: "V" },
         ],
       },
     ],

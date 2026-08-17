@@ -148,3 +148,42 @@ three are worth correcting in the source document before students see it.
 ($v = e/\sqrt{4\pi\epsilon_0m_er}$, $K = e^2/8\pi\epsilon_0r$, $K = |U|/2$, $E = -2.18\times10^{-18}\text{ J} = -13.6\text{ eV}$),
 23.59 ($-1.46q^2/\pi\epsilon_0d$, verified both by direct summation over all 28 pairs and by the
 12/12/4 shell counts), and 23.62 (47.7 V).
+
+---
+
+## HW4 — Capacitance & Dielectrics (verified 2026-08-17)
+
+Every value independently re-derived from the problem statements before the key was opened.
+Constants as for HW1–HW3, with $\epsilon_0 = 8.8541878\times10^{-12}\ \text{C}^2/(\text{N}\cdot\text{m}^2)$
+(the key uses $8.85\times10^{-12}$).
+
+**This key is in good shape** — the only two rows are small rounding artefacts, both well inside
+±2%, and neither changes a verdict. Nothing here rises to the level of HW3's factor-of-ten and
+sign errors.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| 24.10 (b) — charge per unit length $\lambda$ | 38.1 nC/m | **38.2 nC/m** (38.229) | No (0.34%) | The key fed its own *rounded* part (a) result back in, using $\ln(3.00/0.250) = 0.18232$ where the unrounded $r_b$ gives $0.181905$, and $\epsilon_0 = 8.85\times10^{-12}$. The one-step route avoids both: $\lambda = Q/L = CV/L = (36.7\text{ pF})(125\text{ V})/(0.120\text{ m}) = 38.2\text{ nC/m}$, with no dependence on $r_b$ or $\epsilon_0$ at all. | ☐ |
+| 24.63 (b) — charge on each outer $C_1$ | **960 μC** | **966 μC** (exact) | No (0.62%) | Transcription slip, and inconsistent with the key's own working: its line computes $Q = (2.3\ \mu\text{F})(420\text{ V}) = 966\ \mu\text{C}$ and then boxes 960. Rounded to the 2 sig figs the data support it would be **970**, not 960, so the boxed value is neither the exact result nor its correct rounding. | ☐ |
+
+**Not a key error, but noted for context — 24.31 (b), charge on the 75-nF capacitor.** The key
+boxes **17 μC**; the exact value is $Q = (75\text{ nF})(220\text{ V}) = 16.5\ \mu\text{C}$. A bare
+numeric comparison makes that a 3.0% gap, outside the ±2% band, but 17 is the *correct* 2-sig-fig
+rounding of 16.5 (and 35/75 nF carry only 2 sf), so it is a rounding convention, not an error. The
+app stores 16.5 and reveals "17 μC"; **both entries grade correct**, 17 via `numericMatch`'s
+sig-fig leniency — confirmed by pushing both through the real `grade.js` handler. Same shape as
+HW2's 22.1(a) row.
+
+**A note on 24.63's reveals rather than its key.** The data are 2 sf, but at 2 sf part (b) would
+reveal "970 μC" — a third number, matching neither the exact 966 nor the key's 960, which would
+read as a wrong answer to a student who got it right. Parts (b) and (c) therefore carry
+`sigFigs: 3` so the reveals read 966 μC / 644 μC / 46.7 V, the values a correct reduction actually
+produces. Part (a) stays at 2 sf, since $C_1/3 = 2.3$ exactly and "2.30" would overstate it.
+
+**Confirmed correct (no discrepancy):** 24.1 (10.0 kV, 22.6 cm², 8.00 pF), 24.10(a) (3.00 mm),
+24.16 (20 pF, 8.6 pF), all of 24.17 (2.40 μF equivalent; 22.4/22.4/44.8/67.2 μC;
+5.60/5.60/11.2/16.8 V; $V_{ad} = 11.2$ V), 24.21 (19.3 nF, 482 nC, 163 nC, 25 V), 24.25
+(2.83×10⁻² J/m³), all of 24.30 (2.40 μC total and on each capacitor; 43.2 μJ; 19.2 and 24.0 μJ;
+16.0 and 20.0 V, the last two summing to the 36 V across the network), 24.31 apart from the (b)
+note above (24 μC, 7.7 μC, 2.7 mJ, 0.85 and 1.8 mJ, 220 V across each), 24.36 (225 pC, 608 pC),
+and 24.63(a) (2.3 μF), (b)'s $C_2$ charge (640 μC, the correct 2-sf rounding of 644) and (c) (47 V).

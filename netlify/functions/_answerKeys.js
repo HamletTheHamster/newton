@@ -302,6 +302,92 @@ export const ANSWER_KEYS = {
       hw3_p10_v: { answerType: "numeric", answer: 47.72865, sigFigs: 3, unit: "V", nonNegative: true },
       hw3_p10_p: { answerType: "text", answer: "The left-hand plate is at the higher potential. The sphere's charge is positive, $q = +8.90\\times10^{-6}\\text{ C}$, so the electric force $q\\vec E$ on it points in the same direction as $\\vec E$. The thread hangs toward the right-hand plate, so that force points to the right, and therefore $\\vec E$ between the plates points to the right as well, from the left plate toward the right plate. The electric field always points from higher potential toward lower potential (it is the direction in which $V$ decreases most steeply), so the left plate is the high-potential plate, carrying the $+\\sigma$ surface charge, while the right plate carries $-\\sigma$. The same conclusion follows from the signs alone: a positive sphere is repelled by the positive plate and attracted toward the negative one, which is exactly the deflection shown in the figure." },
     },
+    // Y&F Ch. 24 (capacitance and dielectrics). eps0 = 8.8541878e-12 C^2/(N*m^2) throughout.
+    // Every quantity in this set is a capacitance, a charge magnitude, a potential difference, an
+    // energy, an energy density, an area or a radius, so EVERY item is `nonNegative: true` and
+    // none is an angle. The set is entirely numeric: the Y&F wording is used verbatim and none of
+    // its parts asks for prose, so there is no text/math entry here.
+    // Sig figs follow the given data: 3 sf where the data are 3 sf (24.1, 24.10, 24.17, 24.21,
+    // 24.25, 24.30, 24.36) and 2 sf where they are not (24.16's 9.0/11/15 pF, 24.31's 35/75 nF).
+    hw4: {
+      // 24.1 — V = Ed = 1.00e4 V; A = Qd/(eps0 V) = 2.2588e-3 m^2 = 22.6 cm^2; C = Q/V = 8.00 pF
+      hw4_p1a: { answerType: "numeric", answer: 10000, sigFigs: 3, unit: "V", sci: true, nonNegative: true },
+      hw4_p1b: { answerType: "numeric", answer: 22.588181, sigFigs: 3, unit: "cm²", nonNegative: true },
+      hw4_p1c: { answerType: "numeric", answer: 8.00, sigFigs: 3, unit: "pF", nonNegative: true },
+      // 24.10 — ln(rb/ra) = 2 pi eps0 L / C = 0.181905, so rb = ra e^0.181905 = 3.00 mm.
+      // lambda = Q/L = CV/L = 3.8229e-8 C/m (identical to 2 pi eps0 V / ln(rb/ra)).
+      hw4_p2a: { answerType: "numeric", answer: 2.9987495, sigFigs: 3, unit: "mm", nonNegative: true },
+      hw4_p2b: { answerType: "numeric", answer: 38.229167, sigFigs: 3, unit: "nC/m", nonNegative: true },
+      // 24.16 — C_bc = 9.0 + 11 = 20 pF; C_ac = (1/15 + 1/20)^-1 = 8.57 pF
+      hw4_p3a: { answerType: "numeric", answer: 20, sigFigs: 2, unit: "pF", nonNegative: true },
+      hw4_p3b: { answerType: "numeric", answer: 8.5714286, sigFigs: 2, unit: "pF", nonNegative: true },
+      // 24.17 — C12 = 2.00, C_ad = 6.00, C_ab = 2.40 uF. Q4 = C_ab V_ab = 67.2 uC (the whole
+      // network's charge, since C4 is in series with the group); V4 = 16.8 V; V_ad = 11.2 V;
+      // Q3 = 44.8 uC; Q1 = Q2 = 22.4 uC; V1 = V2 = 5.60 V. C1/C2 and V1/V2 each get their own
+      // blank: that they come out equal is the result, not something the prompt may give away.
+      // (c) is deliberately the same 11.2 V as V3 — C3 is wired straight from a to d, and the
+      // textbook asks both, so it stands as its own blank and doubles as a consistency check.
+      hw4_p4a_q1: { answerType: "numeric", answer: 22.4, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p4a_q2: { answerType: "numeric", answer: 22.4, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p4a_q3: { answerType: "numeric", answer: 44.8, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p4a_q4: { answerType: "numeric", answer: 67.2, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p4b_v1: { answerType: "numeric", answer: 5.60, sigFigs: 3, unit: "V", nonNegative: true },
+      hw4_p4b_v2: { answerType: "numeric", answer: 5.60, sigFigs: 3, unit: "V", nonNegative: true },
+      hw4_p4b_v3: { answerType: "numeric", answer: 11.2, sigFigs: 3, unit: "V", nonNegative: true },
+      hw4_p4b_v4: { answerType: "numeric", answer: 16.8, sigFigs: 3, unit: "V", nonNegative: true },
+      hw4_p4c: { answerType: "numeric", answer: 11.2, sigFigs: 3, unit: "V", nonNegative: true },
+      // 24.21 — series branch (18.0, 30.0, 10.0) = 5.294 nF; C_ab = 7.5 + 6.5 + 5.294 = 19.3 nF.
+      // Q = C_ab V = 482 nC. The 6.5-nF and 7.5-nF branches sit straight across ab, so the 6.5-nF
+      // charge is (6.5 nF)(25 V) and (d) is the full 25 V restated.
+      hw4_p5a: { answerType: "numeric", answer: 19.294118, sigFigs: 3, unit: "nF", nonNegative: true },
+      hw4_p5b: { answerType: "numeric", answer: 482.35294, sigFigs: 3, unit: "nC", nonNegative: true },
+      hw4_p5c: { answerType: "numeric", answer: 162.5, sigFigs: 3, unit: "nC", nonNegative: true },
+      hw4_p5d: { answerType: "numeric", answer: 25, sigFigs: 2, unit: "V", nonNegative: true },
+      // 24.25 — E = V/d = 8.00e4 V/m; u = (1/2) eps0 E^2 = 2.83e-2 J/m^3. The 5.80 uF is not needed.
+      hw4_p6: { answerType: "numeric", answer: 0.028333401, sigFigs: 3, unit: "J/m³", sci: true, nonNegative: true },
+      // 24.30 — SERIES: C_eq = 66.67 nF; Q = C_eq V = 2.40 uC on BOTH; U = (1/2)QV = 43.2 uJ;
+      // U = Q^2/2C gives 19.2 and 24.0 uJ; V = Q/C gives 16.0 and 20.0 V (summing to 36 V).
+      hw4_p7a: { answerType: "numeric", answer: 2.40, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p7b_150: { answerType: "numeric", answer: 2.40, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p7b_120: { answerType: "numeric", answer: 2.40, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p7c: { answerType: "numeric", answer: 43.2, sigFigs: 3, unit: "μJ", nonNegative: true },
+      hw4_p7d_150: { answerType: "numeric", answer: 19.2, sigFigs: 3, unit: "μJ", nonNegative: true },
+      hw4_p7d_120: { answerType: "numeric", answer: 24.0, sigFigs: 3, unit: "μJ", nonNegative: true },
+      hw4_p7e_150: { answerType: "numeric", answer: 16.0, sigFigs: 3, unit: "V", nonNegative: true },
+      hw4_p7e_120: { answerType: "numeric", answer: 20.0, sigFigs: 3, unit: "V", nonNegative: true },
+      // 24.31 — PARALLEL: C_eq = 110 nF; Q = 24.2 uC total, 7.7 and 16.5 uC individually;
+      // U = (1/2)CV^2 = 2.662 mJ total, 0.847 and 1.815 mJ individually; 220 V across each.
+      // 2 sig figs throughout (35 nF, 75 nF), which is what the instructor key boxes.
+      hw4_p8a: { answerType: "numeric", answer: 24.2, sigFigs: 2, unit: "μC", nonNegative: true },
+      hw4_p8b_35: { answerType: "numeric", answer: 7.7, sigFigs: 2, unit: "μC", nonNegative: true },
+      hw4_p8b_75: { answerType: "numeric", answer: 16.5, sigFigs: 2, unit: "μC", nonNegative: true },
+      hw4_p8c: { answerType: "numeric", answer: 2.662, sigFigs: 2, unit: "mJ", nonNegative: true },
+      hw4_p8d_35: { answerType: "numeric", answer: 0.847, sigFigs: 2, unit: "mJ", nonNegative: true },
+      hw4_p8d_75: { answerType: "numeric", answer: 1.815, sigFigs: 2, unit: "mJ", nonNegative: true },
+      hw4_p8e_35: { answerType: "numeric", answer: 220, sigFigs: 2, unit: "V", nonNegative: true },
+      hw4_p8e_75: { answerType: "numeric", answer: 220, sigFigs: 2, unit: "V", nonNegative: true },
+      // 24.36 — the field cap fixes V = Ed = 45.0 V in both parts. (a) Q = C0 V = 225 pC;
+      // (b) Q = K C0 V = 2.70 x 225 = 608 pC.
+      hw4_p9a: { answerType: "numeric", answer: 225, sigFigs: 3, unit: "pC", nonNegative: true },
+      hw4_p9b: { answerType: "numeric", answer: 607.5, sigFigs: 3, unit: "pC", nonNegative: true },
+      // 24.63 — the ladder collapses one rung at a time, and every rung returns 6.9 uF:
+      // C_eq1 = C1/3 = 2.3; C_eq2 = C_eq1 + C2 = 6.9; C_eq3 = (2/C1 + 1/6.9)^-1 = 2.3;
+      // C_eq4 = 6.9; C_eq = 2.3 uF. Then Q = C_eq(420) = 966 uC on each outer C1, each dropping
+      // 140 V, so the first C2 has 140 V across it and 644 uC on it; the remaining 322 uC drives
+      // the next rung, and V_cd = 140/3 = 46.7 V (each rung divides the voltage by three).
+      //
+      // sigFigs here is set so each reveal reads as the value a correct reduction actually
+      // produces. The data are 2 sf (6.9 / 4.6 uF), and at 2 sf (b) would reveal "970 uC" — a
+      // number matching neither the exact 966 nor the instructor key's 960, so it would read as a
+      // third answer to a student who got it right. 3 sf on (b)/(c) is not a precision claim
+      // (the third figure is not significant); it just keeps the reveal recognizable. (a) stays
+      // at 2 sf because C1/3 = 2.3 exactly, and "2.30" would be the overstatement.
+      hw4_p10a: { answerType: "numeric", answer: 2.3, sigFigs: 2, unit: "μF", nonNegative: true },
+      hw4_p10b_c1a: { answerType: "numeric", answer: 966, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p10b_c1b: { answerType: "numeric", answer: 966, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p10b_c2: { answerType: "numeric", answer: 644, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw4_p10c: { answerType: "numeric", answer: 46.666667, sigFigs: 3, unit: "V", nonNegative: true },
+    },
   },
 };
 
