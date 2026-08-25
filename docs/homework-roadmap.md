@@ -272,6 +272,31 @@ PHY 215 `hw1`–`hw3` were authored before this rule and were revised to comply 
 [courses/phy215.md](courses/phy215.md) § Wording revision for the full list of what was reverted
 and what was deliberately kept.
 
+#### When a hint really is needed, use `freeHint` — never the prompt
+
+Occasionally a problem turns on a single reading that is **not what it is assessing**, and without
+that reading it tests noticing rather than physics. The fix is never to scaffold the stem. Put it
+in the problem's **`freeHint`** field instead (added 2026-08-25 for PHY 215 `hw5`):
+
+```js
+freeHint: "The capacitor and $R_1$ are connected in parallel, so the voltage across $R_1$ is the same as the voltage across the capacitor. …",
+```
+
+It renders as an amber callout **under** the statement, is visible from the start, and **costs
+nothing** — it is not the grader's `hintAfterAttempt` hint and not the graphical **Hint** button,
+both of which cap the item's credit. Keeping it out of the prompt is the point: the textbook's
+sentence stays verbatim and the hint is visibly the instructor's addition, not Y&F's.
+
+Set it on the **problem** (for a multipart it renders once under the shared stem, above
+`Part 1 of N`; for a single-part problem `itemsOf` copies it onto the lone item). A `part` can
+carry its own if only one part needs it.
+
+Use it sparingly, and only for a prerequisite reading. It is **not** for method hints of the kind
+banned above ("use $U = qV$"), and not for anything the problem exists to test. The first two uses
+are PHY 215 `hw5`'s 25.83 and 25.84, where "a fully charged capacitor branch carries no current"
+and "parallel elements share a voltage" are prerequisites to a circuit problem about neither.
+Adding one is an instructor decision: propose it in your summary rather than adding it yourself.
+
 ### Figures — always scale to the page
 
 A `figure` with no `figureWidth` renders at its **natural pixel size** (capped only by the

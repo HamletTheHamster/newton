@@ -187,3 +187,40 @@ produces. Part (a) stays at 2 sf, since $C_1/3 = 2.3$ exactly and "2.30" would o
 16.0 and 20.0 V, the last two summing to the 36 V across the network), 24.31 apart from the (b)
 note above (24 μC, 7.7 μC, 2.7 mJ, 0.85 and 1.8 mJ, 220 V across each), 24.36 (225 pC, 608 pC),
 and 24.63(a) (2.3 μF), (b)'s $C_2$ charge (640 μC, the correct 2-sf rounding of 644) and (c) (47 V).
+
+## HW5 — Current, Resistance & Electromotive Force (verified 2026-08-25)
+
+Every value independently re-derived from the problem statements before the key was opened, with
+$e = 1.602176634\times10^{-19}$ C and $\rho_{\text{Cu}} = 1.72\times10^{-8}\ \Omega\cdot\text{m}$
+(Table 25.1). Assigned problems: 25.5, 25.14, 25.38, 25.39, 25.40+25.41 (condensed into one
+multipart problem), 25.68, 25.73, 25.77 (part (a) not assigned), 25.83, 25.84.
+
+> **25.77's part letters below are this key document's, i.e. the textbook's.** The app skips part
+> (a) and relabels the rest, so **key (b)/(c)/(d) = app (a)/(b)/(c)**. The letters are left as the
+> key prints them here, since the point of this log is to find the row to fix in the PDF.
+
+**This key is in very good shape.** Every row below is an intermediate-rounding artefact, all well
+inside ±2%, and none changes a verdict: each of the key's boxed values still grades as correct in
+the app. The recurring cause is the same one seen in HW4: the key rounds an intermediate current
+or power to 2-3 figures and then feeds that rounded number into the next step.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| 25.5 (b) — time for 6-gauge wire | 440 min | **443 min** (442.98) | No (0.67%) | The key carried its rounded part (a) time forward. Since $t \propto A \propto d^2$, the exact ratio is $(4.12/2.05)^2 = 4.0391$, so $t_b = 4.0391 \times 109.67 = 443.0$ min. Working straight from $t = LnqA/I$ gives the same 442.98 min. | ☐ |
+| 25.38 (b) — terminal voltage $V_{ab}$ | 15 V | **15.2 V** (15.247) | No (1.6%) | The key used its rounded $I = 0.47$ A, giving $16.0 - 0.752 = 15.25$, then boxed "15". With the exact $I = 8.0/17 = 0.470588$ A, $V_{ab} = 16.0 - (0.470588)(1.6) = 15.25$ V. At the data's precision this should be boxed as **15.2 V**, not 15. | ☐ |
+| 25.68 (a) — potential difference $V_{ad}$ | 6.59 V | **6.58 V** (6.5833) | No (0.10%) | The key substituted its rounded $I = 0.167$ A into $V_{ad} = I(15.5\ \Omega) + 4.00$ V. The exact current is $I = 4.00/24.0 = 1/6$ A, giving $15.5/6 + 4.00 = 6.5833$ V. | ☐ |
+| 25.77 (d) — savings in one year | $19.13/yr | **$19.10/yr** (19.099) | No (0.16%) | The key rounded the two dissipated powers to 106 W and 66.3 W before subtracting, giving a 39.7 W saving. The unrounded powers are 106.02 W and 66.379 W, so the saving is 39.641 W = 0.039641 kW; $(0.039641)(12)(365) = 173.63$ kWh, and at $0.11/kWh that is $19.099. | ☐ |
+
+**Not a key error, but noted for context — 25.73, the discarded root.** The key writes the
+quadratic as $1.3I^2 + 7I - 12.6 = 0$ and discards the negative root with the note "time
+reversed". The physical reason is simpler and worth stating in the key: the negative root
+($-6.808$ A) would mean current driven backwards through the battery, which the given circuit
+does not do. The positive root, 1.4236 A, is confirmed by substitution
+($3.2I + 3.8I + 1.3I^2 = 12.6$ V exactly).
+
+**Confirmed correct (no discrepancy):** 25.5(a) (110 min) and (c) (larger diameter gives smaller
+drift velocity), 25.14 (1.47×10⁻⁸ Ω·m, silver), 25.38(a) (0.47 A counterclockwise), all of 25.39
+(144 Ω, 240 Ω, 0.83 A, 0.500 A), 25.40 (192 Ω, 252 W), 25.41 (484 Ω, 29.8 W, 0.248 A),
+25.68(b) (4.08 V) and (c) (0.257 A counterclockwise, 3.87 V), 25.73 (1.42 A), 25.77(b) (35 A →
+8-gauge) and (c) (0.0865 Ω, 106 W), 25.83 (4.00 V across the capacitor, 0.667 A, 6.67 V), and
+all of 25.84 (6.00 V across the parallel group, 36.0 μC, 3.00 A, 18.0 Ω).

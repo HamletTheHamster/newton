@@ -388,6 +388,82 @@ export const ANSWER_KEYS = {
       hw4_p10b_c2: { answerType: "numeric", answer: 644, sigFigs: 3, unit: "μC", nonNegative: true },
       hw4_p10c: { answerType: "numeric", answer: 46.666667, sigFigs: 3, unit: "V", nonNegative: true },
     },
+    hw5: {
+      // 25.5 — t = L/v_d with v_d = I/(n|q|A), so t = L n |q| A / I and t scales with the AREA.
+      // (a) A = 3.3006e-6 m^2, v_d = 1.0790e-4 m/s, t = 6580.3 s = 109.7 min.
+      // (b) the diameter is 2.0098x larger, so A and t are 4.039x larger: t = 26578 s = 443.0 min.
+      // Both are reported in minutes, which is what the instructor key boxes.
+      hw5_p1a: { answerType: "numeric", answer: 109.67117, sigFigs: 3, unit: "min", nonNegative: true },
+      hw5_p1b: { answerType: "numeric", answer: 442.97517, sigFigs: 3, unit: "min", nonNegative: true },
+      hw5_p1c: { answerType: "text", answer: "Increasing the diameter decreases the drift velocity. For a given current $I = n|q|v_d A$, the drift velocity $v_d = I/(n|q|A)$ is inversely proportional to the cross-sectional area, and $A = \\pi d^2/4$ is proportional to the square of the diameter. So doubling the diameter cuts the drift velocity to one quarter of its former value. That is why the 6-gauge wire in part (b) takes about four times as long as the 12-gauge wire in part (a), even though it carries the same current." },
+      // 25.14 — rho = RA/L, A = pi(1.025e-3 m)^2 = 3.3006e-6 m^2, so
+      // rho = (0.0290)(3.3006e-6)/6.50 = 1.4726e-8 ohm*m, which is silver (1.47e-8) in Table 25.1.
+      // Copper, the next nearest, is 1.72e-8 and is 17% away, so the identification is unambiguous.
+      hw5_p2: { answerType: "text", answer: "Silver. The resistivity follows from $R = \\rho L/A$: the wire's cross-sectional area is $A = \\pi r^2 = \\pi(1.025\\times10^{-3}\\text{ m})^2 = 3.30\\times10^{-6}\\text{ m}^2$, so $\\rho = RA/L = (0.0290\\ \\Omega)(3.30\\times10^{-6}\\text{ m}^2)/(6.50\\text{ m}) = 1.47\\times10^{-8}\\ \\Omega\\cdot\\text{m}$. In Table 25.1 that is the tabulated resistivity of silver. The nearest other metal, copper at $1.72\\times10^{-8}\\ \\Omega\\cdot\\text{m}$, is about 17% away, so the wire is most likely silver." },
+      // 25.38 — both batteries have their + terminal on the left, so around the loop they OPPOSE.
+      // V_net = 16.0 - 8.0 = 8.0 V, R_total = 1.6 + 5.0 + 1.4 + 9.0 = 17 ohm, I = 0.4706 A.
+      // The 16.0-V battery wins, so it discharges: V_ab = eps - Ir = 16.0 - (0.4706)(1.6) = 15.25 V.
+      // (The 8.0-V battery is being charged, its terminal voltage being 8.0 + (0.4706)(1.4).)
+      hw5_p3a_m: { answerType: "numeric", answer: 0.47058824, sigFigs: 2, unit: "A", nonNegative: true },
+      hw5_p3a_d: { answerType: "text", answer: "Counterclockwise. The two batteries are connected so that they drive current in opposite senses around the loop, and the 16.0-V battery is the stronger, so it sets the direction and the net emf is $16.0\\text{ V} - 8.0\\text{ V} = 8.0\\text{ V}$. Following that sense around the circuit, the current leaves the positive terminal of the 16.0-V battery and runs from $b$ to $a$ along the top branch, down through the $5.0\\text{-}\\Omega$ resistor, left to right along the bottom branch through the 8.0-V battery (which is therefore being charged), and back up through the $9.0\\text{-}\\Omega$ resistor to $b$. That circulation is counterclockwise as the circuit is drawn." },
+      hw5_p3b: { answerType: "numeric", answer: 15.247059, sigFigs: 3, unit: "V", nonNegative: true },
+      // 25.39 — R = V^2/P at the rated 120 V: 144 ohm and 240 ohm. I = P/V: 0.833 A and 0.500 A.
+      hw5_p4a: { answerType: "numeric", answer: 144, sigFigs: 3, unit: "Ω", nonNegative: true },
+      hw5_p4b: { answerType: "numeric", answer: 240, sigFigs: 3, unit: "Ω", nonNegative: true },
+      hw5_p4c_100: { answerType: "numeric", answer: 0.83333333, sigFigs: 3, unit: "A", nonNegative: true },
+      hw5_p4c_60: { answerType: "numeric", answer: 0.5, sigFigs: 3, unit: "A", nonNegative: true },
+      // 25.40 + 25.41 — resistance is the fixed property, the rating is not.
+      // (a) R = 120^2/75 = 192 ohm, so at 220 V it dissipates 220^2/192 = 252 W.
+      // (b) R = 220^2/100 = 484 ohm, so at 120 V it dissipates 120^2/484 = 29.8 W.
+      // (c) I = P/V = 29.75/120 = 0.248 A (identically V/R = 120/484).
+      hw5_p5a: { answerType: "numeric", answer: 252.08333, sigFigs: 3, unit: "W", nonNegative: true },
+      hw5_p5b: { answerType: "numeric", answer: 29.752066, sigFigs: 3, unit: "W", nonNegative: true },
+      hw5_p5c: { answerType: "numeric", answer: 0.24793388, sigFigs: 3, unit: "A", nonNegative: true },
+      // 25.68 — R_total = 24.0 ohm, V_net = 8.00 - 4.00 = 4.00 V, I = 1/6 A clockwise.
+      // (a) V_ad taken along a->b->c->d (with the current, and through the 4.00-V battery from +
+      //     to -): V_ad = I(6.00 + 0.50 + 9.00) + 4.00 = 6.583 V. The bottom path a->d gives the
+      //     same value: -(I(8.00 + 0.50) - 8.00) = 6.583 V.
+      // (b) the 4.00-V battery is being CHARGED here (current enters its + terminal), so its
+      //     terminal voltage is eps + Ir = 4.00 + (1/6)(0.50) = 4.083 V.
+      // (c) the inserted 10.30-V battery is tied negative-to-negative with the 8.00-V battery, so
+      //     it opposes the 8.00 V and aids the 4.00 V: V_net = 10.30 + 4.00 - 8.00 = 6.30 V,
+      //     R_total = 24.5 ohm, I = 0.2571 A counterclockwise. The 4.00-V battery now DISCHARGES,
+      //     so V_bc = eps - Ir = 4.00 - (0.2571)(0.50) = 3.871 V, positive since b is its + side.
+      // (a) and (c) are signed potential differences (the subscript order fixes the sign), so
+      // neither is marked nonNegative; (b) is a terminal voltage and cannot come out negative.
+      hw5_p6a: { answerType: "numeric", answer: 6.5833333, sigFigs: 3, unit: "V" },
+      hw5_p6b: { answerType: "numeric", answer: 4.0833333, sigFigs: 3, unit: "V", nonNegative: true },
+      hw5_p6c: { answerType: "numeric", answer: 3.8714286, sigFigs: 3, unit: "V" },
+      // 25.73 — 12.6 = 3.2I + (3.8I + 1.3I^2) gives 1.3I^2 + 7.0I - 12.6 = 0, so
+      // I = (-7.0 + sqrt(114.52))/2.6 = 1.4236 A. The other root, -6.808 A, is discarded.
+      // sigFigs 3 (not the data's 2) so the reveal reads 1.42, the value a correct solution
+      // produces and the one the instructor key boxes; "1.4" would look like a third answer.
+      hw5_p7: { answerType: "numeric", answer: 1.4236166, sigFigs: 3, unit: "A", nonNegative: true },
+      // 25.77 — the textbook's part (a) is not assigned, and the rest are RELABELLED
+      // (b)/(c)/(d) -> (a)/(b)/(c). The letters below are the APP's; the instructor key PDF still
+      // uses the textbook's, so app (a)/(b)/(c) = key (b)/(c)/(d).
+      // (a) I = 4200/120 = 35 A; the thinnest wire in the table rated at or above 35 A is
+      //     8-gauge (40 A), since 10-gauge stops at 30 A.
+      // (b) 8-gauge: d = 0.326 cm, A = 8.347e-6 m^2, R = rho L/A = (1.72e-8)(42.0)/8.347e-6 =
+      //     0.08655 ohm, so P = I^2 R = (35)^2(0.08655) = 106.0 W.
+      // (c) 6-gauge: d = 0.412 cm, A = 1.3332e-5 m^2, R = 0.05419 ohm, P = 66.38 W. The saving is
+      //     39.64 W = 0.03964 kW, so (0.03964 kW)(12 h/day)(365 day) = 173.6 kWh, and at
+      //     $0.11/kWh that is $19.10 per year.
+      hw5_p8a: { answerType: "numeric", answer: 8, sigFigs: 1, unit: "gauge", nonNegative: true },
+      hw5_p8b: { answerType: "numeric", answer: 106.02016, sigFigs: 3, unit: "W", nonNegative: true },
+      hw5_p8c: { answerType: "numeric", answer: 19.099155, sigFigs: 3, unit: "dollars", nonNegative: true },
+      // 25.83 — V_C = Q/C = 36.0 uC / 9.00 uF = 4.00 V. The capacitor is in parallel with R_1, so
+      // V_1 = 4.00 V and I = V_1/R_1 = 0.667 A. A fully charged capacitor branch carries no
+      // current, so that same I flows through R_2, and eps = I(R_1 + R_2) = (0.667)(10.00) = 6.67 V.
+      hw5_p9: { answerType: "numeric", answer: 6.6666667, sigFigs: 3, unit: "V", nonNegative: true },
+      // 25.84 — R_2, C_1 and C_2 are all in parallel, so Q_1 fixes the common voltage:
+      // V = Q_1/C_1 = 18.0 uC / 3.00 uF = 6.00 V.
+      // (a) Q_2 = C_2 V = (6.00 uF)(6.00 V) = 36.0 uC.
+      // (b) the capacitors are fully charged, so the only current is I = V/R_2 = 6.00/2.00 =
+      //     3.00 A, which also flows through R_1. R_1 drops 60.0 - 6.00 = 54.0 V, so R_1 = 18.0 ohm.
+      hw5_p10a: { answerType: "numeric", answer: 36.0, sigFigs: 3, unit: "μC", nonNegative: true },
+      hw5_p10b: { answerType: "numeric", answer: 18.0, sigFigs: 3, unit: "Ω", nonNegative: true },
+    },
   },
 };
 

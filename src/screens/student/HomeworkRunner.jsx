@@ -52,6 +52,36 @@ function Prompt({ children }) {
   );
 }
 
+// Feedback palette, shared by the per-item feedback callout and the always-visible `freeHint`
+// box. Module-level because it is theme-independent and two renderers need the same amber.
+// `retry` is a no-cost nudge (blue, like `revealed`) — deliberately NOT the red of a wrong
+// answer, since it costs the student nothing.
+const FB_COLOR = { correct: "#4ade80", hint: "#fbbf24", revealed: "#60a5fa", wrong: "#f87171", retry: "#60a5fa" };
+
+// An instructor-authored hint that is shown from the start, costs nothing, and never touches
+// credit — distinct from the `hintAfterAttempt` hint the grader produces and from the graphical
+// `Hint` button (both of which cap the item). It exists for a problem whose intended first
+// move is a single non-obvious circuit reading (e.g. "the capacitor branch carries no current
+// once it is fully charged"), where without it the problem tests noticing rather than the
+// physics being assessed. Authored per problem in the course file as `freeHint`; carried on the
+// problem for a multipart (shown under the shared stem) or on the item for a single-part one.
+// Non-copyable for the same reason prompts are: it is problem-specific reasoning.
+function FreeHint({ children }) {
+  const { text } = useTheme();
+  const block = e => e.preventDefault();
+  return (
+    <div
+      className="hw-no-copy"
+      onCopy={block}
+      onCut={block}
+      style={{ background: FB_COLOR.hint + "1f", border: `1px solid ${FB_COLOR.hint}55`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: text, lineHeight: 1.5 }}
+    >
+      <span style={{ color: FB_COLOR.hint, fontWeight: 700 }}>💡 Hint: </span>
+      <MathText>{children}</MathText>
+    </div>
+  );
+}
+
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
 const HW_INTEGRITY_MODEL = "claude-opus-4-8";
 
@@ -68,7 +98,7 @@ function itemsOf(p) {
     }));
   }
   return [{
-    id: p.id, prompt: p.prompt, answerType: p.answerType,
+    id: p.id, prompt: p.prompt, answerType: p.answerType, freeHint: p.freeHint,
     unit: p.unit, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
     _figure: p.figure || null, _problemPrompt: null,
   }];
@@ -606,10 +636,6 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     );
   };
 
-  // `retry` is a no-cost nudge (blue, like `revealed`) — deliberately NOT the red of a wrong
-  // answer, since it costs the student nothing.
-  const FB_COLOR = { correct: "#4ade80", hint: "#fbbf24", revealed: "#60a5fa", wrong: "#f87171", retry: "#60a5fa" };
-
   const renderItem = (item, partLabel, rootRef, focusable = false) => {
     const st = status[item.id];
     const used = attempts[item.id] || 0;
@@ -619,6 +645,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       <div key={item.id} ref={rootRef} style={{ display: "flex", flexDirection: "column", gap: 10, paddingTop: partLabel ? 12 : 0, borderTop: partLabel ? `1px solid ${border}` : "none", marginTop: partLabel ? 12 : 0 }}>
         {partLabel && <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Part {partLabel}</div>}
         {item.prompt && <Prompt>{item.prompt}</Prompt>}
+        {item.freeHint && <FreeHint>{item.freeHint}</FreeHint>}
         {renderInput(item, focusable)}
         {st !== "correct" && st !== "revealed" && GRAPHICAL.has(item.answerType) && (
           <div style={{ color: muted, fontSize: 12.5, lineHeight: 1.4 }}>
@@ -997,6 +1024,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           {/* For multipart, render the shared prompt above the parts */}
           {problem.parts && problem.parts.length > 0 && problem.prompt && (
             <Prompt>{problem.prompt}</Prompt>
+          )}
+          {/* A multipart problem's free hint belongs to the whole problem, so it sits under the
+              shared stem. (A single-part problem carries its hint on the item instead, since the
+              statement itself is rendered inside renderItem.) */}
+          {problem.parts && problem.parts.length > 0 && problem.freeHint && (
+            <FreeHint>{problem.freeHint}</FreeHint>
           )}
           {(() => {
             // Sequential reveal: a part appears only once every earlier part is resolved

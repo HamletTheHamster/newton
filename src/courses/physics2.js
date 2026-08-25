@@ -1,6 +1,6 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–5, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23) and 4 (Ch. 24) are authored;
+// STATUS: quizzes 1–6, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23) and 4 (Ch. 24) are authored;
 // later weeks are added as each is prepped. Source material (quiz documents, problem screenshots, the
 // instructor answer key, lecture notes) lives OUTSIDE the repo in
 // `source/phy215/{quizzes,hw/HWn,lectures}/` (gitignored). Figures the app actually serves go in
@@ -166,6 +166,32 @@ export const QUIZZES_PHYSICS2 = [
         id: "q5_2",
         // Bare "K" rather than "$K$": quiz text renders raw (see the note on q3_4 above).
         text: "The freshness of fish can be measured by placing a fish between the plates of a capacitor and measuring the capacitance. How does this work? The dielectric constant K is about 1 for air and about 80 for water. (Hint: as time passes, the fish dries out.)",
+      },
+    ],
+  },
+  // Week 6 quiz — covers week 5 (Ch. 25): current, resistance, and electromotive force. All three
+  // are free response, for the same reason as q3/q4/q5: Q1 and Q2 each open on a verdict
+  // ("is there a contradiction", "would it be appropriate") whose entire content is the
+  // justification, which `yesNo`/`choices` would post a canned reply to without ever reading, and
+  // Q3 asks for a chain of reasoning outright. None is split into labelled parts: each asks for
+  // one argument, not a contrast between two (compare q3_4, whose halves have opposite answers).
+  // Symbols are Unicode (rho, not "$\rho$"): quiz text renders raw, so LaTeX would reach students
+  // literally, while a Unicode glyph displays correctly — see the note on q3_4.
+  {
+    id: "q6",
+    title: "Quiz 6: Current, Resistance, & Electromotive Force",
+    questions: [
+      {
+        id: "q6_1",
+        text: "The definition of resistivity (ρ = E/J) implies that an electric field exists inside a conductor. Yet in week 1 we said that there can be no electric field inside a conductor. Is there a contradiction here? Explain.",
+      },
+      {
+        id: "q6_2",
+        text: "Batteries are always labeled with their emf; for instance, an AA flashlight battery is labeled \"1.5 volts.\" Would it also be appropriate to put a label on batteries stating how much current they provide? Why or why not?",
+      },
+      {
+        id: "q6_3",
+        text: "Small aircraft often have 24-V electrical systems rather than the 12-V systems in automobiles, even though the electrical power requirements are roughly the same in both applications. The explanation given by aircraft designers is that a 24-V system weighs less than a 12-V system because thinner wires can be used. Explain why this is so.",
       },
     ],
   },
@@ -976,6 +1002,166 @@ export const HOMEWORKS_PHYSICS2 = [
           { id: "hw4_p10b_c1b", prompt: "(b) When $V_{ab} = 420\\text{ V}$, compute the charge on the $C_1$ nearest $b$.", answerType: "numeric", unit: "μC" },
           { id: "hw4_p10b_c2", prompt: "(b) When $V_{ab} = 420\\text{ V}$, compute the charge on the $C_2$ nearest $a$ and $b$.", answerType: "numeric", unit: "μC" },
           { id: "hw4_p10c", prompt: "(c) With $420\\text{ V}$ across $a$ and $b$, compute $V_{cd}$.", answerType: "numeric", unit: "V" },
+        ],
+      },
+    ],
+  },
+  {
+    id: "hw5",
+    title: "Homework 5: Current, Resistance, & Electromotive Force",
+    // WORDING: every prompt below is the Y&F problem text VERBATIM, with only the adaptations the
+    // app forces:
+    //   - "Fig. E25.38" / "Fig. P25.83" becomes "the figure" (the served crops carry no caption).
+    //   - 25.77's "The table below shows..." becomes "The table shows...": the runner renders the
+    //     figure ABOVE the prompt, so "below" would point the wrong way.
+    //   - 25.40's "(see Problem 25.39)" becomes "(see the previous problem)" — 25.39 IS the
+    //     previous problem here, but the runner has no problem numbering to point at.
+    //   - A part asking one question about two objects ("How much current does each bulb draw")
+    //     becomes one blank per object, named by the source's own label.
+    //   - "magnitude and direction" splits into a numeric magnitude + a text direction, since a
+    //     numeric item holds one value (same treatment as hw1 21.29).
+    //   - Units live in `unit`, which renders beside the input box.
+    // Deliberate instructor edits, requested for this set (NOT wording drift):
+    //   - 25.40 and 25.41 are condensed into ONE multipart problem (hw5_p5). They are the same
+    //     bulb-rating idea run twice (a US bulb in Europe, then a European bulb in the US), and
+    //     25.41 already opens by citing 25.40. The shared European-voltage sentence is 25.41's
+    //     own stem text, so nothing is invented: (a) is 25.40, (b)/(c) are 25.41(a)/(b).
+    //   - 25.77 part (a) is SKIPPED and the surviving parts are RELABELLED (b)/(c)/(d) -> (a)/(b)/(c),
+    //     so the student reads "(a)" under the heading "Part 1 of 3" instead of a stray "(b)".
+    //     The two internal back-references are rewritten to match: what the textbook calls "the
+    //     gauge found in part (b)" is "the gauge found in part (a)" here, in both (b) and (c).
+    //     Item ids follow the NEW letters (hw5_p8a/b/c). When cross-checking against the
+    //     instructor key PDF, note it still uses the textbook letters: app (a)/(b)/(c) = key
+    //     (b)/(c)/(d).
+    //   - 25.83 and 25.84 carry an authored `freeHint` (always visible, no credit cost). Both
+    //     problems hinge on one circuit reading that is not what the problem is assessing: a
+    //     fully charged capacitor branch carries no current, and elements in parallel share a
+    //     voltage. Without it the problem tests noticing rather than the physics.
+    problems: [
+      // 25.5 — drift velocity. t = L/v_d with v_d = I/(n|q|A), so t scales as the AREA: the
+      // 6-gauge wire's diameter is 2.01x the 12-gauge one, so (b) is 4.04x (a). That ratio is
+      // exactly what (c) asks the student to state in words.
+      {
+        id: "hw5_p1",
+        prompt: "Copper has $8.5\\times10^{28}$ free electrons per cubic meter. A $71.0\\text{-cm}$ length of 12-gauge copper wire that is $2.05\\text{ mm}$ in diameter carries $4.85\\text{ A}$ of current.",
+        parts: [
+          { id: "hw5_p1a", prompt: "(a) How much time does it take for an electron to travel the length of the wire?", answerType: "numeric", unit: "min" },
+          { id: "hw5_p1b", prompt: "(b) Repeat part (a) for 6-gauge copper wire (diameter $4.12\\text{ mm}$) of the same length that carries the same current.", answerType: "numeric", unit: "min" },
+          { id: "hw5_p1c", prompt: "(c) Generally speaking, how does changing the diameter of a wire that carries a given amount of current affect the drift velocity of the electrons in the wire?", answerType: "text" },
+        ],
+      },
+      // 25.14 — rho = RA/L = 1.47e-8 ohm*m, which is silver. The figure is Table 25.1, without
+      // which the problem is unanswerable: it asks the student to match a computed resistivity
+      // against the tabulated values.
+      {
+        id: "hw5_p2",
+        figure: "/homeworkFigures/physics2/HW5/table25-1.png", figureWidth: 700,  // natural 1724x629 (wide reference table; needs the extra width to stay legible)
+        prompt: "A wire $6.50\\text{ m}$ long with diameter of $2.05\\text{ mm}$ has a resistance of $0.0290\\ \\Omega$. What material is the wire most likely made of?",
+        answerType: "text",
+      },
+      // 25.38 — two opposing batteries in one loop. Both + terminals face left in the figure, so
+      // around the loop they oppose: V_net = 16.0 - 8.0 = 8.0 V and I = 8.0/17 = 0.47 A. The
+      // 16.0-V battery wins, so it discharges (V_ab = eps - Ir) and the 8.0-V one is charged.
+      {
+        id: "hw5_p3",
+        figure: "/homeworkFigures/physics2/HW5/figE25-38.png", figureWidth: 400,  // natural 484x259
+        prompt: "The circuit shown in the figure contains two batteries, each with an emf and an internal resistance, and two resistors.",
+        parts: [
+          { id: "hw5_p3a_m", prompt: "(a) Find the magnitude of the current in the circuit.", answerType: "numeric", unit: "A" },
+          { id: "hw5_p3a_d", prompt: "(a) Find the direction of the current in the circuit.", answerType: "text" },
+          { id: "hw5_p3b", prompt: "(b) Find the terminal voltage $V_{ab}$ of the $16.0\\text{-V}$ battery.", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 25.39 — the definition of a power rating. R = V^2/P and I = P/V at the rated 120 V.
+      // "each bulb" in (c) becomes one blank per bulb, named by its printed wattage.
+      {
+        id: "hw5_p4",
+        prompt: "Light Bulbs. The power rating of a light bulb (such as a $100\\text{-W}$ bulb) is the power it dissipates when connected across a $120\\text{-V}$ potential difference.",
+        parts: [
+          { id: "hw5_p4a", prompt: "(a) What is the resistance of a $100\\text{-W}$ bulb?", answerType: "numeric", unit: "Ω" },
+          { id: "hw5_p4b", prompt: "(b) What is the resistance of a $60\\text{-W}$ bulb?", answerType: "numeric", unit: "Ω" },
+          { id: "hw5_p4c_100", prompt: "(c) How much current does the $100\\text{-W}$ bulb draw in normal use?", answerType: "numeric", unit: "A" },
+          { id: "hw5_p4c_60", prompt: "(c) How much current does the $60\\text{-W}$ bulb draw in normal use?", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 25.40 + 25.41, condensed into one problem at the instructor's request. The point of both
+      // is that the RESISTANCE is the fixed property and the rating is not: a bulb run off its
+      // rated voltage dissipates V^2/R at the new voltage. (a) runs a US bulb hot in Europe
+      // (75 W -> 252 W); (b)/(c) run a European bulb cool in the US (100 W -> 29.8 W).
+      {
+        id: "hw5_p5",
+        prompt: "European Light Bulb. In Europe the standard voltage in homes is $220\\text{ V}$ instead of the $120\\text{ V}$ used in the United States. Therefore a \"$100\\text{-W}$\" European bulb would be intended for use with a $220\\text{-V}$ potential difference.",
+        parts: [
+          { id: "hw5_p5a", prompt: "(a) If a \"$75\\text{-W}$\" bulb (see the previous problem) is connected across a $220\\text{-V}$ potential difference (as is used in Europe), how much power does it dissipate?", answerType: "numeric", unit: "W" },
+          { id: "hw5_p5b", prompt: "(b) If you bring a \"$100\\text{-W}$\" European bulb home to the United States, what should be its U.S. power rating?", answerType: "numeric", unit: "W" },
+          { id: "hw5_p5c", prompt: "(c) How much current will the $100\\text{-W}$ European bulb draw in normal use in the United States?", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 25.68 — the same opposing-battery idea as 25.38, now with four resistors and a follow-up
+      // that reverses the current. In (a)/(b) the 8.00-V battery drives 1/6 A clockwise against
+      // the 4.00-V one, which is therefore being CHARGED (terminal voltage eps + Ir = 4.08 V).
+      // In (c) the inserted 10.30-V battery is tied negative-to-negative with the 8.00-V one, so
+      // it opposes the 8.00 V and AIDS the 4.00 V: the net emf becomes 10.30 + 4.00 - 8.00 =
+      // 6.30 V counterclockwise, and the 4.00-V battery now discharges (eps - Ir = 3.87 V).
+      // There is no shared stem sentence in the source; part (a) names the figure itself.
+      {
+        id: "hw5_p6",
+        figure: "/homeworkFigures/physics2/HW5/figP25-68.png", figureWidth: 400,  // natural 472x277
+        parts: [
+          { id: "hw5_p6a", prompt: "(a) What is the potential difference $V_{ad}$ in the circuit of the figure?", answerType: "numeric", unit: "V" },
+          { id: "hw5_p6b", prompt: "(b) What is the terminal voltage of the $4.00\\text{-V}$ battery?", answerType: "numeric", unit: "V" },
+          { id: "hw5_p6c", prompt: "(c) A battery with emf $10.30\\text{ V}$ and internal resistance $0.50\\ \\Omega$ is inserted in the circuit at $d$, with its negative terminal connected to the negative terminal of the $8.00\\text{-V}$ battery. What is the difference of potential $V_{bc}$ between the terminals of the $4.00\\text{-V}$ battery now?", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 25.73 — the set's only non-ohmic element. Kirchhoff gives 12.6 = 3.2I + 3.8I + 1.3I^2,
+      // i.e. 1.3I^2 + 7.0I - 12.6 = 0, whose positive root is 1.42 A (the negative root, -6.81 A,
+      // is discarded: it would mean current running backward through the battery).
+      {
+        id: "hw5_p7",
+        prompt: "A $12.6\\text{-V}$ car battery with negligible internal resistance is connected to a series combination of a $3.2\\text{-}\\Omega$ resistor that obeys Ohm's law and a thermistor that does not obey Ohm's law but instead has a current–voltage relationship $V = \\alpha I + \\beta I^2$, with $\\alpha = 3.8\\ \\Omega$ and $\\beta = 1.3\\ \\Omega/\\text{A}$. What is the current through the $3.2\\text{-}\\Omega$ resistor?",
+        answerType: "numeric", unit: "A",
+      },
+      // 25.77 — household wiring. The textbook's part (a) is skipped per the instructor, and the
+      // rest are relabelled (b)/(c)/(d) -> (a)/(b)/(c); the letters below are the APP's.
+      // (a) I = P/V = 35 A, and the table's thinnest wire rated at or above that is 8-gauge
+      // (40 A); 10-gauge tops out at 30 A. (b)/(c) then need rho for COPPER, so the figure stacks
+      // the problem's own wire-gauge table on top of Table 25.1 — one figure slot, both required.
+      {
+        id: "hw5_p8",
+        figure: "/homeworkFigures/physics2/HW5/figP25-77-tables.png", figureWidth: 700,  // natural 1748x1001 (wire-gauge table + Table 25.1 stacked)
+        prompt: "According to the U.S. National Electrical Code, copper wire used for interior wiring of houses, hotels, office buildings, and industrial plants is permitted to carry no more than a specified maximum amount of current. The table shows the maximum current $I_{max}$ for several common sizes of wire with varnished cambric insulation. The \"wire gauge\" is a standard used to describe the diameter of wires. Note that the larger the diameter of the wire, the smaller the wire gauge.",
+        parts: [
+          { id: "hw5_p8a", prompt: "(a) A total of $4200\\text{ W}$ of power is to be supplied through the wires of a house to the household electrical appliances. If the potential difference across the group of appliances is $120\\text{ V}$, determine the gauge of the thinnest permissible wire that can be used.", answerType: "numeric", unit: "gauge" },
+          { id: "hw5_p8b", prompt: "(b) Suppose the wire used in this house is of the gauge found in part (a) and has total length $42.0\\text{ m}$. At what rate is energy dissipated in the wires?", answerType: "numeric", unit: "W" },
+          // NOTE: this prompt contains a literal "$0.11" and therefore must contain NO other "$".
+          // MathText treats $...$ as math delimiters, so a second dollar anywhere in the string
+          // would pair with this one and swallow the text between them as LaTeX. A single
+          // unpaired "$" is rendered literally, which is exactly what is wanted here.
+          { id: "hw5_p8c", prompt: "(c) The house is built in a community where the consumer cost of electric energy is $0.11 per kilowatt-hour. If the house were built with wire of the next larger diameter than that found in part (a), what would be the savings in electricity costs in one year? Assume that the appliances are kept on for an average of 12 hours a day.", answerType: "numeric", unit: "dollars" },
+        ],
+      },
+      // 25.83 — Q fixes V_C = Q/C = 4.00 V; the capacitor is parallel to R_1, so V_1 = 4.00 V and
+      // I = 0.667 A runs through R_2 and R_1 in series, giving eps = I(R_1 + R_2) = 6.67 V.
+      // The freeHint supplies the two circuit readings the problem is not trying to assess.
+      {
+        id: "hw5_p9",
+        figure: "/homeworkFigures/physics2/HW5/figP25-83.png", figureWidth: 400,  // natural 466x212
+        prompt: "Consider the circuit shown in the figure. The emf source has negligible internal resistance. The resistors have resistances $R_1 = 6.00\\ \\Omega$ and $R_2 = 4.00\\ \\Omega$. The capacitor has capacitance $C = 9.00\\ \\mu\\text{F}$. When the capacitor is fully charged, the magnitude of the charge on its plates is $Q = 36.0\\ \\mu\\text{C}$. Calculate the emf $\\mathcal{E}$.",
+        freeHint: "The capacitor and $R_1$ are connected in parallel, so the voltage across $R_1$ is the same as the voltage across the capacitor. Also, once the capacitor is fully charged, no current flows in the capacitor branch, so the current through $R_2$ is the same as the current through $R_1$.",
+        answerType: "numeric", unit: "V",
+      },
+      // 25.84 — the same two readings as 25.83, one step further: R_2, C_1 and C_2 are all in
+      // parallel, so Q_1 fixes 6.00 V across all three. (a) Q_2 = C_2 V = 36.0 uC. (b) the only
+      // current in the circuit is 6.00 V / 2.00 ohm = 3.00 A through R_2, so R_1 drops the
+      // remaining 54.0 V and is 18.0 ohm.
+      {
+        id: "hw5_p10",
+        figure: "/homeworkFigures/physics2/HW5/figP25-84.png", figureWidth: 400,  // natural 477x213
+        prompt: "Consider the circuit shown in the figure. The battery has emf $60.0\\text{ V}$ and negligible internal resistance. $R_2 = 2.00\\ \\Omega$, $C_1 = 3.00\\ \\mu\\text{F}$, and $C_2 = 6.00\\ \\mu\\text{F}$. After the capacitors have attained their final charges, the charge on $C_1$ is $Q_1 = 18.0\\ \\mu\\text{C}$.",
+        freeHint: "$R_2$, $C_1$ and $C_2$ are all connected in parallel, so the same voltage appears across all three. Also, once the capacitors have attained their final charges, no current flows in either capacitor branch, so the current through $R_2$ is the same as the current through $R_1$.",
+        parts: [
+          { id: "hw5_p10a", prompt: "(a) What is the final charge on $C_2$?", answerType: "numeric", unit: "μC" },
+          { id: "hw5_p10b", prompt: "(b) What is the resistance $R_1$?", answerType: "numeric", unit: "Ω" },
         ],
       },
     ],
