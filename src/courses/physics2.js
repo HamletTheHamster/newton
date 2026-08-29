@@ -1,7 +1,7 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–6, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23) and 4 (Ch. 24) are authored;
-// later weeks are added as each is prepped. Source material (quiz documents, problem screenshots, the
+// STATUS: quizzes 1–7, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23), 4 (Ch. 24) and 5 (Ch. 25) are
+// authored; later weeks are added as each is prepped. Source material (quiz documents, problem screenshots, the
 // instructor answer key, lecture notes) lives OUTSIDE the repo in
 // `source/phy215/{quizzes,hw/HWn,lectures}/` (gitignored). Figures the app actually serves go in
 // `public/homeworkFigures/physics2/HWn/` — usually textbook screenshots, but HW2's figP22-43.png
@@ -192,6 +192,28 @@ export const QUIZZES_PHYSICS2 = [
       {
         id: "q6_3",
         text: "Small aircraft often have 24-V electrical systems rather than the 12-V systems in automobiles, even though the electrical power requirements are roughly the same in both applications. The explanation given by aircraft designers is that a 24-V system weighs less than a 12-V system because thinner wires can be used. Explain why this is so.",
+      },
+    ],
+  },
+  // Week 7 quiz — covers week 6 (Ch. 26): direct-current circuits. Both free response, for the same
+  // reason as q3/q4/q5/q6: Q1 says "explain your reasoning" and Q2 asks "why or why not", so the
+  // prose is the entire answer. Both are split into labelled parts (see docs/courses/phy215.md for
+  // the worked answers and why each split earns its place).
+  {
+    id: "q7",
+    title: "Quiz 7: Direct-Current Circuits",
+    questions: [
+      {
+        id: "q7_1",
+        // The source asks the brightness half as "(i) in series and (ii) in parallel". Those are
+        // relabelled (a)/(b) here — beyond reading better as separate parts, "(i)" is a single
+        // lowercase letter in parens, so detectParts (utils.js) would have counted it as a THIRD
+        // part label alongside (a)/(b) while "(ii)" went unmatched, splitting the question wrong.
+        text: "You connect a number of identical light bulbs to a flashlight battery.\n\n(a) What happens to the brightness of each bulb as more and more bulbs are added to the circuit if you connect them in series? Explain your reasoning.\n\n(b) What happens to the brightness of each bulb as more and more bulbs are added to the circuit if you connect them in parallel? Explain your reasoning.\n\n(c) Will the battery last longer if the bulbs are in series or in parallel? Explain your reasoning.",
+      },
+      {
+        id: "q7_2",
+        text: "A capacitor, a battery, and a resistor are connected in series.\n\n(a) Does the resistor affect the maximum charge stored on the capacitor? Why or why not?\n\n(b) What purpose does the resistor serve? Explain your reasoning.",
       },
     ],
   },
