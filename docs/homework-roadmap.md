@@ -30,6 +30,10 @@ a grade". The to-do rail already excluded completed items.
 - `classes/{classId}/hwAttempts/{studentId}/{hwId}` — authoritative per-item attempt counts,
   written on **every** submit and cleared only on final submission. This is the anti-gaming
   source of truth.
+- `classes/{classId}/hwProgress/{studentId}/{hwId}` — `{ done, total, pct, updatedAt }`, the
+  instructor-facing completion summary. Written by the same `persistDraft()` chokepoint as the
+  draft (so it can never drift from it) and cleared alongside it on final submission, after
+  which the submission is the record. See § Instructor progress view below.
 
 **Anti-gaming:** on mount the runner seeds local `attempts` from `hwAttempts` **unconditionally**
 (not just when the resume modal shows), so a student who made wrong-but-unresolved attempts can't
@@ -38,6 +42,57 @@ The resume modal appears whenever there is any saved progress (resolved items, i
 attempts, or attempt counts). There is **no "Start fresh"** for graded homework: used attempts
 can't be reset and resolved items are locked, so a true do-over only exists via practice retakes.
 Practice mode never touches either node.
+
+### Instructor progress view (Assignments hub)
+`Assignments.jsx` reads `classes/{classId}/hwProgress` in **one** small GET and renders a
+**Progress column** between Due Date and Actions: a 44px bar plus the class `N%` average, and
+nothing else. Clicking it opens a per-student breakdown sorted least-progress first; the
+started count and last-worked time live on the cell's `title` tooltip and in that modal, since
+printing them in the cell cost three lines of row height and the column width the title needs
+more.
+
+Fitting the column inside the Shell's 960px content width meant right-sizing everything else
+to its widest real content, **measured in-browser rather than estimated** — `GRID_COLS` =
+`"1fr 104px 56px 312px 88px 124px"` with a shared `GRID_GAP = 6` (header and rows read the same
+constant or the columns fall out of alignment). Three hard constraints bind that budget:
+
+- **Due ≥ 310px**, or `DueDateField`'s row layout wraps its "Past due" badge to a second line.
+- **Actions ≥ 124px**, to hold an `Edit` + `Delete` pair. Only custom quizzes have both, which
+  is why that column reads as empty space on every other row — it is reserved, not free.
+- **Title ≥ 212px**, the width at which the longest real title ("Homework 5: Current,
+  Resistance, & Electromotive Force") wraps to two lines instead of three. It gets 216.
+
+The widest Type badge is 97px ("Midterm Exam") in a 104px column, so that one has ~7px of
+slack: re-measure before shrinking it, and remember category names are instructor-authored.
+
+Verified with a headless audit at 1280px that measures every cell's contents against its
+column box (zero overflow), confirms each Due cell is a single 31px control row (no badge
+wrap), and computes the minimum title width for a two-line wrap; plus the mobile card layout
+at 390px, in both themes.
+
+It reads the summary node and **not** `hwDrafts` on purpose. A draft carries every typed
+answer, every feedback string and the whole Claude history per item — megabytes across a
+class, and none of it needed to compute a percentage. The summary keeps that out of the
+instructor's browser entirely, and stays one cheap read as the class grows.
+
+Definitions, which are deliberate:
+- **Percent** is weighted by **problem**, not by item, so 50% means half the assignment the
+  same way the /10 score does. A `revealed` item counts as done: this measures how far through
+  the student is, not what credit they earned.
+- **Started** means a progress record exists (written on the first submitted attempt, or on
+  leaving with something typed) or a submission does. Opening the set and walking away does not
+  count.
+- **Average** is over the **whole roster**, unstarted students included — the class-readiness
+  number, not the average among the keen.
+- A submitted student is 100% (their draft and progress record are cleared on submit); the
+  submission's `timestamp` stands in as their last-worked time.
+- 100% **without** a submission is drawn in amber: every problem finished but never handed in,
+  which is the row worth chasing.
+
+Students already mid-assignment when this shipped have no progress record until their next
+save, so they read as not started until then. There is deliberately no fallback read of their
+draft to backfill it: that would be a permanent extra read pattern to paper over a one-time
+transitional gap.
 
 **No-lost-work guarantee on exit.** Every way out of a live graded session is an intentional
 app-flow path that preserves the draft (never browser refresh/quit):

@@ -171,6 +171,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const attemptsPath = !practice && classId
     ? classPath(classId, `hwAttempts/${loggedInStudent.studentId}/${homework.id}`)
     : null;
+  // Instructor-facing completion summary — see progressSnapshot below.
+  const progressPath = !practice && classId
+    ? classPath(classId, `hwProgress/${loggedInStudent.studentId}/${homework.id}`)
+    : null;
   const [draftLoading, setDraftLoading] = useState(!!draftPath);
   const [pendingDraft, setPendingDraft] = useState(null);
   const [savedAttempts, setSavedAttempts] = useState({});
@@ -203,13 +207,44 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setGradePass(d.gradePass || {}); setHintUsed(d.hintUsed || {}); setHistory(d.history || {}); setIdx(d.idx || 0);
   };
 
-  const clearDraft = () => { if (draftPath) fbSet(draftPath, null).catch(() => {}); };
+  // Clearing the draft clears its progress summary too: from final submission on, the
+  // submission itself is the record of a completed assignment.
+  const clearDraft = () => {
+    if (!draftPath) return;
+    fbSet(draftPath, null).catch(() => {});
+    fbSet(progressPath, null).catch(() => {});
+  };
 
   // One source of truth for the draft snapshot shape, reused by the auto-save effect, the
   // leave-confirm handler, and the save-failure exit so the student's work is preserved
   // identically in every exit path.
   const draftSnapshot = () => ({ answers, attempts, status, earned, feedback, revealed, gradePass, hintUsed, history, idx, savedAt: new Date().toISOString() });
-  const persistDraft = () => draftPath ? fbSet(draftPath, draftSnapshot()).catch(() => {}) : Promise.resolve();
+
+  // Instructor-facing progress summary, written beside the draft on every save path. It is a
+  // tiny derived node so the Assignments hub can show how far the class has got WITHOUT
+  // reading the draft itself, which carries every typed answer, every feedback string and the
+  // whole Claude history per item. Weighted by problem rather than by item, so 50% means half
+  // the assignment the same way the /10 score does; a `revealed` item counts as done, since
+  // this measures how far through they are, not how much credit they earned.
+  const progressSnapshot = () => {
+    const done = allItems.reduce((sum, it) => {
+      const st = status[it.id];
+      return sum + (st === "correct" || st === "revealed" ? (it.weight || 1) : 0);
+    }, 0);
+    return {
+      done: parseFloat(done.toFixed(2)),
+      total,
+      pct: total > 0 ? Math.round((done / total) * 100) : 0,
+      updatedAt: new Date().toISOString(),
+    };
+  };
+
+  const persistDraft = () => draftPath
+    ? Promise.all([
+        fbSet(draftPath, draftSnapshot()).catch(() => {}),
+        fbSet(progressPath, progressSnapshot()).catch(() => {}),
+      ]).then(() => {})
+    : Promise.resolve();
 
   // Auto-save the full draft after every submit (attempts increments on each one) and
   // whenever an item is resolved. Both `attempts` and `status` are fresh object references
@@ -218,7 +253,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   useEffect(() => {
     if (!draftPath || draftLoading || pendingDraft) return;
     if (!Object.keys(attempts).length && !Object.keys(status).length) return;
-    fbSet(draftPath, draftSnapshot()).catch(() => {});
+    persistDraft();
   }, [attempts, status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // After every submission, scroll the deepest visible item into view. This is the newly

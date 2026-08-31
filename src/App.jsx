@@ -931,7 +931,8 @@ export default function App() {
   // each delete to the current class leaves the same student's data in any OTHER class they
   // are enrolled in fully intact. Covers: roster entry, password, submissions, grade
   // overrides (incl. deadline extensions & integrity reviews), homework drafts, homework
-  // attempt counts, gradebook check-marks for their submissions, and uploaded written work
+  // attempt counts, homework progress summaries, gradebook check-marks for their submissions,
+  // and uploaded written work
   // in Storage. Throws on RTDB failure so the caller surfaces it; Storage cleanup is
   // best-effort (never blocks the grade-data removal).
   const removeStudentData = async studentId => {
@@ -955,6 +956,7 @@ export default function App() {
     await fbSave(classPath(cid, `gradeOverrides/${studentId}`), null);
     await fbSave(classPath(cid, `hwDrafts/${studentId}`), null);
     await fbSave(classPath(cid, `hwAttempts/${studentId}`), null);
+    await fbSave(classPath(cid, `hwProgress/${studentId}`), null);
     if (checkedChanged) await fbSave(classPath(cid, 'checkedSubs'), newChecked);
 
     // In-memory state + class cache.
@@ -1997,6 +1999,9 @@ export default function App() {
 
         {currentClassId && instructorSection === "assignments" && (
           <Assignments
+            classId={currentClassId}
+            roster={roster}
+            submissions={submissions}
             quizzes={quizzes}
             homeworks={homeworks}
             manualAssignments={manualAssignments}

@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { HW_GRADING_DEFAULTS } from "../../homework.js";
 import { dueToDate, useIsMobile } from "../../utils.js";
 import { categoryColor } from "../../category-colors.js";
+import { fbGet, classPath } from "../../firebase.js";
 import { DueDateField } from "../../components/lms/DueDateField.jsx";
 
 // Row types are "quiz", "homework", and — for manual assignments (exams, labs) — the
@@ -12,11 +13,22 @@ const QUIZ_COLOR = categoryColor("cat_quiz");
 const HW_COLOR = categoryColor("cat_hw");
 const BASE_TYPES = [{ id: "quiz", label: "Quiz", color: QUIZ_COLOR }, { id: "homework", label: "Homework", color: HW_COLOR }];
 
-// Title · Type · Points · Due Date · Actions. The Due Date column holds DueDateField's row
-// layout: date (128) + time (96) + "Past due"/"Active" badge, plus its 6px gaps.
-// These fixed columns total ~640px, so they only apply above the mobile breakpoint — narrower
+// Title · Type · Points · Due Date · Progress · Actions. The Due Date column holds
+// DueDateField's row layout: date (128) + time (96) + "Past due"/"Active" badge, plus its 6px
+// gaps — it must stay ≥ 310 or the badge wraps to a second line.
+// The other four are right-sized to their widest real content: a "Midterm Exam" category
+// badge, a 3-digit points input, and — this is the space that looks empty on most rows —
+// an Edit + Delete pair, which only custom quizzes have but which Actions must still fit.
+// Progress holds just a 44px bar + percentage, so what is left goes to the title, which needs
+// ~215px to keep the longest real title ("Homework 5: Current, Resistance, & Electromotive
+// Force") to two lines rather than three.
+// These fixed columns total ~720px, so they only apply above the mobile breakpoint — narrower
 // than that the table becomes a stacked card list (see `isMobile` below).
-const GRID_COLS = "1fr 118px 64px 320px 160px";
+const GRID_COLS = "1fr 104px 56px 312px 88px 124px";
+// 6, not the usual 8: the five gaps are 10px of the title's budget, and the title needs 212px
+// to keep the longest real title to two lines (measured, not estimated). Header and rows read
+// the same constant so the columns cannot fall out of alignment.
+const GRID_GAP = 6;
 
 // Small uppercase field label, mobile cards only (the desktop table has column headers instead).
 const CARD_LABEL = { fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" };
@@ -42,6 +54,139 @@ function validateDraft(d) {
   if (rc < 0 || rc > 1) return "Reveal credit must be between 0 and 1.";
   if (nt < 0 || nt > 1) return "Numeric tolerance must be between 0 and 1.";
   return null;
+}
+
+// ── Homework progress ─────────────────────────────────────────────────────────
+// Reads classes/{classId}/hwProgress — a tiny per-student summary ({ done, total, pct,
+// updatedAt }) that HomeworkRunner writes beside each draft. Deliberately NOT the draft
+// itself: a draft carries every typed answer, every feedback string and the whole Claude
+// history per item, none of which belongs in the instructor's browser to compute a
+// percentage. A student who has submitted has no draft (it is cleared on final submit), so
+// their submission stands in as 100%.
+const DONE_COLOR = "#4ade80";
+// Finished every problem but never pressed Finish & Submit — the row worth chasing, since
+// nothing has been handed in and the gradebook still reads as missing.
+const STALLED_COLOR = "#fbbf24";
+
+// "just now" / "14 min ago" / "3 hr ago" / "2 days ago" / "Aug 22" for older than a week.
+function fmtSince(iso) {
+  if (!iso) return null;
+  const t = new Date(iso);
+  if (isNaN(t)) return null;
+  const mins = Math.floor((Date.now() - t.getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function fmtExact(iso) {
+  if (!iso) return null;
+  const t = new Date(iso);
+  return isNaN(t) ? null : t.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+}
+
+function ProgressBar({ pct, color, width = "100%", height = 5 }) {
+  const { isLight } = useTheme();
+  return (
+    <div style={{ width, height, borderRadius: height, flexShrink: 0, overflow: "hidden", background: isLight ? "rgba(0,0,0,0.09)" : "rgba(255,255,255,0.12)" }}>
+      <div style={{ width: `${Math.max(0, Math.min(100, pct))}%`, height: "100%", borderRadius: height, background: color, transition: "width 0.2s" }} />
+    </div>
+  );
+}
+
+// The Progress column cell. Clicking it opens the per-student breakdown. Quizzes and manual
+// assignments have no partial progress, so their cell is the plain no-data hyphen.
+function ProgressCell({ summary, loading, onClick }) {
+  const { muted, teal, text } = useTheme();
+  if (loading) return <span style={{ color: muted, fontSize: 11 }}>Loading…</span>;
+  if (!summary) return <span style={{ color: muted, fontSize: 12 }}>-</span>;
+  if (summary.count === 0) return <span style={{ color: muted, fontSize: 11 }}>No students</span>;
+
+  const since = fmtSince(summary.lastWorked);
+  const barColor = summary.avg >= 100 ? DONE_COLOR : teal;
+  // Bar + percentage only. The started count and last-worked time are one hover away and laid
+  // out in full in the modal, and printing them here cost three lines of row height plus the
+  // column width that the title needs more.
+  return (
+    <button
+      onClick={onClick}
+      title={`${summary.started}/${summary.count} started${since ? ` · last worked ${since}` : ""} · click for each student`}
+      style={{
+        display: "flex", alignItems: "center", gap: 6,
+        background: "none", border: "none", padding: 0,
+        cursor: "pointer", textAlign: "left", width: "100%", font: "inherit",
+      }}
+    >
+      <ProgressBar pct={summary.avg} color={barColor} width={44} />
+      <span style={{ color: text, fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>{summary.avg}%</span>
+    </button>
+  );
+}
+
+// Per-student breakdown, least progress first: the actionable order when you are deciding
+// whether to extend a deadline or spend class time on the set.
+function ProgressModal({ title, rows, summary, onClose }) {
+  const { s, text, muted, border, teal, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
+
+  return (
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+      <div onClick={e => e.stopPropagation()} style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 560, maxHeight: "82vh", boxShadow: "0 20px 60px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 14 }}>
+        <div>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>Class progress</h3>
+          <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{title}</p>
+        </div>
+
+        <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "10px 12px", borderRadius: 8, border: `1px solid ${border}` }}>
+          {[
+            { label: "Average", value: `${summary.avg}%` },
+            { label: "Started", value: `${summary.started} of ${summary.count}` },
+            { label: "Submitted", value: `${summary.submitted} of ${summary.count}` },
+            { label: "Last worked", value: fmtSince(summary.lastWorked) || "-" },
+          ].map(f => (
+            <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ ...CARD_LABEL, color: muted }}>{f.label}</span>
+              <span style={{ color: text, fontSize: 13, fontWeight: 600 }}>{f.value}</span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ overflowY: "auto", display: "flex", flexDirection: "column" }}>
+          {rows.length === 0 && <p style={{ ...s.muted, fontSize: 13, margin: 0 }}>No students enrolled.</p>}
+          {rows.map((r, i) => (
+            <div
+              key={r.studentId}
+              style={{
+                display: "grid", gridTemplateColumns: "1fr 90px 44px 96px", gap: 10,
+                alignItems: "center", padding: "8px 2px",
+                borderBottom: i < rows.length - 1 ? `1px solid ${border}` : "none",
+              }}
+            >
+              <span style={{ color: text, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+              <ProgressBar pct={r.pct} color={r.submitted ? DONE_COLOR : r.pct > 0 ? teal : muted} />
+              <span
+                style={{ color: r.stalled ? STALLED_COLOR : r.pct > 0 ? text : muted, fontSize: 12, fontFamily: "monospace", textAlign: "right" }}
+                title={r.stalled ? "Every problem finished, but not submitted yet" : ""}
+              >
+                {r.pct}%
+              </span>
+              <span style={{ color: muted, fontSize: 11, textAlign: "right" }} title={fmtExact(r.at) || ""}>
+                {r.submitted ? "Submitted" : fmtSince(r.at) || "-"}
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{ ...s.btnSec, width: "auto", padding: "8px 20px" }}>Close</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function HwGradingModal({ hwTitle, draft: initialDraft, isOverridden, onClose, onSave, onReset }) {
@@ -131,7 +276,7 @@ function HwGradingModal({ hwTitle, draft: initialDraft, isOverridden, onClose, o
   );
 }
 
-export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, gradeCategories = {}, customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onSaveManualAssignments, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz }) {
+export function Assignments({ classId, roster = [], submissions = [], quizzes, homeworks = [], manualAssignments = {}, gradeCategories = {}, customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onSaveManualAssignments, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz }) {
   const { s, text, muted, border } = useTheme();
   const isMobile = useIsMobile();
 
@@ -141,6 +286,52 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
   const [editingHwSettings, setEditingHwSettings] = useState(null);
   // null | { hwId: string, title: string, draft: { ...grading fields } }
   const [ptsDraft, setPtsDraft] = useState({});   // { [assignmentId]: typed string }, committed on blur/Enter
+  const [progress, setProgress] = useState(null); // { [studentId]: { [hwId]: { done, total, pct, updatedAt } } }; null while loading
+  const [progressDetail, setProgressDetail] = useState(null); // null | { hwId, title }
+
+  // One small read for the whole class. hwProgress is per-student, so like hwDrafts and
+  // hwAttempts it stays out of the App.jsx class cache and is fetched on demand here.
+  useEffect(() => {
+    if (!classId) { setProgress({}); return; }
+    let cancelled = false;
+    setProgress(null);
+    fbGet(classPath(classId, "hwProgress"))
+      .then(d => { if (!cancelled) setProgress(d && typeof d === "object" ? d : {}); })
+      .catch(() => { if (!cancelled) setProgress({}); });
+    return () => { cancelled = true; };
+  }, [classId]);
+
+  // Per-student rows for one homework, merging the two sources of truth: a submitted student
+  // is 100% (their draft, and its progress record, are cleared on final submit), everyone
+  // else comes from hwProgress. A student with neither has not started.
+  // Indexed once per render rather than scanned per (student, homework) pair: the lookup runs
+  // roster x homework times, and a mid-term submissions list is long.
+  const subByKey = {};
+  (submissions || []).forEach(x => { subByKey[`${x.studentId}|${x.quizId}`] = x; });
+
+  const progressRows = hwId => (roster || []).map(r => {
+    const name = r.altName || r.fullName || r.studentId;
+    const sub = subByKey[`${r.studentId}|${hwId}`];
+    if (sub) return { studentId: r.studentId, name, pct: 100, submitted: true, at: sub.timestamp || null };
+    const rec = (progress || {})[r.studentId]?.[hwId];
+    const pct = rec && rec.total > 0 ? (rec.pct ?? Math.round((rec.done / rec.total) * 100)) : 0;
+    return { studentId: r.studentId, name, pct, submitted: false, stalled: pct >= 100, at: rec?.updatedAt || null };
+  }).sort((a, b) => a.pct - b.pct || a.name.localeCompare(b.name));
+
+  // "Started" counts anyone with a submission or any recorded progress. A progress record is
+  // written on the first submitted attempt or on leaving with something typed, so a student
+  // who has worked the set but resolved nothing still reads as started at 0%; one who merely
+  // opened it and walked away does not. The average is over the WHOLE roster, unstarted
+  // students included: that is the class-readiness number, not the average among the keen.
+  const progressSummary = hwId => {
+    const rows = progressRows(hwId);
+    const count = rows.length;
+    const started = rows.filter(r => r.submitted || r.at).length;
+    const submitted = rows.filter(r => r.submitted).length;
+    const avg = count ? Math.round(rows.reduce((sum, r) => sum + r.pct, 0) / count) : 0;
+    const stamps = rows.map(r => r.at).filter(Boolean).sort();
+    return { count, started, submitted, avg, lastWorked: stamps.length ? stamps[stamps.length - 1] : null, rows };
+  };
 
   const toggleType = id => setFilterTypes(prev => {
     const next = new Set(prev);
@@ -294,7 +485,7 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
             <div style={{
               display: "grid",
               gridTemplateColumns: GRID_COLS,
-              gap: 8,
+              gap: GRID_GAP,
               padding: "8px 14px",
               borderBottom: `1px solid ${border}`,
               fontSize: 11,
@@ -307,6 +498,7 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
               <span>Type</span>
               <span>Points</span>
               <span>Due Date</span>
+              <span>Progress</span>
               <span style={{ textAlign: "right" }}>Actions</span>
             </div>
           )}
@@ -321,6 +513,17 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
 
             const badgeEl = (
               <span style={{ ...s.badge(tm.color), fontSize: 11, justifySelf: "start", whiteSpace: "nowrap" }}>{tm.label}</span>
+            );
+
+            // Homework only: quizzes are all-or-nothing and manual assignments (exams, labs)
+            // have no submission at all, so neither has partial progress to report.
+            const isHw = q._type === "homework";
+            const progressEl = (
+              <ProgressCell
+                summary={isHw && progress !== null ? progressSummary(q.id) : null}
+                loading={isHw && progress === null}
+                onClick={() => setProgressDetail({ hwId: q.id, title: q.title })}
+              />
             );
 
             // Max points — editable for manual assignments, fixed at 10 for quizzes/homework
@@ -397,6 +600,13 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
                     {dueEl}
                   </div>
 
+                  {isHw && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      <span style={{ ...CARD_LABEL, color: muted }}>Progress</span>
+                      {progressEl}
+                    </div>
+                  )}
+
                   {actionBtns.length > 0 && (
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{actionBtns}</div>
                   )}
@@ -410,7 +620,7 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
                 style={{
                   display: "grid",
                   gridTemplateColumns: GRID_COLS,
-                  gap: 8,
+                  gap: GRID_GAP,
                   padding: "10px 14px",
                   alignItems: "center",
                   borderBottom: rowBorder,
@@ -420,12 +630,25 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
                 {badgeEl}
                 {pointsEl}
                 {dueEl}
+                {progressEl}
                 <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>{actionBtns}</div>
               </div>
             );
           })}
         </div>
       )}
+
+      {progressDetail && (() => {
+        const sm = progressSummary(progressDetail.hwId);
+        return (
+          <ProgressModal
+            title={progressDetail.title}
+            rows={sm.rows}
+            summary={sm}
+            onClose={() => setProgressDetail(null)}
+          />
+        );
+      })()}
 
       {editingHwSettings && (
         <HwGradingModal
