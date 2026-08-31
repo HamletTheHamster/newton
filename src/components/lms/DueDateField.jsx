@@ -43,6 +43,10 @@ export function DueDateField({ value, onChange, direction = "column", showStatus
       display: "flex",
       flexDirection: isRow ? "row" : "column",
       alignItems: isRow ? "center" : "stretch",
+      // The row layout wraps rather than overflowing: its date (128) + time (96) + badge is
+      // ~306px, which fits the Assignments column but not a phone-width card, where the badge
+      // drops to a second line instead of spilling out of the card.
+      flexWrap: isRow ? "wrap" : "nowrap",
       gap: 6,
       minWidth: 0,
     }}>

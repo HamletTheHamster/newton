@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "../../theme.js";
 import { HW_GRADING_DEFAULTS } from "../../homework.js";
-import { dueToDate } from "../../utils.js";
+import { dueToDate, useIsMobile } from "../../utils.js";
 import { categoryColor } from "../../category-colors.js";
 import { DueDateField } from "../../components/lms/DueDateField.jsx";
 
@@ -14,7 +14,12 @@ const BASE_TYPES = [{ id: "quiz", label: "Quiz", color: QUIZ_COLOR }, { id: "hom
 
 // Title · Type · Points · Due Date · Actions. The Due Date column holds DueDateField's row
 // layout: date (128) + time (96) + "Past due"/"Active" badge, plus its 6px gaps.
-const GRID_COLS = "1fr 118px 64px 300px 160px";
+// These fixed columns total ~640px, so they only apply above the mobile breakpoint — narrower
+// than that the table becomes a stacked card list (see `isMobile` below).
+const GRID_COLS = "1fr 118px 64px 320px 160px";
+
+// Small uppercase field label, mobile cards only (the desktop table has column headers instead).
+const CARD_LABEL = { fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em" };
 
 const FIELDS = [
   { key: "freeAttempts",     label: "Free attempts",      help: "Attempts 1 – N earn full credit",                               isInt: true,  min: 1, max: null, step: 1 },
@@ -128,6 +133,7 @@ function HwGradingModal({ hwTitle, draft: initialDraft, isOverridden, onClose, o
 
 export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, gradeCategories = {}, customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onSaveManualAssignments, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz }) {
   const { s, text, muted, border } = useTheme();
+  const isMobile = useIsMobile();
 
   const [filterText, setFilterText] = useState("");
   const [filterTypes, setFilterTypes] = useState(new Set());
@@ -221,13 +227,14 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
         <button onClick={onCreateQuiz} style={{ ...s.btnPri, width: "auto", padding: "8px 16px" }}>+ New Quiz</button>
       </div>
 
-      {/* Filter bar */}
+      {/* Filter bar — on mobile the search box takes its own row and the sort select stretches,
+          so the chips have the full width to wrap into instead of being squeezed. */}
       <div style={{ ...s.card, padding: "10px 14px", marginBottom: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input
           value={filterText}
           onChange={e => setFilterText(e.target.value)}
           placeholder="Search assignments…"
-          style={{ ...s.input, flex: "1 1 140px", padding: "5px 10px", fontSize: 12, height: "auto" }}
+          style={{ ...s.input, flex: isMobile ? "1 1 100%" : "1 1 140px", padding: isMobile ? "8px 10px" : "5px 10px", fontSize: 12, height: "auto" }}
         />
         <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
           {TYPES.map(t => (
@@ -237,7 +244,7 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
               style={{
                 ...s.badge(t.color),
                 cursor: "pointer",
-                padding: "3px 10px",
+                padding: isMobile ? "6px 12px" : "3px 10px",
                 fontSize: 11,
                 border: filterTypes.has(t.id) ? `1px solid ${t.color}` : `1px solid ${t.color}44`,
                 opacity: filterTypes.has(t.id) || filterTypes.size === 0 ? 1 : 0.4,
@@ -251,7 +258,7 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
         <select
           value={sort}
           onChange={e => setSort(e.target.value)}
-          style={{ ...s.input, width: "auto", padding: "5px 10px", fontSize: 12, height: "auto" }}
+          style={{ ...s.input, width: "auto", flex: isMobile ? "1 1 140px" : "0 0 auto", padding: isMobile ? "8px 10px" : "5px 10px", fontSize: 12, height: "auto" }}
         >
           <option value="name-asc">Name (A–Z)</option>
           <option value="name-desc">Name (Z–A)</option>
@@ -260,7 +267,7 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
         </select>
         <button
           onClick={() => { setFilterText(""); setFilterTypes(new Set()); }}
-          style={{ ...s.btnGhost, width: "auto", padding: "5px 12px", fontSize: 12, opacity: canClear ? 1 : 0, pointerEvents: canClear ? "auto" : "none" }}
+          style={{ ...s.btnGhost, width: "auto", padding: isMobile ? "8px 14px" : "5px 12px", fontSize: 12, display: !canClear && isMobile ? "none" : undefined, opacity: canClear ? 1 : 0, pointerEvents: canClear ? "auto" : "none" }}
         >
           Clear
         </button>
@@ -282,30 +289,121 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
         </div>
       ) : (
         <div style={{ ...s.card, overflow: "hidden" }}>
-          {/* Column headers */}
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: GRID_COLS,
-            gap: 8,
-            padding: "8px 14px",
-            borderBottom: `1px solid ${border}`,
-            fontSize: 11,
-            fontWeight: 600,
-            color: muted,
-            textTransform: "uppercase",
-            letterSpacing: "0.05em",
-          }}>
-            <span>Title</span>
-            <span>Type</span>
-            <span>Points</span>
-            <span>Due Date</span>
-            <span style={{ textAlign: "right" }}>Actions</span>
-          </div>
+          {/* Column headers — desktop only; the mobile cards label their own fields */}
+          {!isMobile && (
+            <div style={{
+              display: "grid",
+              gridTemplateColumns: GRID_COLS,
+              gap: 8,
+              padding: "8px 14px",
+              borderBottom: `1px solid ${border}`,
+              fontSize: 11,
+              fontWeight: 600,
+              color: muted,
+              textTransform: "uppercase",
+              letterSpacing: "0.05em",
+            }}>
+              <span>Title</span>
+              <span>Type</span>
+              <span>Points</span>
+              <span>Due Date</span>
+              <span style={{ textAlign: "right" }}>Actions</span>
+            </div>
+          )}
 
           {displayed.map((q, i) => {
             const isCustom = q._type === "quiz" && !!(customQuizzes && customQuizzes[q.id]);
             const tm = typeMeta(q._type);
             const hasOverride = q._type === "homework" && !!(homeworkSettings?.[q.id]);
+            const rowBorder = i < displayed.length - 1 ? `1px solid ${border}` : "none";
+            // One set of cells, two layouts: a grid row on desktop, a stacked card on mobile.
+            const btn = { ...s.btnGhost, width: "auto", padding: isMobile ? "7px 14px" : "5px 12px", fontSize: 12 };
+
+            const badgeEl = (
+              <span style={{ ...s.badge(tm.color), fontSize: 11, justifySelf: "start", whiteSpace: "nowrap" }}>{tm.label}</span>
+            );
+
+            // Max points — editable for manual assignments, fixed at 10 for quizzes/homework
+            const pointsEl = q._manual ? (
+              <input
+                type="number" min="1" step="1"
+                value={ptsDraft[q.id] ?? String(q.maxPts)}
+                onChange={e => setPtsDraft(d => ({ ...d, [q.id]: e.target.value }))}
+                onBlur={() => commitMaxPts(q.id)}
+                onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
+                title="Points this assignment is graded out of"
+                style={{ ...s.input, padding: isMobile ? "6px 8px" : "4px 6px", fontSize: 12, height: "auto", width: isMobile ? 76 : "100%" }}
+              />
+            ) : (
+              <span style={{ color: muted, fontSize: 12 }}>10</span>
+            );
+
+            // Due date — the same control as the Modules editor on the Home tab
+            const dueEl = (
+              <DueDateField
+                value={dueDates[q.id] || null}
+                onChange={next => setDueDate(q.id, next)}
+                direction="row"
+              />
+            );
+
+            const actionBtns = [];
+            if (isCustom) {
+              actionBtns.push(
+                <button key="edit" onClick={() => onEditCustomQuiz(q.id)} style={btn}>Edit</button>,
+                <button
+                  key="del"
+                  onClick={async () => {
+                    if (!window.confirm(`Delete "${q.title}"? This cannot be undone.`)) return;
+                    await onDeleteCustomQuiz(q.id);
+                  }}
+                  style={{ ...btn, color: "#f87171", borderColor: "#f8717144" }}
+                >
+                  Delete
+                </button>
+              );
+            }
+            if (q._type === "homework") {
+              actionBtns.push(
+                <button
+                  key="settings"
+                  onClick={() => setEditingHwSettings({ hwId: q.id, title: q.title, draft: { ...(q.grading || HW_GRADING_DEFAULTS) } })}
+                  style={{ ...btn, ...(hasOverride ? { color: "#60a5fa", borderColor: "#60a5fa55" } : {}) }}
+                  title={hasOverride ? "Custom grading settings active" : "Edit grading settings"}
+                >
+                  {hasOverride ? "⚙ Custom" : "⚙ Settings"}
+                </button>
+              );
+            }
+
+            if (isMobile) {
+              return (
+                <div
+                  key={q.id}
+                  style={{ padding: "12px 14px", borderBottom: rowBorder, display: "flex", flexDirection: "column", gap: 10 }}
+                >
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: "space-between" }}>
+                    <span style={{ color: text, fontSize: 14, fontWeight: 600, lineHeight: 1.3, wordBreak: "break-word" }}>{q.title}</span>
+                    {badgeEl}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ ...CARD_LABEL, color: muted }}>Points</span>
+                    {pointsEl}
+                  </div>
+
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    <span style={{ ...CARD_LABEL, color: muted }}>Due</span>
+                    {dueEl}
+                  </div>
+
+                  {actionBtns.length > 0 && (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{actionBtns}</div>
+                  )}
+                </div>
+              );
+            }
+
             return (
               <div
                 key={q.id}
@@ -315,68 +413,14 @@ export function Assignments({ quizzes, homeworks = [], manualAssignments = {}, g
                   gap: 8,
                   padding: "10px 14px",
                   alignItems: "center",
-                  borderBottom: i < displayed.length - 1 ? `1px solid ${border}` : "none",
+                  borderBottom: rowBorder,
                 }}
               >
-                {/* Title */}
                 <span style={{ color: text, fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{q.title}</span>
-
-                {/* Type badge */}
-                <span style={{ ...s.badge(tm.color), fontSize: 11, justifySelf: "start", whiteSpace: "nowrap" }}>{tm.label}</span>
-
-                {/* Max points — editable for manual assignments, fixed at 10 for quizzes/homework */}
-                {q._manual ? (
-                  <input
-                    type="number" min="1" step="1"
-                    value={ptsDraft[q.id] ?? String(q.maxPts)}
-                    onChange={e => setPtsDraft(d => ({ ...d, [q.id]: e.target.value }))}
-                    onBlur={() => commitMaxPts(q.id)}
-                    onKeyDown={e => { if (e.key === "Enter") e.currentTarget.blur(); }}
-                    title="Points this assignment is graded out of"
-                    style={{ ...s.input, padding: "4px 6px", fontSize: 12, height: "auto", width: "100%" }}
-                  />
-                ) : (
-                  <span style={{ color: muted, fontSize: 12 }}>10</span>
-                )}
-
-                {/* Due date — the same control as the Modules editor on the Home tab */}
-                <DueDateField
-                  value={dueDates[q.id] || null}
-                  onChange={next => setDueDate(q.id, next)}
-                  direction="row"
-                />
-
-                {/* Actions */}
-                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
-                  {isCustom && (
-                    <>
-                      <button
-                        onClick={() => onEditCustomQuiz(q.id)}
-                        style={{ ...s.btnGhost, width: "auto", padding: "5px 12px", fontSize: 12 }}
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={async () => {
-                          if (!window.confirm(`Delete "${q.title}"? This cannot be undone.`)) return;
-                          await onDeleteCustomQuiz(q.id);
-                        }}
-                        style={{ ...s.btnGhost, width: "auto", padding: "5px 12px", fontSize: 12, color: "#f87171", borderColor: "#f8717144" }}
-                      >
-                        Delete
-                      </button>
-                    </>
-                  )}
-                  {q._type === "homework" && (
-                    <button
-                      onClick={() => setEditingHwSettings({ hwId: q.id, title: q.title, draft: { ...(q.grading || HW_GRADING_DEFAULTS) } })}
-                      style={{ ...s.btnGhost, width: "auto", padding: "5px 12px", fontSize: 12, ...(hasOverride ? { color: "#60a5fa", borderColor: "#60a5fa55" } : {}) }}
-                      title={hasOverride ? "Custom grading settings active" : "Edit grading settings"}
-                    >
-                      {hasOverride ? "⚙ Custom" : "⚙ Settings"}
-                    </button>
-                  )}
-                </div>
+                {badgeEl}
+                {pointsEl}
+                {dueEl}
+                <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>{actionBtns}</div>
               </div>
             );
           })}
