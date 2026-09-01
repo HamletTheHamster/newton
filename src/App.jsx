@@ -840,7 +840,12 @@ export default function App() {
         fetch("/.netlify/functions/send-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ recipients, subject, body: record.body, secret: import.meta.env.VITE_EMAIL_SEND_SECRET }),
+          body: JSON.stringify({
+            recipients, subject, body: record.body,
+            title: record.title, courseLabel: prefix || null,
+            postedAt: record.createdAt, url: window.location.origin,
+            secret: import.meta.env.VITE_EMAIL_SEND_SECRET,
+          }),
         }).catch(() => {});
       }
     }
