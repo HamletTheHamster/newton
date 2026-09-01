@@ -75,6 +75,22 @@ const renderText = ({ title, body, courseLabel, url }) => [
   url ? `\nOpen Newton: ${url}` : null,
 ].filter(v => v !== null).join("\n");
 
+// One message per student, never one message addressed to the whole class: a shared
+// `to` array puts every classmate's address in the header of everyone's copy. Resend's
+// /emails/batch takes up to 100 separate messages per request, so a normal class is
+// still a single API call.
+const BATCH_LIMIT = 100;
+
+// `Name <addr>` needs the display name quoted if it carries anything the header
+// grammar treats as a separator, or the address is misparsed.
+const formatAddress = (name, email) => {
+  const n = String(name || "").trim();
+  if (!n) return email;
+  return /[",;:<>@()\[\]\\]/.test(n)
+    ? `"${n.replace(/(["\\])/g, "\\$1")}" <${email}>`
+    : `${n} <${email}>`;
+};
+
 export default async (req) => {
   if (req.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
 
@@ -89,22 +105,50 @@ export default async (req) => {
   if (!recipients?.length || !subject)
     return new Response(JSON.stringify({ error: "Missing recipients or subject" }), { status: 400, headers: { "Content-Type": "application/json" } });
 
-  const to = recipients.map(r => r.name ? `${r.name} <${r.email}>` : r.email);
+  // Dedupe by address: with separate sends, a roster listing someone twice would
+  // otherwise mail them twice.
+  const seen = new Set();
+  const addresses = [];
+  for (const r of recipients) {
+    const email = String(r?.email || "").trim();
+    if (!email) continue;
+    const key = email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    addresses.push(formatAddress(r?.name, email));
+  }
+  if (!addresses.length)
+    return new Response(JSON.stringify({ error: "No valid recipient addresses" }), { status: 400, headers: { "Content-Type": "application/json" } });
+
   const opts = { title, body: text, courseLabel, postedAt, url };
+  // Same rendered announcement for everyone; only the addressee differs.
+  const html = renderEmail(opts), plain = renderText(opts);
+  const message = to => ({ from: process.env.EMAIL_FROM_ADDRESS, to: [to], subject, html, text: plain });
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: { "Authorization": `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      from: process.env.EMAIL_FROM_ADDRESS, to, subject,
-      html: renderEmail(opts), text: renderText(opts),
-    }),
-  });
-
-  if (!res.ok) {
-    const err = await res.text();
-    return new Response(JSON.stringify({ error: err }), { status: res.status, headers: { "Content-Type": "application/json" } });
+  let sent = 0;
+  const errors = [];
+  for (let i = 0; i < addresses.length; i += BATCH_LIMIT) {
+    const batch = addresses.slice(i, i + BATCH_LIMIT);
+    let res;
+    try {
+      res = await fetch("https://api.resend.com/emails/batch", {
+        method: "POST",
+        headers: { "Authorization": `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+        body: JSON.stringify(batch.map(message)),
+      });
+    } catch (e) {
+      errors.push(e?.message || String(e));
+      continue;
+    }
+    if (res.ok) sent += batch.length;
+    else errors.push(await res.text());
   }
 
-  return new Response(JSON.stringify({ sent: recipients.length }), { status: 200, headers: { "Content-Type": "application/json" } });
+  const failed = addresses.length - sent;
+  if (sent === 0)
+    return new Response(JSON.stringify({ error: errors[0] || "Send failed", sent, failed }), { status: 502, headers: { "Content-Type": "application/json" } });
+
+  return new Response(JSON.stringify({ sent, ...(failed ? { failed, errors } : {}) }), {
+    status: failed ? 207 : 200, headers: { "Content-Type": "application/json" },
+  });
 };
