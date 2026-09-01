@@ -5,6 +5,7 @@ import { integrityState, resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
+import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 function catColor(catId) { return categoryColor(catId, TEAL); }
@@ -76,7 +77,8 @@ function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
 
 // ── GradeDetailPanel ──────────────────────────────────────────────────────────
 function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissions, gradeOverrides,
-    excusedMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, onClearSubmission, setEditingCell }) {
+    excusedMap, absentMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, onClearSubmission,
+    onSetAttendanceWaived, setEditingCell }) {
   const { s, muted, border, text, teal, card, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const { studentId, assignmentId } = editingCell;
@@ -84,6 +86,7 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
   const asgn = (assignments || []).find(a => a.id === assignmentId);
   const ov = (gradeOverrides[studentId] || {})[assignmentId] || {};
   const isExcused = !!excusedMap[studentId]?.[assignmentId];
+  const absence = absentMap?.[studentId]?.[assignmentId] || null;   // { date, base } when the lecture-absence policy applies
   const sub = (submissions || []).find(s => s.studentId === studentId && s.quizId === assignmentId);
   const ist = integrityState(sub, ov);
   const [showExtendPicker, setShowExtendPicker] = useState(false);
@@ -153,6 +156,33 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
           </div>
           {sub?.integrity?.reason && <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>{sub.integrity.reason}</div>}
           <div style={{ fontSize: 10, color: muted }}>Open the submission to review the work and clear or uphold the flag.</div>
+        </div>
+      )}
+
+      {/* Lecture-absence policy (labs). The zero is derived from the attendance record, never
+          stored, so waiving is a flag rather than an edit and un-waiving restores the zero. */}
+      {(absence || ov.attendanceWaived) && (
+        <div style={{ background: absence ? "rgba(248,113,113,0.1)" : "rgba(96,165,250,0.1)",
+          border: `1px solid ${absence ? "rgba(248,113,113,0.35)" : "rgba(96,165,250,0.35)"}`,
+          borderRadius: 6, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: absence ? "#f87171" : "#60a5fa" }}>
+            {absence ? `Absent ${formatSessionDate(absence.date)}: lab scored 0` : "Attendance policy waived"}
+          </div>
+          <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>
+            {absence
+              ? absence.base != null
+                ? `Course policy overrides the entered score of ${absence.base}.`
+                : "Course policy: no credit for the lab after an absence from lecture."
+              : "This lab is graded normally despite the absence."}
+          </div>
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onSetAttendanceWaived(studentId, assignmentId, !ov.attendanceWaived)}
+            style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`,
+              borderRadius: 6, color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
+          >
+            {ov.attendanceWaived ? "Reapply attendance policy" : "Waive attendance policy"}
+          </button>
         </div>
       )}
 
@@ -522,6 +552,7 @@ export function Gradebook({
   gradeOverrides,
   assignmentCategories,
   manualAssignments,
+  attendance,
   dueDates,
   assignmentNameOverrides,
   assignmentOrderOverrides,
@@ -623,19 +654,26 @@ export function Gradebook({
   const scoreMap = {};
   const excusedMap = {};
   const flaggedMap = {};
+  // absentMap: { [studentId]: { [assignmentId]: { date, base } } } — cells the lecture-absence
+  // policy zeroed. `base` is the score the instructor actually entered, kept so the cell can
+  // show what was earned struck through beside the enforced 0 rather than silently discarding it.
+  const absentMap = {};
+  const absenceMap = buildAbsenceMap(attendance);
   for (const stu of (roster || [])) {
     scoreMap[stu.studentId] = {};
     excusedMap[stu.studentId] = {};
     flaggedMap[stu.studentId] = {};
+    absentMap[stu.studentId] = {};
     for (const a of assignments) {
       const ov = (gradeOverrides[stu.studentId] || {})[a.id];
       const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
-      const r = resolveScore(sub, ov);
+      const r = resolveScore(sub, ov, attendanceFor(absenceMap, stu.studentId, a.id));
       if (r.excused) {
         excusedMap[stu.studentId][a.id] = true;
         continue;
       }
       if (r.flagged) flaggedMap[stu.studentId][a.id] = true;
+      if (r.absentZero) absentMap[stu.studentId][a.id] = { date: absenceMap[stu.studentId][a.id], base: r.base };
       scoreMap[stu.studentId][a.id] = r.effective;
     }
   }
@@ -665,7 +703,12 @@ export function Gradebook({
   }
 
   const handleCellClick = (studentId, assignmentId) => {
-    const sc = scoreMap[studentId]?.[assignmentId];
+    // Seed the editor with the score the instructor ENTERED, not the effective one. On a cell
+    // the attendance policy zeroed those differ, and seeding the 0 would mean clicking the
+    // cell and pressing Enter silently overwrites the real mark with a stored 0 — which a
+    // later waiver could then never restore.
+    const absence = absentMap[studentId]?.[assignmentId];
+    const sc = absence ? absence.base : scoreMap[studentId]?.[assignmentId];
     setEditingCell({ studentId, assignmentId });
     setEditScore(sc != null ? String(sc) : "");
   };
@@ -774,6 +817,21 @@ export function Gradebook({
     setEditingAssignmentTitle(null);
     if (!draft) return;
     await onSaveAssignmentNameOverrides({ ...(assignmentNameOverrides || {}), [id]: draft });
+  };
+
+  // Waive (or reapply) the lecture-absence policy for one lab cell. A flag on the override,
+  // never a written score: the zero stays derived from the attendance record, so correcting
+  // that record later still does the right thing and there is no stale 0 to clean up.
+  const setAttendanceWaived = async (studentId, assignmentId, waived) => {
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    const existing = current[assignmentId] || {};
+    if (waived) current[assignmentId] = { ...existing, attendanceWaived: true };
+    else {
+      const { attendanceWaived: _w, ...rest } = existing;
+      if (Object.keys(rest).length) current[assignmentId] = rest;
+      else delete current[assignmentId];
+    }
+    await onSaveOverrideForStudent(studentId, current);
   };
 
   // Apply a whole column of scores from BulkScoreModal. `byStudent` is { studentId: number|null }
@@ -1084,6 +1142,7 @@ export function Gradebook({
                     const score = scoreMap[stu.studentId]?.[a.id];
                     const isExcused = !!excusedMap[stu.studentId]?.[a.id];
                     const isFlagged = !!flaggedMap[stu.studentId]?.[a.id];
+                    const absence = absentMap[stu.studentId]?.[a.id];
                     const isMissing = score == null && !isExcused;
                     const isEditing = editingCell?.studentId === stu.studentId && editingCell?.assignmentId === a.id;
 
@@ -1107,7 +1166,9 @@ export function Gradebook({
                       );
                     }
 
-                    const cellTitle = isFlagged ? "Integrity flag: full credit. Click to review the submitted work."
+                    const cellTitle = absence
+                        ? `Absent from lecture ${formatSessionDate(absence.date)}: 0 by course policy${absence.base != null ? ` (entered score ${absence.base})` : ""} · click to waive`
+                      : isFlagged ? "Integrity flag: full credit. Click to review the submitted work."
                       : isExcused ? "Excused · click to edit"
                       : isMissing ? (a.type === "manual" ? "No score yet · click to enter" : "No submission · click to override")
                       : `${score}/${a.maxPts} · click to edit`;
@@ -1126,7 +1187,13 @@ export function Gradebook({
                         }}
                       >
                         {isFlagged && <span title="Integrity flag" style={{ color: "#f87171" }}>* </span>}
+                        {absence && <span title="Absent from lecture" style={{ color: "#f87171" }}>A </span>}
                         {isExcused ? "EX" : isMissing ? "–" : score}
+                        {/* The entered score is kept visible, struck through: the instructor needs
+                            to see that a lab WAS marked, and that policy is what zeroed it. */}
+                        {absence?.base != null && absence.base !== 0 && (
+                          <span style={{ marginLeft: 3, fontSize: 11, opacity: 0.55, textDecoration: "line-through" }}>{absence.base}</span>
+                        )}
                       </td>
                     );
                   })}
@@ -1171,6 +1238,8 @@ export function Gradebook({
           submissions={submissions}
           gradeOverrides={gradeOverrides}
           excusedMap={excusedMap}
+          absentMap={absentMap}
+          onSetAttendanceWaived={setAttendanceWaived}
           onExcuse={excuseCell}
           onUnexcuse={unexcuseCell}
           onViewSub={() => {

@@ -38,6 +38,7 @@ import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
 import { Gradebook } from "./screens/instructor/Gradebook.jsx";
 import { Assignments } from "./screens/instructor/Assignments.jsx";
+import { Attendance } from "./screens/instructor/Attendance.jsx";
 import { StudentGrades } from "./screens/student/StudentGrades.jsx";
 import { CourseEvals } from "./screens/student/CourseEvals.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
@@ -102,6 +103,7 @@ const INSTRUCTOR_SECTIONS = [
   { id: "modules",       label: "Home" },
   { id: "assignments",  label: "Assignments" },
   { id: "gradebook",    label: "Gradebook" },
+  { id: "attendance",   label: "Attendance" },
   { id: "calendar",     label: "Calendar" },
   { id: "roster",       label: "Roster" },
   { id: "announcements", label: "Announcements" },
@@ -138,6 +140,7 @@ export default function App() {
   const [gradeOverrides, setGradeOverrides] = useState({});     // { [studentId]: { [assignmentId]: { score?, excused? } } }
   const [assignmentCategories, setAssignmentCategories] = useState({});  // { [assignmentId]: catId }
   const [manualAssignments, setManualAssignments] = useState({});         // { [id]: { id, title, catId, maxPts } }
+  const [attendance, setAttendance] = useState({});                      // { [date]: { date, labId, takenAt, marks: { [studentId]: status } } }
   const [assignmentNameOverrides, setAssignmentNameOverrides] = useState({}); // { [assignmentId]: string }
   const [assignmentOrderOverrides, setAssignmentOrderOverrides] = useState({}); // { [assignmentId]: number }
   const [homeworkSettings, setHomeworkSettings] = useState({});                 // { [hwId]: grading override obj }
@@ -419,6 +422,7 @@ export default function App() {
           if (c.gradeOverrides && typeof c.gradeOverrides === 'object') setGradeOverrides(c.gradeOverrides);
           if (c.assignmentCategories && typeof c.assignmentCategories === 'object') setAssignmentCategories(c.assignmentCategories);
           if (c.manualAssignments && typeof c.manualAssignments === 'object') setManualAssignments(c.manualAssignments);
+          if (c.attendance && typeof c.attendance === 'object') setAttendance(c.attendance);
           if (c.customQuizzes && typeof c.customQuizzes === 'object') setCustomQuizzes(c.customQuizzes);
           if (c.homeworkSettings && typeof c.homeworkSettings === 'object') setHomeworkSettings(c.homeworkSettings);
         } else if (storedId) {
@@ -444,7 +448,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData, attendanceData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -464,6 +468,7 @@ export default function App() {
         fbGet(classPath(classId, 'syllabus')).catch(() => null),
         fbGet(classPath(classId, 'customQuizzes')).catch(() => null),
         fbGet(classPath(classId, 'homeworkSettings')).catch(() => null),
+        fbGet(classPath(classId, 'attendance')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -539,7 +544,9 @@ export default function App() {
       setAssignmentOrderOverrides(orderOverrideObj);
       const hwSettingsObj = (hwSettingsData && typeof hwSettingsData === 'object') ? hwSettingsData : {};
       setHomeworkSettings(hwSettingsObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj } }));
+      const attendanceObj = (attendanceData && typeof attendanceData === 'object') ? attendanceData : {};
+      setAttendance(attendanceObj);
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj, attendance: attendanceObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -558,7 +565,7 @@ export default function App() {
     try {
       const [modulesData, moduleConfigData, pagesData, uploadsData, customQuizzesData,
              datesData, hwSettingsData, annsData, gradeOverridesData, syllabusData,
-             manualAsgnData] = await Promise.all([
+             manualAsgnData, attendanceData] = await Promise.all([
         fbGet(classPath(classId, 'modules')).catch(() => undefined),
         fbGet(classPath(classId, 'moduleConfig')).catch(() => undefined),
         fbGet(classPath(classId, 'pages')).catch(() => undefined),
@@ -570,6 +577,7 @@ export default function App() {
         fbGet(classPath(classId, 'gradeOverrides')).catch(() => undefined),
         fbGet(classPath(classId, 'syllabus')).catch(() => undefined),
         fbGet(classPath(classId, 'manualAssignments')).catch(() => undefined),
+        fbGet(classPath(classId, 'attendance')).catch(() => undefined),
       ]);
       // `undefined` = the fetch failed; skip that node rather than blanking it.
       // `null` = the node genuinely doesn't exist → normalize to empty, same as loadClassData.
@@ -598,6 +606,10 @@ export default function App() {
       // calendar and grades list), so it has to be re-polled like any other instructor node.
       // Seeding stays loadClassData's job: a missing node normalizes to {} here, never seeds.
       take(manualAsgnData, setManualAssignments, 'manualAssignments', obj);
+      // Students consume attendance indirectly: an absence zeroes that day's lab (resolveScore),
+      // and their grades list labels the row. Without re-polling, a roll call taken while a
+      // student had their portal open would not reach them until they reloaded.
+      take(attendanceData, setAttendance, 'attendance', obj);
       if (Object.keys(patch).length) {
         setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), ...patch } }));
       }
@@ -858,6 +870,24 @@ export default function App() {
     updateClassCache(cid, 'manualAssignments', next);
     await fbSave(classPath(cid, 'manualAssignments'), Object.keys(next).length ? next : null);
   };
+  // Attendance is written one SESSION at a time (`attendance/{date}`), never as a whole node:
+  // a roll call is a single day's work, and a whole-node write would let a stale in-memory copy
+  // clobber a session edited from another tab.
+  const saveAttendanceSession = async session => {
+    const cid = requireClass();
+    const next = { ...attendance, [session.id]: session };
+    setAttendance(next);
+    updateClassCache(cid, 'attendance', next);
+    await fbSave(classPath(cid, `attendance/${session.id}`), session, 'attendance');
+  };
+  const deleteAttendanceSession = async sessionId => {
+    const cid = requireClass();
+    const next = { ...attendance }; delete next[sessionId];
+    setAttendance(next);
+    updateClassCache(cid, 'attendance', next);
+    await fbSave(classPath(cid, `attendance/${sessionId}`), null, 'attendance');
+  };
+
   const saveAssignmentNameOverrides = async next => {
     const cid = requireClass();
     setAssignmentNameOverrides(next);
@@ -946,6 +976,14 @@ export default function App() {
     let checkedChanged = false;
     removedSubIds.forEach(id => { if (id in newChecked) { delete newChecked[id]; checkedChanged = true; } });
     const newOverrides = { ...gradeOverrides }; delete newOverrides[studentId];
+    // Attendance marks are keyed by studentId INSIDE each session, so there is no single
+    // per-student node to null out — each session that mentions them is rewritten.
+    const newAttendance = { ...attendance };
+    const attendanceSessionIds = Object.keys(newAttendance).filter(id => newAttendance[id]?.marks?.[studentId]);
+    for (const id of attendanceSessionIds) {
+      const marks = { ...newAttendance[id].marks }; delete marks[studentId];
+      newAttendance[id] = { ...newAttendance[id], marks };
+    }
     const newSubsByStudent = {};
     newSubs.forEach(sub => { (newSubsByStudent[sub.studentId] ||= []).push(sub); });
 
@@ -957,6 +995,7 @@ export default function App() {
     await fbSave(classPath(cid, `hwDrafts/${studentId}`), null);
     await fbSave(classPath(cid, `hwAttempts/${studentId}`), null);
     await fbSave(classPath(cid, `hwProgress/${studentId}`), null);
+    for (const id of attendanceSessionIds) await fbSave(classPath(cid, `attendance/${id}/marks/${studentId}`), null);
     if (checkedChanged) await fbSave(classPath(cid, 'checkedSubs'), newChecked);
 
     // In-memory state + class cache.
@@ -964,6 +1003,7 @@ export default function App() {
     setStudentPws(newPws); updateClassCache(cid, 'studentPws', newPws);
     setSubmissions(newSubs); updateClassCache(cid, 'submissions', newSubsByStudent);
     setGradeOverrides(newOverrides); updateClassCache(cid, 'gradeOverrides', newOverrides);
+    if (attendanceSessionIds.length) { setAttendance(newAttendance); updateClassCache(cid, 'attendance', newAttendance); }
     if (checkedChanged) { setCheckedSubs(newChecked); updateClassCache(cid, 'checkedSubs', newChecked); }
 
     // Storage: delete every uploaded written-work file under this student's folder. Combine
@@ -992,6 +1032,7 @@ export default function App() {
     setAnnouncements({});
     setCustomQuizzes({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
+    setAttendance({});
     await loadClassData(classId);
   };
   const switchStudentClass = async (classId, student) => {
@@ -1658,7 +1699,7 @@ export default function App() {
     } else if (studentSection === "calendar") {
       mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} manual={manualAssignmentList} completedQuizIds={completedQuizIds} locks={assignmentLocks} onOpen={openAssignment} />;
     } else if (studentSection === "grades") {
-      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} manualAssignments={manualAssignments} dueDates={dueDates} assignmentNameOverrides={assignmentNameOverrides} />;
+      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} manualAssignments={manualAssignments} attendance={attendance} dueDates={dueDates} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
       mainContent = <StudentSyllabus syllabus={syllabus} />;
     } else if (studentSection === "evals") {
@@ -1977,6 +2018,7 @@ export default function App() {
             gradeOverrides={gradeOverrides}
             assignmentCategories={assignmentCategories}
             manualAssignments={manualAssignments}
+            attendance={attendance}
             dueDates={dueDates}
             assignmentNameOverrides={assignmentNameOverrides}
             assignmentOrderOverrides={assignmentOrderOverrides}
@@ -2018,6 +2060,17 @@ export default function App() {
             }}
             onCreateQuiz={() => setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId: null })}
             onDeleteCustomQuiz={deleteCustomQuiz}
+          />
+        )}
+
+        {currentClassId && instructorSection === "attendance" && (
+          <Attendance
+            roster={roster}
+            attendance={attendance}
+            manualAssignments={manualAssignments}
+            dueDates={dueDates}
+            onSaveSession={saveAttendanceSession}
+            onDeleteSession={deleteAttendanceSession}
           />
         )}
 

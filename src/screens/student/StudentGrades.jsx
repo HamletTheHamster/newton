@@ -4,6 +4,7 @@ import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js
 import { resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { categoryColor } from "../../category-colors.js";
+import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
 
 function overallColor(pct) {
   if (pct >= 90) return "#4ade80"; if (pct >= 80) return "#a3e635";
@@ -30,7 +31,7 @@ function scoreColor(score, maxPts, excused, missing, muted) {
   return "#f87171";
 }
 
-export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, manualAssignments, dueDates, assignmentNameOverrides }) {
+export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, manualAssignments, attendance, dueDates, assignmentNameOverrides }) {
   const { s, text, muted, border, teal } = useTheme();
   const myId = loggedInStudent?.studentId;
   const [viewSub, setViewSub] = useState(null);  // { submission, title, id } — opens read-only SubViewModal
@@ -50,22 +51,30 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
   // excusal exists. Showing them earlier would park a phantom zero on the student's grade.
   const submittedIds = new Set((submissions || []).filter(s => s.studentId === myId).map(s => s.quizId));
   const now = new Date();
+  // An absence is a third way a manual row becomes real: the lecture-attendance policy fixes
+  // that lab at 0 whether or not it has been marked yet, so waiting for a score would hide a
+  // grade the student already has. Shown only once the roll call is taken (buildAbsenceMap).
+  const myAbsences = buildAbsenceMap(attendance)[myId] || {};
   const assignments = allAssignments.filter(a =>
     a.type === "manual"
       ? myOverrides[a.id]?.score != null || !!myOverrides[a.id]?.excused
+        || (myAbsences[a.id] && !myOverrides[a.id]?.attendanceWaived)
       : submittedIds.has(a.id) || (a.dueDate && dueToDate(a.dueDate) < now)
   );
 
   const scores = {};
   const excused = {};
+  const absentOn = {};   // { [assignmentId]: sessionDate } — labs zeroed by the attendance policy
+  const absenceMap = { [myId]: myAbsences };
   for (const a of assignments) {
     const ov = myOverrides[a.id];
     const sub = (submissions || []).find(s => s.studentId === myId && s.quizId === a.id);
     // Shared resolver: whole-assignment override > per-part overrides > submission score,
     // then the upheld-integrity penalty — identical to the instructor Gradebook so what the
     // instructor sets is exactly what the student sees here. A flag alone never withholds credit.
-    const r = resolveScore(sub, ov);
+    const r = resolveScore(sub, ov, attendanceFor(absenceMap, myId, a.id));
     if (r.excused) { excused[a.id] = true; continue; }
+    if (r.absentZero) absentOn[a.id] = myAbsences[a.id];
     scores[a.id] = r.effective;
   }
 
@@ -172,9 +181,15 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                     cursor: mySub ? "pointer" : "default",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                     <span style={{ color: isDropped ? muted : text, fontSize: 14 }}>{a?.title || item.id}</span>
                     {isDropped && <span style={{ ...s.badge(muted), fontSize: 10 }}>dropped</span>}
+                    {/* A bare 0 on a lab prompts an email. Say why it is a 0. */}
+                    {absentOn[item.id] && (
+                      <span style={{ ...s.badge("#f87171"), fontSize: 10 }}>
+                        absent for lecture {formatSessionDate(absentOn[item.id])}
+                      </span>
+                    )}
                     {mySub && <span style={{ color: teal, fontSize: 12 }}>View ›</span>}
                   </div>
                   <span style={{ fontFamily: "monospace", fontSize: 14, fontWeight: 600, color: sc }}>

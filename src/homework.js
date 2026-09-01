@@ -580,24 +580,40 @@ export function scoreFromPartOverrides(submission, partScores) {
 // so the score the instructor sets is always exactly what the student sees (grades
 // list AND submission view), for quizzes and homework alike. Resolution order:
 //   1. ov.excused                        → excluded from the grade (no score)
-//   2. ov.score (whole-assignment)       → wins over everything below
-//   3. ov.partScores (homework only)     → recompute via scoreFromPartOverrides
-//   4. submission.score                  → the auto-graded score
+//   2. attendance absence (lab policy)   → hard 0, unless ov.attendanceWaived
+//   3. ov.score (whole-assignment)       → wins over everything below
+//   4. ov.partScores (homework only)     → recompute via scoreFromPartOverrides
+//   5. submission.score                  → the auto-graded score
 // then the upheld-integrity 50% penalty applies. Returns:
-//   { excused, base, penalized, flagged, effective }
-//   base      = /10 score before the integrity penalty (null = no score yet)
-//   effective = the integrity-adjusted /10 score to display & feed into calcGrades
-//               (null when excused or no score exists)
-export function resolveScore(submission, override) {
+//   { excused, base, penalized, flagged, absentZero, effective }
+//   base       = /10 score before the integrity penalty (null = no score yet). For an
+//                absence this is still the score the instructor entered, so the gradebook
+//                can show what was earned struck through beside the enforced 0.
+//   absentZero = the course attendance policy is what produced `effective`
+//   effective  = the /10 score to display & feed into calcGrades (null when excused)
+//
+// `attendance` is { absent, date } | null — build it with attendanceFor(buildAbsenceMap(…))
+// from attendance.js. Course policy: a student absent from lecture earns no credit for that
+// day's lab. The zero is DERIVED here on every read, never written into gradeOverrides, so
+// correcting the attendance record restores the entered score with nothing to undo.
+//
+// It deliberately outranks ov.score. Lab marks get bulk-entered from a stack of paper, so if
+// a typed score won, the policy would be silently undone for exactly the students it targets
+// — the ones who handed in a lab they were absent for. The instructor's escape hatch is the
+// explicit `ov.attendanceWaived` flag (the Waive button in the gradebook's detail panel),
+// which mirrors how `integrityReview` gates the integrity penalty.
+export function resolveScore(submission, override, attendance) {
   const ov = override || {};
   const sub = submission || null;
   const ist = integrityState(sub, ov);
-  if (ov.excused) return { excused: true, base: null, penalized: ist.penalized, flagged: ist.flagged, effective: null };
+  if (ov.excused) return { excused: true, base: null, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, effective: null };
   let base;
   if (ov.score != null) base = ov.score;
   else if (ov.partScores && sub && sub.type === "homework") base = scoreFromPartOverrides(sub, ov.partScores);
   else base = sub != null ? sub.score : null;
-  return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, effective: integrityAdjustedScore(base, ist.penalized) };
+  const absentZero = !!(attendance?.absent && !ov.attendanceWaived);
+  if (absentZero) return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: true, effective: 0 };
+  return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, effective: integrityAdjustedScore(base, ist.penalized) };
 }
 
 // Turn a student-uploaded work File into a Claude content block: images are compressed and

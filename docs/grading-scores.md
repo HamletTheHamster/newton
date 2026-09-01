@@ -15,22 +15,28 @@ hand-entered manual assignments — exams and labs).
   `earned`/`max`), plus `integrity`.
 - **Override** — `gradeOverrides[studentId][assignmentId]`, written only by the
   instructor:
-  `{ score?, excused?, previousScore?, dueDate?, partScores?, integrityReview? }`.
+  `{ score?, excused?, previousScore?, dueDate?, partScores?, integrityReview?, attendanceWaived? }`.
   - `score` — whole-assignment manual score, `0`–`maxPts`. Applies to quizzes, homework
     **and** manual assignments (where it is the *only* source — there is no submission).
   - `partScores` — `{ [itemId]: earnedValue }`, homework only (per-part edits from the
     submission view).
   - `excused` — omit from grade calc.
   - `integrityReview` — `"cleared" | "upheld"` for flagged homework written-work.
+  - `attendanceWaived` — `true` exempts this one cell from the lecture-absence policy below.
+- **Attendance** — `classes/{classId}/attendance/{date}`
+  (`{ date, labId, takenAt, marks: { [studentId]: "present"|"absent"|"excused" } }`), written
+  by the instructor's Attendance tab. Not a score: the lab zero it causes is *derived*
+  (see below), never stored.
 
 ## The canonical resolution order
 
 The **effective base score** for a cell is:
 
 1. `ov.excused` → excluded (EX)
-2. `ov.score` (whole-assignment override) — **wins over everything below**
-3. `ov.partScores` (homework only) → recompute via `computeScoreFromPartOverrides`
-4. otherwise `submission.score`
+2. **lecture absence** (course policy, labs) → hard `0`, unless `ov.attendanceWaived`
+3. `ov.score` (whole-assignment override) — **wins over everything below**
+4. `ov.partScores` (homework only) → recompute via `computeScoreFromPartOverrides`
+5. otherwise `submission.score`
 
 …then `integrityAdjustedScore(base, integrityState(sub, ov).penalized)` applies the
 50% penalty **only if** a flag was *upheld*.
@@ -47,11 +53,39 @@ keeping a no-change part override exactly equal to the submitted `submission.sco
 
 ```js
 // homework.js (pure, no React)
-resolveScore(submission, override)
-//   → { excused, base, penalized, flagged, effective }
-//   base      = /10 score before integrity penalty (null = no score)
-//   effective = integrity-adjusted /10 score to display & feed calcGrades (null = none/excused)
+resolveScore(submission, override, attendance)
+//   attendance = { absent, date } | null   ← attendanceFor(buildAbsenceMap(node), sid, aid)
+//   → { excused, base, penalized, flagged, absentZero, effective }
+//   base       = /10 score before the integrity penalty (null = no score). Kept even when an
+//                absence zeroes the cell, so the gradebook can show the entered score struck
+//                through beside the enforced 0.
+//   absentZero = the attendance policy produced `effective`
+//   effective  = the /10 score to display & feed calcGrades (null = none/excused)
 ```
+
+### The lecture-attendance policy (step 2)
+
+Course policy: a student absent from lecture earns **no credit for that day's lab**. The
+mechanics, and why they are what they are:
+
+- **The zero is derived on every read, never written.** No `0` is ever put into
+  `gradeOverrides`. Correcting the attendance record restores the entered score with nothing
+  to undo, and the gradebook keeps the mark the instructor actually gave.
+- **It outranks `ov.score`.** Lab marks are bulk-entered from a stack of paper, so a typed
+  score winning would silently undo the policy for exactly the students it targets: the ones
+  who handed in a lab they were absent for. The entered value survives as `base` and is shown
+  struck through beside the `0`.
+- **Only `absent` counts, and only from a taken session.** `excused` does not zero the lab.
+  A session with `takenAt: null` (created but not yet rolled) zeroes nobody, and a student
+  with no entry in `marks` (added to the roster after the roll) is never zeroed: an absence
+  has to be affirmative, never inferred from missing data. `buildAbsenceMap`
+  (`src/attendance.js`) enforces all three in one place.
+- **The instructor's escape hatch is `ov.attendanceWaived`**, set from the "Waive attendance
+  policy" button in the gradebook's `GradeDetailPanel`. It mirrors how `integrityReview`
+  gates the integrity penalty: an explicit per-cell flag, not an edit.
+- **The student is told why.** `StudentGrades` labels the row "absent for lecture Sep 8"
+  and, unlike other manual assignments, shows it before any score is entered, since the
+  policy has already settled the outcome. Students never see anyone else's attendance.
 
 ## How the three surfaces now stay in sync
 
@@ -100,6 +134,9 @@ Three things differ from quiz/homework and every reader must respect them:
   It is also why the student's grades list shows no row until the score exists.
 - **Nothing to open.** They appear on the student calendar and in the To Do rail (upcoming
   only, never past-due) but are never clickable and never module-gated.
+- **Labs can be zeroed by attendance.** A lab (`catId: "cat_lab"`) linked to an attendance
+  session is subject to the lecture-absence policy above, which is the one case where a
+  manual row appears in the student's grades list with no score entered.
 
 Scores are entered either cell-by-cell or, for a whole column at once, through
 `BulkScoreModal` (the "enter scores" link in a manual column's header). Bulk save goes
