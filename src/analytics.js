@@ -380,13 +380,23 @@ export function strengthLabel(r) {
   return `very strong ${dir}`;
 }
 
+// The "Reading" column. `strengthLabel` alone cannot tell the two null cases apart, and calling
+// them both "not enough data" is wrong and misleading in the common one: a quiz where every
+// student scored 10/10 has plenty of data and simply no variation to correlate. That happens
+// constantly with mastery-style grading, so it deserves its own words.
+export function readingFor(row) {
+  if (row?.r != null) return strengthLabel(row.r);
+  if (!row || row.n < 3) return "not enough data";
+  return "no variation to measure";
+}
+
 // The caveat that belongs beside any r computed on a class-sized sample. Returns null when
 // there is nothing worth warning about.
 export function strengthNote(row) {
   if (row.r == null) {
     return row.n < 3
       ? "Too few students have scores on both assignments."
-      : "Every student scored the same on one of these, so there is no relationship to measure.";
+      : "Every student got the same result on one of these, so there is no variation to correlate. That is a finding about the assignment, not a gap in the data: an assignment everyone aces cannot predict anything.";
   }
   if (row.n < 10) return "Very small sample — treat this as a hint, not a finding.";
   if (row.ci && row.ci[0] < 0 && row.ci[1] > 0) return "The confidence interval spans zero, so the direction is not yet established.";

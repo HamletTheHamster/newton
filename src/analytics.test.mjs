@@ -197,5 +197,35 @@ eq("time on task sums every assignment", timeOnTaskMap({
   near("time is paired in minutes, not milliseconds", t1.points[0].x, 1, 0.001);
 }
 
+
+
+// ── Regressions found in a real class ─────────────────────────────────────────
+{
+  const { readingFor, strengthNote, buildScoreMatrix, pairStudents } = await import("./analytics.js");
+
+  // A quiz everyone aced has plenty of data and no variance. Calling that "not enough data" is
+  // wrong, and it was: the two null cases were reported with the same words.
+  eq("zero variance is not reported as missing data", readingFor({ r: null, n: 10 }), "no variation to measure");
+  eq("genuinely too few pairs still says so", readingFor({ r: null, n: 2 }), "not enough data");
+  eq("a real coefficient reads normally", readingFor({ r: 0.62, n: 20 }), "strong positive");
+  if (!strengthNote({ r: null, n: 10 }).includes("variation")) { fails++; console.log("FAIL zero-variance note should explain the flat column"); }
+  else console.log("ok   zero-variance note explains the flat column");
+
+  // Submissions from a student who is not on the roster must never reach the analytics. The
+  // gradebook iterates the roster and so never sees them; a real class had a deleted test
+  // student's homework showing as a submission the gradebook said did not exist.
+  const rosterR = [{ studentId: "a", fullName: "A" }, { studentId: "b", fullName: "B" }];
+  const asg = [{ id: "hw1", title: "HW1", type: "homework", catId: "cat_hw", maxPts: 10, dueDate: "2020-01-01" }];
+  const withGhost = [
+    { studentId: "a", quizId: "hw1", type: "homework", score: 8 },
+    { studentId: "ghost", quizId: "hw1", type: "homework", score: 10 },
+  ];
+  const scoped = withGhost.filter(x => rosterR.some(r => r.studentId === x.studentId));
+  eq("roster scoping drops the orphan submission", scoped.length, 1);
+  const m = buildScoreMatrix({ roster: rosterR, assignments: asg, submissions: scoped, gradeOverrides: {}, attendance: {} });
+  eq("the matrix never gains a non-roster student", Object.keys(m.scoreMap).sort(), ["a", "b"]);
+  eq("the orphan is not indexed", m.subsByStudent.ghost, undefined);
+}
+
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall passed");
 process.exit(fails ? 1 : 0);

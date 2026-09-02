@@ -116,6 +116,30 @@ Details that matter:
 - The x axis is a percentage only for scores. Attempts and minutes get a domain fitted to the
   data and rounded outward to a nice step, so ticks read 0/100/200 rather than 0/111.3/222.5.
 
+### Two rules the tab must not break
+
+Both were real bugs found against a live class, and both are the kind that produce a confident
+wrong answer rather than an error.
+
+**Submissions are scoped to the roster.** App.jsx flattens the whole `submissions` node without
+checking the roster, so a removed or never-enrolled student's work survives in it. The Gradebook
+never sees them because it iterates the roster; the analytics did, and reported a homework
+submission the gradebook said did not exist. The Analytics shell filters once
+(`rosterSubmissions`) and every view below it reads that.
+
+**Coincident scatter points are drawn as one marker with its count on it.** Course grades are
+heavily discretized: a quiz where the whole class scored 10/10 puts every student on a single
+pixel. Plain markers silently drew ten students as two dots, and the natural thing to do with a
+scatter is count the dots. Stacks are sized by how many students share the coordinate, labelled
+with the count, and the tooltip names them. The regression is still fitted to the raw points, so
+every student weighs the same however many share a position.
+
+A related wording rule: `readingFor` distinguishes **"not enough data"** (fewer than three pairs)
+from **"no variation to measure"** (plenty of students, all with the same result). Calling the
+second one missing data is wrong, and with mastery-style grading it is the common case: an
+assignment everyone aces genuinely cannot predict anything, and that is a finding about the
+assignment rather than a gap in the data.
+
 ## The shared score matrix
 
 `buildScoreMatrix` (`src/analytics.js`) builds the student × assignment grid of **effective**

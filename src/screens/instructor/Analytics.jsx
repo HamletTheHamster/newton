@@ -6,7 +6,7 @@ import { categoryColor } from "../../category-colors.js";
 import { fbGet, classPath } from "../../firebase.js";
 import { InfoDot } from "../../components/InfoDot.jsx";
 import {
-  buildScoreMatrix, buildCorrelations, linearFit, strengthLabel, strengthNote, mergeTelemetry,
+  buildScoreMatrix, buildCorrelations, linearFit, strengthNote, readingFor, mergeTelemetry,
   effortByStudent, PREDICTORS,
 } from "../../analytics.js";
 import { CORR_POS, corrNeg, fmtR, fmtPct, Stat, StatRow, ViewTabs, EmptyCard, Panel } from "./analytics-ui.jsx";
@@ -128,7 +128,21 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
   // ever mounted (a comparison view, a print layout), and the first definition would win.
   const clipId = `scatterClip-${useId().replace(/:/g, "")}`;
   const points = row?.points || [];
+  // The fit is computed from the RAW points, never the stacks below: every student must weigh
+  // the same in the regression, however many share a coordinate.
   const fit = useMemo(() => linearFit(points.map(p => [p.x, p.y])), [points]);
+  // Group students who land on the same coordinate. Rounded to 2dp, which is finer than the
+  // plot can resolve, so only genuinely coincident points merge.
+  const stacks = useMemo(() => {
+    const by = new Map();
+    for (const p of points) {
+      const key = `${p.x.toFixed(2)}|${p.y.toFixed(2)}`;
+      const st = by.get(key) || { key, x: p.x, y: p.y, names: [] };
+      st.names.push(p.name);
+      by.set(key, st);
+    }
+    return [...by.values()].map(st => ({ ...st, n: st.names.length }));
+  }, [points]);
   const gridInk = border;
 
   if (!points.length) {
@@ -178,19 +192,33 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
           />
         )}
 
-        {/* Markers: >= 8px, each with a 2px surface ring so overlapping students stay countable. */}
-        {points.map(p => {
-          const on = hover?.studentId === p.studentId;
+        {/* Coincident students are drawn as ONE marker sized by how many are stacked there, with
+            the count printed on it. Course grades are heavily discretized — a quiz where everyone
+            scored 10/10 puts the whole class on a single pixel — so plain markers would silently
+            draw ten students as one dot and invite counting the dots. That is not a rare edge
+            case here; it is the normal shape of a well-done assignment. */}
+        {stacks.map(st => {
+          const on = hover?.key === st.key;
+          // Area grows with the count, capped, so a big stack reads as big without swallowing
+          // the plot. Never let a marker fall below the 8px minimum.
+          const r = Math.min(11, 4.5 + 2.2 * Math.sqrt(st.n - 1)) + (on ? 1.5 : 0);
           return (
-            <circle
-              key={p.studentId}
-              cx={sx(p.x)} cy={scY(p.y)} r={on ? 6.5 : 5}
-              fill={CORR_POS} fillOpacity={on ? 1 : 0.85}
-              stroke={isLight ? "#faf8f6" : "#1e1e1f"} strokeWidth="2"
-              style={{ cursor: "pointer", transition: "r 0.1s" }}
-              onMouseEnter={() => setHover(p)}
-              onMouseLeave={() => setHover(null)}
-            />
+            <g key={st.key}>
+              <circle
+                cx={sx(st.x)} cy={scY(st.y)} r={r}
+                fill={CORR_POS} fillOpacity={on ? 1 : 0.85}
+                stroke={isLight ? "#faf8f6" : "#1e1e1f"} strokeWidth="2"
+                style={{ cursor: "pointer", transition: "r 0.1s" }}
+                onMouseEnter={() => setHover(st)}
+                onMouseLeave={() => setHover(null)}
+              />
+              {st.n > 1 && (
+                <text
+                  x={sx(st.x)} y={scY(st.y) + 3.2} textAnchor="middle" fontSize="9.5"
+                  fontWeight="700" fill={isLight ? "#fff" : "#0d1211"} style={{ pointerEvents: "none" }}
+                >{st.n}</text>
+              )}
+            </g>
           );
         })}
 
@@ -205,22 +233,36 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
         </text>
       </svg>
 
-      {hover && (
+      {hover && (() => {
+      // Clamp the tooltip's anchor near the edges. Centering it on the marker pushes half the
+      // box outside the panel for a point at 0% or 100%, and grades cluster at exactly those
+      // values, so the edge case is the common one.
+      const fx = sx(hover.x) / SC.w;
+      const shiftX = fx > 0.78 ? "-88%" : fx < 0.22 ? "-12%" : "-50%";
+      return (
         <div style={{
           position: "absolute", pointerEvents: "none", zIndex: 5,
-          left: `${(sx(hover.x) / SC.w) * 100}%`,
+          left: `${fx * 100}%`,
           top: `${(scY(hover.y) / SC.h) * 100}%`,
-          transform: "translate(-50%, calc(-100% - 12px))",
+          transform: `translate(${shiftX}, calc(-100% - 12px))`,
           background: isLight ? "#fff" : "#252627",
           border: `1px solid ${border}`, borderRadius: 8, padding: "6px 9px",
           boxShadow: "0 8px 22px rgba(0,0,0,0.35)", whiteSpace: "nowrap",
         }}>
-          <div style={{ color: text, fontSize: 12, fontWeight: 600 }}>{hover.name}</div>
+          <div style={{ color: text, fontSize: 12, fontWeight: 600 }}>
+            {hover.n === 1 ? hover.names[0] : `${hover.n} students`}
+          </div>
+          {hover.n > 1 && (
+            <div style={{ color: muted, fontSize: 11, maxWidth: 220, whiteSpace: "normal" }}>
+              {hover.names.slice(0, 6).join(", ")}{hover.names.length > 6 ? `, and ${hover.names.length - 6} more` : ""}
+            </div>
+          )}
           <div style={{ color: muted, fontSize: 11, fontFamily: "monospace" }}>
             {fmtX(hover.x)} / {fmtPct(hover.y)}
           </div>
         </div>
-      )}
+      );
+      })()}
     </div>
   );
 }
@@ -280,7 +322,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
         row.r2 == null ? "" : row.r2.toFixed(4),
         row.ci ? row.ci[0].toFixed(4) : "",
         row.ci ? row.ci[1].toFixed(4) : "",
-        `"${strengthLabel(row.r)}"`,
+        `"${readingFor(row)}"`,
       ].join(","));
     }
     const blob = new Blob([lines.join("\n")], { type: "text/csv" });
@@ -456,7 +498,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
                     display: "flex", gap: 20, flexWrap: "wrap", padding: "10px 12px", marginBottom: 14,
                     borderRadius: 8, border: `1px solid ${border}`,
                   }}>
-                    <Stat label="r" value={fmtR(selected.r)} color={selColor} hint={strengthLabel(selected.r)} />
+                    <Stat label="r" value={fmtR(selected.r)} color={selColor} hint={readingFor(selected)} />
                     <Stat
                       label="r squared"
                       value={selected.r2 == null ? "-" : selected.r2.toFixed(2)}
@@ -535,7 +577,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
                           {row.assignment.title}
                           {isMobile && (
                             <span style={{ display: "block", color: muted, fontSize: 11, marginTop: 3, marginLeft: 15 }}>
-                              {strengthLabel(row.r)}
+                              {readingFor(row)}
                               {row.ci ? ` · ${fmtR(row.ci[0])} to ${fmtR(row.ci[1])}` : ""}
                             </span>
                           )}
@@ -550,7 +592,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
                             <td style={{ padding: "9px 10px", color: muted, fontSize: 12, fontFamily: "monospace", textAlign: "right", whiteSpace: "nowrap" }}>
                               {row.ci ? `${fmtR(row.ci[0])} to ${fmtR(row.ci[1])}` : "-"}
                             </td>
-                            <td style={{ padding: "9px 10px", color: muted, fontSize: 12 }}>{strengthLabel(row.r)}</td>
+                            <td style={{ padding: "9px 10px", color: muted, fontSize: 12 }}>{readingFor(row)}</td>
                           </>
                         )}
                       </tr>
@@ -599,14 +641,25 @@ export function Analytics({
   const [engagement, setEngagement] = useState(null);
   const [loadingEngagement, setLoadingEngagement] = useState(false);
 
+  // Submissions from students who are no longer on the roster must be ignored everywhere in this
+  // tab. App.jsx flattens the whole `submissions` node without checking the roster, so a removed
+  // or never-enrolled student's work survives in it; the Gradebook never sees them because it
+  // iterates the roster, and every count here has to agree with the Gradebook. Without this, a
+  // deleted test student shows up as a phantom submission the gradebook says does not exist.
+  const rosterIds = useMemo(() => new Set((roster || []).map(r => r.studentId)), [roster]);
+  const rosterSubmissions = useMemo(
+    () => (submissions || []).filter(sub => rosterIds.has(sub.studentId)),
+    [submissions, rosterIds]
+  );
+
   const assignments = useMemo(() => buildGradebookAssignments(
     modules, quizzes, assignmentCategories, manualAssignments,
     assignmentNameOverrides, assignmentOrderOverrides, dueDates,
   ), [modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides, dueDates]);
 
   const matrix = useMemo(() => buildScoreMatrix({
-    roster, assignments, submissions, gradeOverrides, attendance,
-  }), [roster, assignments, submissions, gradeOverrides, attendance]);
+    roster, assignments, submissions: rosterSubmissions, gradeOverrides, attendance,
+  }), [roster, assignments, rosterSubmissions, gradeOverrides, attendance]);
 
   // Two whole-node reads, once per visit, the first time an engagement view is opened.
   // `hwProgress` is tiny; `hwTelemetry` is the larger one and is deliberately not fetched for
@@ -632,8 +685,8 @@ export function Analytics({
   // Merged once here so no view can accidentally read only the live node and report every
   // student who has handed in as having spent no time. See mergeTelemetry.
   const telemetryAll = useMemo(
-    () => mergeTelemetry({ telemetryAll: engagement?.telemetryAll || {}, submissions }),
-    [engagement, submissions]
+    () => mergeTelemetry({ telemetryAll: engagement?.telemetryAll || {}, submissions: rosterSubmissions }),
+    [engagement, rosterSubmissions]
   );
 
   // Per-student attempts and time, for the correlation view's effort predictors. Only computed
@@ -642,8 +695,8 @@ export function Analytics({
   const effort = useMemo(() => {
     if (!engagement) return null;
     const homeworkIds = assignments.filter(a => a.type === "homework").map(a => a.id);
-    return effortByStudent({ homeworkIds, submissions, telemetryAll });
-  }, [engagement, assignments, submissions, telemetryAll]);
+    return effortByStudent({ homeworkIds, submissions: rosterSubmissions, telemetryAll });
+  }, [engagement, assignments, rosterSubmissions, telemetryAll]);
 
   if (!assignments.length) {
     return (
@@ -683,20 +736,20 @@ export function Analytics({
       )}
       {view === "items" && (
         <AnalyticsItems
-          assignments={assignments} quizzes={quizzes} submissions={submissions}
+          assignments={assignments} quizzes={quizzes} submissions={rosterSubmissions}
           telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
         />
       )}
       {view === "students" && (
         <AnalyticsStudents
-          roster={roster} assignments={assignments} matrix={matrix} submissions={submissions}
+          roster={roster} assignments={assignments} matrix={matrix} submissions={rosterSubmissions}
           gradeCategories={gradeCategories} attendance={attendance}
           telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
         />
       )}
       {view === "pulse" && (
         <AnalyticsPulse
-          roster={roster} assignments={assignments} submissions={submissions}
+          roster={roster} assignments={assignments} submissions={rosterSubmissions}
           progress={progress} telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
           dueDates={dueDates}
         />
