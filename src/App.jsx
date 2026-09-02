@@ -37,6 +37,7 @@ import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
 import { Gradebook } from "./screens/instructor/Gradebook.jsx";
+import { Analytics } from "./screens/instructor/Analytics.jsx";
 import { Assignments } from "./screens/instructor/Assignments.jsx";
 import { Attendance } from "./screens/instructor/Attendance.jsx";
 import { StudentGrades } from "./screens/student/StudentGrades.jsx";
@@ -103,6 +104,7 @@ const INSTRUCTOR_SECTIONS = [
   { id: "modules",       label: "Home" },
   { id: "assignments",  label: "Assignments" },
   { id: "gradebook",    label: "Gradebook" },
+  { id: "analytics",    label: "Analytics" },
   { id: "attendance",   label: "Attendance" },
   { id: "calendar",     label: "Calendar" },
   { id: "roster",       label: "Roster" },
@@ -2043,6 +2045,22 @@ export default function App() {
           />
         )}
 
+
+        {currentClassId && instructorSection === "analytics" && (
+          <Analytics
+            roster={roster}
+            modules={mergedModules}
+            quizzes={[...quizzes, ...homeworks]}
+            submissions={submissions}
+            gradeOverrides={gradeOverrides}
+            assignmentCategories={assignmentCategories}
+            manualAssignments={manualAssignments}
+            attendance={attendance}
+            dueDates={dueDates}
+            assignmentNameOverrides={assignmentNameOverrides}
+            assignmentOrderOverrides={assignmentOrderOverrides}
+          />
+        )}
 
         {currentClassId && instructorSection === "assignments" && (
           <Assignments

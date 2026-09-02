@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
-import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
-import { integrityState, resolveScore } from "../../homework.js";
+import { buildGradebookAssignments, calcGrades } from "../../utils.js";
+import { integrityState } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
-import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
+import { formatSessionDate } from "../../attendance.js";
+import { buildScoreMatrix, countsTowardGrade } from "../../analytics.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 function catColor(catId) { return categoryColor(catId, TEAL); }
@@ -647,36 +648,13 @@ export function Gradebook({
     return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
   }, []);
 
-  // Build per-student score / excused / integrity maps (override > submission > null).
-  // flaggedMap: any flagged homework → show a flag marker so the instructor knows to review.
-  // A flag never withholds credit: the submission counts at full credit until the instructor
-  // upholds the flag, which applies the 50% integrity penalty (integrityAdjustedScore).
-  const scoreMap = {};
-  const excusedMap = {};
-  const flaggedMap = {};
-  // absentMap: { [studentId]: { [assignmentId]: { date, base } } } — cells the lecture-absence
-  // policy zeroed. `base` is the score the instructor actually entered, kept so the cell can
-  // show what was earned struck through beside the enforced 0 rather than silently discarding it.
-  const absentMap = {};
-  const absenceMap = buildAbsenceMap(attendance);
-  for (const stu of (roster || [])) {
-    scoreMap[stu.studentId] = {};
-    excusedMap[stu.studentId] = {};
-    flaggedMap[stu.studentId] = {};
-    absentMap[stu.studentId] = {};
-    for (const a of assignments) {
-      const ov = (gradeOverrides[stu.studentId] || {})[a.id];
-      const sub = (submissions || []).find(s => s.studentId === stu.studentId && s.quizId === a.id);
-      const r = resolveScore(sub, ov, attendanceFor(absenceMap, stu.studentId, a.id));
-      if (r.excused) {
-        excusedMap[stu.studentId][a.id] = true;
-        continue;
-      }
-      if (r.flagged) flaggedMap[stu.studentId][a.id] = true;
-      if (r.absentZero) absentMap[stu.studentId][a.id] = { date: absenceMap[stu.studentId][a.id], base: r.base };
-      scoreMap[stu.studentId][a.id] = r.effective;
-    }
-  }
+  // Per-student score / excused / integrity / absence maps, built by the shared
+  // `buildScoreMatrix` (analytics.js) so the gradebook grid and the Analytics tab's correlations
+  // are computed from ONE derivation and cannot drift. See that file for the map shapes and the
+  // rule that an integrity flag never withholds credit until the instructor upholds it.
+  const { scoreMap, excusedMap, flaggedMap, absentMap } = buildScoreMatrix({
+    roster, assignments, submissions, gradeOverrides, attendance,
+  });
 
   const overallGrades = {};
   const now = new Date();
@@ -684,16 +662,16 @@ export function Gradebook({
     const submittedIds = new Set(
       (submissions || []).filter(s => s.studentId === stu.studentId).map(s => s.quizId)
     );
-    // A past-due quiz or homework with no submission is a real zero — the student didn't do it.
-    // A manual assignment (exam, lab) with no score is NOT: it means the instructor hasn't
-    // entered marks yet, which is normal for the days between sitting the exam and grading it.
-    // So manual work counts only once it's scored or excused. StudentGrades applies the same
-    // rule, which is what keeps the two Overall figures in agreement.
-    const activeAssignments = assignments.filter(a =>
-      a.type === "manual"
-        ? scoreMap[stu.studentId]?.[a.id] != null || !!excusedMap[stu.studentId]?.[a.id]
-        : submittedIds.has(a.id) || (a.dueDate && dueToDate(a.dueDate) < now)
-    );
+    // Which assignments count yet — a past-due unsubmitted quiz is a real zero, an unmarked
+    // exam is not. The rule lives in `countsTowardGrade` (analytics.js) because StudentGrades
+    // and the Analytics tab's missing-work policy must apply the identical test, and that is
+    // what keeps every Overall figure in the app in agreement.
+    const activeAssignments = assignments.filter(a => countsTowardGrade(a, {
+      hasScore: scoreMap[stu.studentId]?.[a.id] != null,
+      isExcused: !!excusedMap[stu.studentId]?.[a.id],
+      hasSubmission: submittedIds.has(a.id),
+      now,
+    }));
     overallGrades[stu.studentId] = calcGrades({
       assignments: activeAssignments,
       categories: gradeCategories,

@@ -145,6 +145,21 @@ through `onSaveBulkOverrides` → App.jsx's `saveOverridesForStudents`, which wr
 of those calls rebuilds its `updated` object from the same stale `gradeOverrides` closure, so
 only the last student's edit would survive in local state.
 
+## One shared derivation (`buildScoreMatrix`)
+
+The student × assignment grid of effective scores is built once, in
+[`src/analytics.js`](../src/analytics.js), and consumed by both `Gradebook.jsx` and the
+Analytics tab. It returns `scoreMap`, `excusedMap`, `flaggedMap`, `absentMap` and
+`subsByStudent`, each keyed `[studentId][assignmentId]`, with every cell resolved through
+`resolveScore` — so the priority chain documented above applies identically wherever a score is
+shown, and a new consumer cannot reintroduce a private copy of it.
+
+`countsTowardGrade(assignment, { hasScore, isExcused, hasSubmission, now })` lives beside it and
+is the "No score ≠ zero" rule from the previous section, extracted for the same reason. The
+Gradebook's `activeAssignments` filter now calls it. **`StudentGrades.jsx` still carries its own
+copy** — it was left alone to keep a grading refactor out of a feature change, and should be
+folded in next time that file is touched.
+
 ## Wiring reference (RTDB → UI)
 
 - App.jsx loads `gradeOverrides` into state (3-place pattern, see CLAUDE.md) and
