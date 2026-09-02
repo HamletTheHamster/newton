@@ -2048,6 +2048,7 @@ export default function App() {
 
         {currentClassId && instructorSection === "analytics" && (
           <Analytics
+            classId={currentClassId}
             roster={roster}
             modules={mergedModules}
             quizzes={[...quizzes, ...homeworks]}
@@ -2057,6 +2058,7 @@ export default function App() {
             manualAssignments={manualAssignments}
             attendance={attendance}
             dueDates={dueDates}
+            gradeCategories={gradeCategories}
             assignmentNameOverrides={assignmentNameOverrides}
             assignmentOrderOverrides={assignmentOrderOverrides}
           />

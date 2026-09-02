@@ -1,12 +1,17 @@
-import { useState, useMemo, useId } from "react";
+import { useState, useMemo, useId, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { useIsMobile } from "../../utils.js";
 import { buildGradebookAssignments } from "../../utils.js";
 import { categoryColor } from "../../category-colors.js";
+import { fbGet, classPath } from "../../firebase.js";
 import { InfoDot } from "../../components/InfoDot.jsx";
 import {
-  buildScoreMatrix, buildCorrelations, linearFit, strengthLabel, strengthNote,
+  buildScoreMatrix, buildCorrelations, linearFit, strengthLabel, strengthNote, mergeTelemetry,
 } from "../../analytics.js";
+import { CORR_POS, corrNeg, fmtR, fmtPct, Stat, StatRow, ViewTabs, EmptyCard, Panel } from "./analytics-ui.jsx";
+import { AnalyticsItems } from "./AnalyticsItems.jsx";
+import { AnalyticsStudents } from "./AnalyticsStudents.jsx";
+import { AnalyticsPulse } from "./AnalyticsPulse.jsx";
 
 // Instructor Analytics tab (`instructorSection === "analytics"`).
 //
@@ -22,20 +27,11 @@ import {
 //   • Both palettes were run through the colorblind/contrast validator for light AND dark rather
 //     than picked by eye — see CORR_POS / corrNeg below.
 
-// Diverging pair, validated in both modes (lightness band, chroma floor, protan/deutan
-// separation, contrast vs the card surface). The positive hue passes in both, so only the
-// negative pole needs a per-mode step.
-const CORR_POS = "#0e9e90";
-const corrNeg = isLight => (isLight ? "#c25d10" : "#dd7024");
-
 // Scatter geometry. The plot area is deliberately SQUARE: both axes are percentages, so equal
 // px-per-percent is what lets the eye read the trend line's slope honestly.
 const SC = { w: 360, h: 354, padL: 44, padT: 14, padR: 14, padB: 38, plot: 302 };
 const scX = v => SC.padL + (v / 100) * SC.plot;
 const scY = v => SC.padT + (1 - v / 100) * SC.plot;
-
-const fmtR = r => (r == null ? "-" : r.toFixed(2));
-const fmtPct = v => `${Math.round(v)}%`;
 
 // ── Ranked correlation bars ───────────────────────────────────────────────────
 // One row per assignment, bar drawn from a central zero line. The scale is pinned to -1..+1
@@ -212,38 +208,13 @@ function Scatter({ row, outcome, isLight }) {
   );
 }
 
-// ── Stat tile ─────────────────────────────────────────────────────────────────
-// A single headline number is a stat tile, never a one-bar chart.
-function Stat({ label, value, hint, color }) {
-  const { text, muted } = useTheme();
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 76 }}>
-      <span style={{ color: muted, fontSize: 10.5, fontWeight: 600, letterSpacing: 0.4, textTransform: "uppercase" }}>{label}</span>
-      <span style={{ color: color || text, fontSize: 20, fontWeight: 700, fontFamily: "monospace", lineHeight: 1.1 }}>{value}</span>
-      {hint && <span style={{ color: muted, fontSize: 11 }}>{hint}</span>}
-    </div>
-  );
-}
-
-// ── Main ──────────────────────────────────────────────────────────────────────
-export function Analytics({
-  roster, modules, quizzes, submissions, gradeOverrides, assignmentCategories,
-  manualAssignments, attendance, dueDates, assignmentNameOverrides, assignmentOrderOverrides,
-}) {
+// ── Correlation view ──────────────────────────────────────────────────────────
+function CorrelationView({ roster, assignments, matrix }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
   const [outcomeId, setOutcomeId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [countMissing, setCountMissing] = useState(true);
-
-  const assignments = useMemo(() => buildGradebookAssignments(
-    modules, quizzes, assignmentCategories, manualAssignments,
-    assignmentNameOverrides, assignmentOrderOverrides, dueDates,
-  ), [modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides, dueDates]);
-
-  const matrix = useMemo(() => buildScoreMatrix({
-    roster, assignments, submissions, gradeOverrides, attendance,
-  }), [roster, assignments, submissions, gradeOverrides, attendance]);
 
   // Default outcome: the midterm if there is one, then the final, then any manual assignment,
   // then simply the last assignment. Exams are what an instructor almost always wants on the y
@@ -300,28 +271,10 @@ export function Analytics({
     URL.revokeObjectURL(url);
   };
 
-  const solidBg = isLight ? "#fff" : "#252627";
   const selColor = selected?.r == null ? muted : selected.r < 0 ? corrNeg(isLight) : CORR_POS;
-
-  if (!assignments.length) {
-    return (
-      <div style={{ ...s.card, padding: 28, textAlign: "center" }}>
-        <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>Nothing to analyze yet</p>
-        <p style={{ ...s.muted, margin: 0 }}>Add quizzes, homework or exams to this class and the analytics will fill in.</p>
-      </div>
-    );
-  }
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Header */}
-      <div>
-        <h2 style={{ color: text, fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>Analytics</h2>
-        <p style={{ ...s.muted, margin: 0 }}>
-          Which assignments predict performance on an exam, measured across the students who have both scores.
-        </p>
-      </div>
-
       {/* Controls, one row above the charts */}
       <div style={{
         ...s.card, padding: 14, display: "flex", gap: 14, alignItems: isMobile ? "stretch" : "flex-end",
@@ -527,6 +480,121 @@ export function Analytics({
             </p>
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+// ── Shell ─────────────────────────────────────────────────────────────────────
+// Owns the assignment list, the shared score matrix, and the two on-demand RTDB reads the
+// engagement views need. Everything below it is a pure render of derived data.
+const VIEWS = [
+  { id: "correlation", label: "Correlation" },
+  { id: "items", label: "Items" },
+  { id: "students", label: "Students" },
+  { id: "pulse", label: "Pulse" },
+];
+
+// Views that need hwProgress / hwTelemetry. The correlation view does not, so a visit that only
+// wants the exam scatter never pays for the telemetry read.
+const NEEDS_ENGAGEMENT = new Set(["items", "students", "pulse"]);
+
+export function Analytics({
+  classId, roster, modules, quizzes, submissions, gradeOverrides, assignmentCategories,
+  manualAssignments, attendance, dueDates, gradeCategories,
+  assignmentNameOverrides, assignmentOrderOverrides,
+}) {
+  const { s, text } = useTheme();
+  const [view, setView] = useState("correlation");
+  // null while unloaded; {} once a load has finished (including a failed one, so a broken read
+  // shows "nothing recorded" rather than a spinner that never resolves).
+  const [engagement, setEngagement] = useState(null);
+  const [loadingEngagement, setLoadingEngagement] = useState(false);
+
+  const assignments = useMemo(() => buildGradebookAssignments(
+    modules, quizzes, assignmentCategories, manualAssignments,
+    assignmentNameOverrides, assignmentOrderOverrides, dueDates,
+  ), [modules, quizzes, assignmentCategories, manualAssignments, assignmentNameOverrides, assignmentOrderOverrides, dueDates]);
+
+  const matrix = useMemo(() => buildScoreMatrix({
+    roster, assignments, submissions, gradeOverrides, attendance,
+  }), [roster, assignments, submissions, gradeOverrides, attendance]);
+
+  // Two whole-node reads, once per visit, the first time an engagement view is opened.
+  // `hwProgress` is tiny; `hwTelemetry` is the larger one and is deliberately not fetched for
+  // the correlation view, which is derived entirely from data App.jsx already holds.
+  useEffect(() => {
+    if (!classId || engagement || loadingEngagement || !NEEDS_ENGAGEMENT.has(view)) return;
+    setLoadingEngagement(true);
+    Promise.all([
+      fbGet(classPath(classId, "hwProgress")).catch(() => null),
+      fbGet(classPath(classId, "hwTelemetry")).catch(() => null),
+    ])
+      .then(([p, t]) => setEngagement({ progress: p || {}, telemetryAll: t || {} }))
+      .catch(() => setEngagement({ progress: {}, telemetryAll: {} }))
+      .finally(() => setLoadingEngagement(false));
+  }, [classId, view, engagement, loadingEngagement]);
+
+  // Reset when the class changes, or one class's telemetry would be shown under another's name.
+  useEffect(() => { setEngagement(null); }, [classId]);
+
+  const progress = engagement?.progress || {};
+  // Merged once here so no view can accidentally read only the live node and report every
+  // student who has handed in as having spent no time. See mergeTelemetry.
+  const telemetryAll = useMemo(
+    () => mergeTelemetry({ telemetryAll: engagement?.telemetryAll || {}, submissions }),
+    [engagement, submissions]
+  );
+
+  if (!assignments.length) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <h2 style={{ color: text, fontSize: 20, fontWeight: 700, margin: 0 }}>Analytics</h2>
+        <EmptyCard title="Nothing to analyze yet">
+          Add quizzes, homework or exams to this class and the analytics will fill in.
+        </EmptyCard>
+      </div>
+    );
+  }
+
+  const blurb = {
+    correlation: "Which assignments predict performance on an exam, measured across the students who have both scores.",
+    items: "Per-problem difficulty for one homework, and which problems are separating strong students from weak ones.",
+    students: "Where each student stands across the term, and how they worked.",
+    pulse: "Who is working right now, and where each open assignment has got to.",
+  }[view];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div>
+        <h2 style={{ color: text, fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>Analytics</h2>
+        <p style={{ ...s.muted, margin: 0 }}>{blurb}</p>
+      </div>
+
+      <ViewTabs views={VIEWS} active={view} onSelect={setView} />
+
+      {view === "correlation" && (
+        <CorrelationView roster={roster} assignments={assignments} matrix={matrix} />
+      )}
+      {view === "items" && (
+        <AnalyticsItems
+          assignments={assignments} quizzes={quizzes} submissions={submissions}
+          telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
+        />
+      )}
+      {view === "students" && (
+        <AnalyticsStudents
+          roster={roster} assignments={assignments} matrix={matrix} submissions={submissions}
+          gradeCategories={gradeCategories} attendance={attendance}
+          telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
+        />
+      )}
+      {view === "pulse" && (
+        <AnalyticsPulse
+          roster={roster} assignments={assignments} submissions={submissions}
+          progress={progress} telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
+          dueDates={dueDates}
+        />
       )}
     </div>
   );

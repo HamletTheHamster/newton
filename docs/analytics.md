@@ -5,8 +5,8 @@ answers questions about the class that the Gradebook can show but not summarize:
 assignments actually predict exam performance, which problems the class struggles with, and
 how students are engaging with the work.
 
-It is being built in phases. **Phase 1 (the correlation view) and phase 2 (engagement telemetry)
-are shipped**; phase 3 is described at the bottom so the data design stays coherent.
+All three phases are shipped. The tab has four views, switched by tabs across the top:
+**Correlation**, **Items**, **Students** and **Pulse**.
 
 ## Why a separate tab
 
@@ -19,7 +19,7 @@ Two reasons, both structural rather than aesthetic:
   midterm", "which problems are hardest across the set"). A per-assignment modal is the wrong
   shape for them.
 
-## Phase 1 — the correlation view (shipped)
+## Correlation (phase 1)
 
 Pick an outcome, normally the midterm or the final, and see which assignments predict scores on
 it. Every number is derived from data the app already stores: `submissions` plus
@@ -103,7 +103,7 @@ have been a third copy.
 > keep a grading refactor out of a feature change. Fold it into `countsTowardGrade` next time
 > that file is touched.
 
-## Phase 2 — engagement telemetry (shipped)
+## Engagement telemetry (phase 2)
 
 `src/hw-telemetry.js` is the accumulator; `HomeworkRunner` feeds it browser events and writes it
 to `classes/{classId}/hwTelemetry/{studentId}/{hwId}`:
@@ -192,23 +192,89 @@ in keeping with the repo having no test runner. It exists because every figure t
 produces is silently plausible when wrong, and an instructor may make a judgement about a student
 from it.
 
-## Planned
+## Items (phase 3)
 
-### Phase 3 — item analysis, student profile, class pulse
+Per-problem statistics for one homework, derived from the `problems[].parts[]` breakdown every
+submission already carries, plus telemetry for timing and wrong answers.
 
-- **Item analysis** needs no instrumentation either: `submissions` already carries
-  `problems[].parts[]` with `earned`, `max`, `attempts`, `status` and `studentAnswer`. Per-item
-  difficulty, attempt distribution, reveal/hint rate, and **discrimination** (the correlation of
-  item score with total score, which separates "hard problem" from "badly worded problem").
-  Top wrong answers come straight off phase 2's `attemptLog` and are the highest-value output of the three.
-- **Student profile** — one student, everything: session timeline, per-problem time and attempts
-  as a percentile against the class on that item, score trend, attendance, integrity flags.
-- **Class pulse** — active students per day, a per-assignment funnel (not started → started →
-  finished-but-not-submitted → submitted; that amber "stalled" state is already tracked in
-  `Assignments.jsx` but surfaced nowhere an instructor would look), and an at-risk table.
+The two columns that carry the argument are **mean** and **discrimination**, and they are only
+useful together:
 
-A note for whoever builds the correlation half of phase 3: homework scores are heavily
-ceiling-compressed by the 3-attempt/hint/reveal schedule, and restriction of range attenuates
-correlation badly at class-sized n. Expect **attempts-to-correct** and **time-on-problem** to
-predict exam performance better than homework score does, and design the correlation view to
-accept several homework-derived features rather than score alone.
+| | high discrimination | low / negative discrimination |
+|---|---|---|
+| **low mean** | a hard problem doing its job. Reteach it, keep it. | the strong students are missing it too. Almost always the wording, the figure or the key. |
+| **high mean** | an easy problem that still sorts the class. Fine. | an easy problem that tells you nothing. Cheap to keep, cheap to cut. |
+
+Discrimination is the **corrected** item-total correlation: this item's score against the sum of
+the *other* items. Correlating against a total that includes the item inflates every coefficient,
+which would make a useless item look discriminating simply because it is part of its own total.
+
+**Common wrong answers** is the most directly actionable output in the tab. A cluster on one
+value is usually a single shared misconception (a dropped factor of 2, degrees for radians) and
+makes a lecture slide on its own. Two guards keep it honest: a value is only listed if **two or
+more students** gave it, so a single student is never singled out and a one-off typo is never
+mistaken for a pattern; and one student contributes each distinct wrong value **once**, so
+retyping the same wrong answer five times cannot manufacture a class-wide pattern.
+
+The "problems worth a second look" panel is capped at the three weakest. When more than half the
+set discriminates weakly it reframes instead: that is usually the sample (few submissions, or a
+uniformly easy or hard set) rather than six separately badly-worded problems.
+
+## Students (phase 3)
+
+The class across the term, and a per-student drill-down.
+
+There is deliberately **no risk score**. A composite would rank students by a formula nobody can
+see, and every column has an innocent reading on its own: a student with little time on task may
+work on paper; one quiet for a week may have been ill. The table shows the components, sorts by
+the one ordering that needs no interpretation (overall grade, lowest first), and lets the
+instructor sort by any of the others. Badges state only plain facts ("4 missing", "quiet 21d"),
+never an inference about why.
+
+Overall goes through the same `calcGrades` the Gradebook uses, on the same `countsTowardGrade`
+filter, so this column can never disagree with the gradebook's Overall.
+
+## Pulse (phase 3)
+
+Students active per day (single-series area, from telemetry sessions and submission times, one
+count per student per day however long they worked), a completion funnel per recently-due or
+upcoming assignment, and a list of students nobody has seen in over a week.
+
+The funnel's third bucket is why this view exists: **finished, not handed in**. A student who
+completed every problem and never pressed Finish and Submit reads as *missing* in the gradebook,
+exactly like a student who did nothing, so without this they are invisible until the grade is
+already a zero. It is the one bucket usually worth an email, because the work is done.
+
+## Implementation notes
+
+- **`mergeTelemetry` is not optional.** Telemetry lives in two places: the live `hwTelemetry`
+  node for students still working, and a copy on the submission for everyone who has handed in
+  (the node is cleared at final submit). A view that reads only the node reports every student
+  who *finished* as having spent no time, which is backwards. The shell merges once and passes
+  the merged map to every view.
+- **The engagement reads are lazy.** `hwProgress` and `hwTelemetry` are fetched as two whole-node
+  GETs the first time an engagement view is opened, so a visit that only wants the exam scatter
+  never pays for them. They reset when the class changes.
+- **Chart forms** follow the same rules as phase 1. The attempt spread and the funnel are ordered
+  categories, so they use the validated **ordinal ramp** (one hue, monotone lightness, visible
+  step gaps) and never a categorical set; both ship a legend, since identity is never carried by
+  color alone. The activity chart is one series, so it has no legend. Palette and shared marks
+  live in `analytics-ui.jsx` with the validator command in a comment at the top.
+- **Tests:** `node src/analytics.test.mjs` covers the item statistics, the discrimination
+  direction (checked against hand arithmetic, not pinned to whatever the code returned), the
+  wrong-answer guards, the funnel and the activity window.
+
+## Possible next steps
+
+Nothing here is committed to. Candidates, roughly in order of value:
+
+- **Correlate exam performance against the non-score features** now that telemetry exists.
+  Homework scores are ceiling-compressed by the 3-attempt/hint/reveal schedule, and restriction
+  of range attenuates correlation badly at class-sized n, so **attempts-to-correct** and
+  **time-on-problem** should predict exam performance better than homework score does. The
+  correlation view currently only accepts assignment scores as predictors.
+- **Item analysis across a whole course**, not one homework at a time, so a topic that never
+  lands is visible as a run of weak items rather than one bad problem.
+- **Quiz item analysis.** Quizzes store a chat transcript rather than a per-item breakdown, so
+  this needs a different derivation than `buildItemAnalysis`.
+- **Fold `StudentGrades.jsx`'s copy of the counting rule into `countsTowardGrade`** (see above).

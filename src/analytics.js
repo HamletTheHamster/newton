@@ -13,7 +13,7 @@
 //
 // Why correlation at all: it answers "which of my assignments actually predicts exam
 // performance", which is the question that tells the instructor what to keep, cut or reweight.
-import { resolveScore } from "./homework.js";
+import { resolveScore, itemsOf } from "./homework.js";
 import { buildAbsenceMap, attendanceFor } from "./attendance.js";
 import { dueToDate } from "./utils.js";
 
@@ -225,4 +225,241 @@ export function strengthNote(row) {
   if (row.n < 10) return "Very small sample — treat this as a hint, not a finding.";
   if (row.ci && row.ci[0] < 0 && row.ci[1] > 0) return "The confidence interval spans zero, so the direction is not yet established.";
   return null;
+}
+
+// ── Phase 3: item analysis ────────────────────────────────────────────────────
+
+const median = xs => {
+  const a = xs.filter(v => v != null && Number.isFinite(v)).sort((p, q) => p - q);
+  if (!a.length) return null;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+
+// Flatten a stored submission's `problems` into per-item rows. A submission mirrors the
+// runner's own shape: a multipart problem carries `parts`, a single-part one IS the item.
+function submissionItems(sub) {
+  const out = [];
+  for (const p of (sub?.problems || [])) {
+    if (Array.isArray(p.parts) && p.parts.length) {
+      for (const pt of p.parts) out.push(pt);
+    } else out.push(p);
+  }
+  return out;
+}
+
+// Normalize a typed answer for grouping. Wrong answers are only interesting in aggregate, so
+// "9.8 " and "9.8" must land in the same bucket.
+const normAnswer = a => String(a || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+// Per-item statistics across every student who has submitted this homework.
+//
+// `telemetryByStudent` is `{ [studentId]: teleObj }` already scoped to THIS homework — the
+// caller assembles it from the live `hwTelemetry` node for students still working and from
+// `submission.telemetry` for those who have handed in (the live node is cleared at submit).
+//
+// The point of this view is deciding what to reteach and which problems to keep, so the columns
+// are chosen to separate "hard" from "badly worded": a low mean with HIGH discrimination is a
+// hard problem doing its job; a low mean with LOW or negative discrimination is usually a
+// problem the strong students are also getting wrong, which points at the wording or the figure.
+export function buildItemAnalysis({ homework, submissions = [], telemetryByStudent = {} }) {
+  const problems = homework?.problems || [];
+  // Item order and labels ("3", "3a") come from the same itemsOf the runner uses, so a label
+  // here always names the part a student actually saw.
+  const labels = problems.flatMap((p, pi) => {
+    const its = itemsOf(p);
+    return its.map((it, ii) => ({
+      id: it.id,
+      label: its.length > 1 ? `${pi + 1}${"abcdefgh"[ii]}` : `${pi + 1}`,
+      prompt: it.prompt || p.prompt || "",
+      answerType: it.answerType || "numeric",
+    }));
+  });
+
+  const subs = submissions.filter(s => s.quizId === homework?.id && s.type === "homework");
+  // Per student: their row for each item, plus their total earned/max on the assignment. The
+  // totals feed the CORRECTED item-total correlation below.
+  const byStudent = subs.map(s => {
+    const rows = {};
+    let totEarned = 0, totMax = 0;
+    for (const it of submissionItems(s)) {
+      const max = it.max || 1;
+      const earned = it.earned || 0;
+      rows[it.id] = { earned, max, attempts: it.attempts || 0, status: it.status || "open" };
+      totEarned += earned; totMax += max;
+    }
+    return { studentId: s.studentId, rows, totEarned, totMax };
+  });
+
+  return labels.map(l => {
+    const present = byStudent.filter(b => b.rows[l.id]);
+    const n = present.length;
+    const fracs = present.map(b => (b.rows[l.id].max > 0 ? b.rows[l.id].earned / b.rows[l.id].max : 0));
+    const meanPct = n ? (fracs.reduce((a, b) => a + b, 0) / n) * 100 : null;
+
+    const firstTry = present.filter(b => b.rows[l.id].status === "correct" && b.rows[l.id].attempts <= 1).length;
+    const later = present.filter(b => b.rows[l.id].status === "correct" && b.rows[l.id].attempts > 1).length;
+    const revealed = present.filter(b => b.rows[l.id].status === "revealed").length;
+    const unresolved = n - firstTry - later - revealed;
+
+    // CORRECTED item-total correlation: this item's score against the sum of the OTHER items.
+    // Correlating against a total that includes the item inflates every coefficient, which
+    // would make a useless item look discriminating simply because it is part of its own total.
+    const pairs = present
+      .map(b => {
+        const r = b.rows[l.id];
+        const restMax = b.totMax - r.max;
+        if (restMax <= 0 || r.max <= 0) return null;
+        return [r.earned / r.max, (b.totEarned - r.earned) / restMax];
+      })
+      .filter(Boolean);
+    const discrimination = pearson(pairs);
+
+    // Timing and wrong answers come from telemetry, which only exists from the point it shipped,
+    // so these are null on older assignments rather than zero.
+    const teles = present.map(b => telemetryByStudent[b.studentId]?.items?.[l.id]).filter(Boolean);
+    const medianActiveMs = median(teles.map(t => t.activeMs));
+    const medianTtfMs = median(teles.map(t => {
+      if (!t.firstSeenAt || !t.firstSubmitAt) return null;
+      const d = new Date(t.firstSubmitAt) - new Date(t.firstSeenAt);
+      return Number.isFinite(d) && d >= 0 ? d : null;
+    }));
+
+    // The distribution of WRONG answers is the most directly actionable thing here: a cluster on
+    // one value is usually a single shared misconception (a dropped factor of 2, degrees for
+    // radians) and makes a lecture slide on its own.
+    const counts = {};
+    for (const t of teles) {
+      // One student contributes each distinct wrong value once, so a student who retypes the
+      // same wrong answer five times cannot manufacture a class-wide "pattern".
+      const seen = new Set();
+      for (const a of (t.attemptLog || [])) {
+        if (a.correct) continue;
+        const key = normAnswer(a.answer);
+        if (!key || seen.has(key)) continue;
+        seen.add(key);
+        counts[key] = (counts[key] || 0) + 1;
+      }
+    }
+    const topWrong = Object.entries(counts)
+      // A single student's wrong answer is not a pattern, and printing it would single them out.
+      .filter(([, c]) => c >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 3)
+      .map(([answer, count]) => ({ answer, count }));
+
+    return {
+      ...l, n, meanPct, firstTry, later, revealed, unresolved,
+      discrimination, medianActiveMs, medianTtfMs, topWrong,
+    };
+  });
+}
+
+// Plain-language read of a corrected item-total correlation, which is the column most likely to
+// be misread. Thresholds are the conventional classical-test-theory bands.
+export function discriminationNote(d, meanPct) {
+  if (d == null) return null;
+  if (d < 0) return "Strong students are getting this wrong more often than weak ones. Check the wording, the figure, or the answer key.";
+  if (d < 0.15) return "Barely separates strong from weak students. Often a wording problem rather than a hard problem.";
+  if (meanPct != null && meanPct < 40) return "Hard, and it does separate strong students from weak ones. Worth reteaching, not cutting.";
+  return null;
+}
+
+// ── Phase 3: class pulse ──────────────────────────────────────────────────────
+
+const dayKey = d => {
+  const t = d instanceof Date ? d : new Date(d);
+  return Number.isNaN(t.getTime()) ? null : `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, "0")}-${String(t.getDate()).padStart(2, "0")}`;
+};
+
+// Distinct students active per day over the last `days` days, from telemetry sessions and
+// submission timestamps. Sessions are the better source (they mark real working time), but
+// submissions cover students whose work predates telemetry.
+export function buildActivityByDay({ submissions = [], telemetryAll = {}, days = 30, now = new Date() }) {
+  const perDay = {};
+  const add = (key, studentId) => { if (key) (perDay[key] ||= new Set()).add(studentId); };
+
+  for (const s of submissions) add(dayKey(s.timestamp), s.studentId);
+  for (const [studentId, byHw] of Object.entries(telemetryAll)) {
+    for (const tele of Object.values(byHw || {})) {
+      for (const sess of (tele?.sessions || [])) add(dayKey(sess.end || sess.start), studentId);
+    }
+  }
+
+  const out = [];
+  const start = new Date(now);
+  start.setHours(0, 0, 0, 0);
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(start);
+    d.setDate(d.getDate() - i);
+    const k = dayKey(d);
+    out.push({ date: k, students: perDay[k]?.size || 0 });
+  }
+  return out;
+}
+
+// Where the class stands on one homework: not started -> started -> finished but not handed in
+// -> submitted. The third bucket is the one worth acting on, and it is invisible in the
+// gradebook, which simply reads as missing.
+export function buildFunnel({ assignment, roster = [], submissions = [], progress = {} }) {
+  const submitted = new Set(
+    submissions.filter(s => s.quizId === assignment?.id).map(s => s.studentId)
+  );
+  let notStarted = 0, started = 0, stalled = 0;
+  for (const stu of roster) {
+    if (submitted.has(stu.studentId)) continue;
+    const rec = progress?.[stu.studentId]?.[assignment?.id];
+    const pct = rec && rec.total > 0 ? (rec.pct ?? Math.round((rec.done / rec.total) * 100)) : null;
+    if (pct == null) notStarted++;
+    else if (pct >= 100) stalled++;
+    else started++;
+  }
+  return { notStarted, started, stalled, submitted: submitted.size, total: roster.length };
+}
+
+// ── Phase 3: per-student term view ────────────────────────────────────────────
+
+// Telemetry lives in TWO places, and a view that reads only one of them is wrong: the live
+// `hwTelemetry` node holds students still working, and the copy on a submission holds everyone
+// who has handed in (the live node is cleared at final submit). Reading only the node makes
+// every student who finished look as though they spent no time at all, which is backwards.
+// The submission copy wins, since it is the completed record.
+export function mergeTelemetry({ telemetryAll = {}, submissions = [] }) {
+  const out = {};
+  for (const [sid, byHw] of Object.entries(telemetryAll)) out[sid] = { ...byHw };
+  for (const sub of submissions) {
+    if (!sub?.telemetry || !sub.studentId || !sub.quizId) continue;
+    (out[sub.studentId] ||= {})[sub.quizId] = sub.telemetry;
+  }
+  return out;
+}
+
+// When each student was last seen working, from the same two sources as the activity chart.
+export function lastActiveMap({ submissions = [], telemetryAll = {} }) {
+  const out = {};
+  const bump = (id, iso) => {
+    if (!id || !iso) return;
+    if (!out[id] || new Date(iso) > new Date(out[id])) out[id] = iso;
+  };
+  for (const s of submissions) bump(s.studentId, s.timestamp);
+  for (const [id, byHw] of Object.entries(telemetryAll)) {
+    for (const tele of Object.values(byHw || {})) {
+      bump(id, tele?.updatedAt);
+      for (const sess of (tele?.sessions || [])) bump(id, sess.end);
+    }
+  }
+  return out;
+}
+
+// Total recorded time on task per student across every assignment.
+export function timeOnTaskMap(telemetryAll = {}) {
+  const out = {};
+  for (const [id, byHw] of Object.entries(telemetryAll)) {
+    let ms = 0;
+    for (const tele of Object.values(byHw || {})) {
+      for (const it of Object.values(tele?.items || {})) ms += it.activeMs || 0;
+    }
+    out[id] = ms;
+  }
+  return out;
 }
