@@ -160,6 +160,28 @@ Gradebook's `activeAssignments` filter now calls it. **`StudentGrades.jsx` still
 copy** — it was left alone to keep a grading refactor out of a feature change, and should be
 folded in next time that file is touched.
 
+## Per-student deadline extensions
+
+The Gradebook's "Extend Deadline" writes `gradeOverrides[studentId][assignmentId].dueDate`. That
+was **display-only** until it was wired up: the panel said "Extended to …", and every late check
+still read the assignment's own date, so an extended student was still scored at half credit and
+still told their work was past due.
+
+`effectiveDue(due, override)` (utils.js) is the resolver, and App.jsx applies it in **one place** —
+where the `quizzes` and `homeworks` arrays are built — so the extension reaches the module list,
+the To Do rail, the calendar, the quiz screen and `HomeworkRunner` at once, including the two
+late checks that actually halve the score (`finishQuiz`, and the runner's `late`). It is gated on
+`loggedInStudent`, which is null on the instructor side, so instructor screens keep showing the
+class date.
+
+`dueToDate` and `fmtDueTime` accept both `"YYYY-MM-DD HH:MM"` (how assignment due dates are
+stored) and `"YYYY-MM-DDTHH:MM"` (what the extension picker emits). Without the `T` case the
+extension fell through to `new Date(due)`, which reads it in the **viewer's** timezone while
+every other due date is pinned to Eastern, so the same wall-clock time meant two different
+instants.
+
+Covered by `node src/due-dates.test.mjs`.
+
 ## Wiring reference (RTDB → UI)
 
 - App.jsx loads `gradeOverrides` into state (3-place pattern, see CLAUDE.md) and

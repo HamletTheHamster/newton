@@ -11,13 +11,19 @@ export const dueToDate = due => {
   const isEDT = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }).format(noon).includes('EDT');
   const offset = isEDT ? '-04:00' : '-05:00';
   if (due.length === 10) return new Date(due + 'T23:59:00' + offset);
-  if (due.length === 16 && due[10] === ' ') return new Date(datePart + 'T' + due.slice(11) + ':00' + offset);
+  // Accept both separators: assignment due dates are stored "YYYY-MM-DD HH:MM", while a
+  // per-student deadline extension comes off a datetime picker as "YYYY-MM-DDTHH:MM". Falling
+  // through to `new Date(due)` for the T form would read it in the VIEWER's timezone while every
+  // other due date is pinned to Eastern, so the same wall-clock time would mean two things.
+  if (due.length === 16 && (due[10] === ' ' || due[10] === 'T')) return new Date(datePart + 'T' + due.slice(11) + ':00' + offset);
   return new Date(due);
 };
 
 export const fmtDueTime = due => {
   if (!due || due.length === 10) return '11:59 PM';
-  if (due.length === 16 && due[10] === ' ') {
+  // Both separators, for the same reason as dueToDate: without the 'T' case an extension's own
+  // time would display as the default 11:59 PM while actually falling due at another hour.
+  if (due.length === 16 && (due[10] === ' ' || due[10] === 'T')) {
     const [h, m] = due.slice(11).split(':').map(Number);
     return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
   }
@@ -25,6 +31,13 @@ export const fmtDueTime = due => {
 };
 
 export const isLate = due => due && new Date() > dueToDate(due);
+
+// The due date that actually applies to ONE student. An instructor's per-student extension
+// (`gradeOverrides[studentId][assignmentId].dueDate`, set from the Gradebook's "Extend Deadline")
+// replaces the assignment's own. Without this the extension was display-only: it showed in the
+// gradebook panel but every late check still read the assignment's date, so an extended student
+// was still scored at half credit and still told their work was past due.
+export const effectiveDue = (due, override) => (override && override.dueDate) || due || null;
 export const fmtDate = ts => new Date(ts).toLocaleString();
 
 export const ptsPer = n => {

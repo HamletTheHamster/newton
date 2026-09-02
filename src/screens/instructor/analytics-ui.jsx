@@ -101,8 +101,10 @@ export function Meter({ pct, color, width = 54, height = 6 }) {
   );
 }
 
-// Part-to-whole across ORDERED buckets, as one thin horizontal bar. `segments` is
-// [{ key, label, value, color }]; a 2px surface gap separates the fills rather than a border.
+// Part-to-whole across ordered buckets, as one thin horizontal bar. `segments` is
+// [{ key, label, value, color, names? }]; a 2px surface gap separates the fills rather than a
+// border. When a segment carries `names`, they go in its tooltip, so "4 stalled" can be
+// answered without leaving the chart.
 export function StackedBar({ segments, width = "100%", height = 8 }) {
   const { muted } = useTheme();
   const total = segments.reduce((n, s) => n + (s.value || 0), 0);
@@ -112,7 +114,7 @@ export function StackedBar({ segments, width = "100%", height = 8 }) {
       {segments.filter(s => s.value > 0).map((s, i, arr) => (
         <span
           key={s.key}
-          title={`${s.label}: ${s.value}`}
+          title={s.names?.length ? `${s.label} (${s.value}): ${s.names.join(", ")}` : `${s.label}: ${s.value}`}
           style={{
             flex: `${s.value} 0 0`, background: s.color, minWidth: 2,
             borderRadius: arr.length === 1 ? height : i === 0 ? `${height}px 0 0 ${height}px` : i === arr.length - 1 ? `0 ${height}px ${height}px 0` : 0,

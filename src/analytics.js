@@ -562,16 +562,26 @@ export function buildFunnel({ assignment, roster = [], submissions = [], progres
   const submitted = new Set(
     submissions.filter(s => s.quizId === assignment?.id).map(s => s.studentId)
   );
-  let notStarted = 0, started = 0, stalled = 0;
+  // Names per bucket, not just counts. "1 stalled" prompts the only useful follow-up question,
+  // which is WHICH one, and the answer belongs on the bar rather than in a separate lookup.
+  const names = { notStarted: [], started: [], stalled: [], submitted: [] };
+  const nameOf = stu => stu.altName || stu.fullName || stu.studentId;
   for (const stu of roster) {
-    if (submitted.has(stu.studentId)) continue;
+    if (submitted.has(stu.studentId)) { names.submitted.push(nameOf(stu)); continue; }
     const rec = progress?.[stu.studentId]?.[assignment?.id];
     const pct = rec && rec.total > 0 ? (rec.pct ?? Math.round((rec.done / rec.total) * 100)) : null;
-    if (pct == null) notStarted++;
-    else if (pct >= 100) stalled++;
-    else started++;
+    if (pct == null) names.notStarted.push(nameOf(stu));
+    else if (pct >= 100) names.stalled.push(nameOf(stu));
+    else names.started.push(nameOf(stu));
   }
-  return { notStarted, started, stalled, submitted: submitted.size, total: roster.length };
+  return {
+    notStarted: names.notStarted.length,
+    started: names.started.length,
+    stalled: names.stalled.length,
+    submitted: names.submitted.length,
+    total: roster.length,
+    names,
+  };
 }
 
 // ── Phase 3: per-student term view ────────────────────────────────────────────

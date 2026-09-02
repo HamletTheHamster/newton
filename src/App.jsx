@@ -6,7 +6,7 @@ import { fbGet, fbSet, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpl
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
   ACCEPTED_IMG,
-  dueToDate, fmtDueTime, isLate, fmtDate, ptsPer, detectParts,
+  dueToDate, fmtDueTime, isLate, effectiveDue, fmtDate, ptsPer, detectParts,
   compressImage, checkImageReadability, evaluateAnswer,
   parseRoster,
 } from "./utils.js";
@@ -239,6 +239,16 @@ export default function App() {
 
   // ── Derived ─────────────────────────────────────────────────────────────────
   const courseQuizzes = quizzesForCourse(classMeta?.courseType);
+  // Due date for one assignment, as it applies to whoever is looking. For a signed-in student an
+  // instructor's per-student extension replaces the class date; on the instructor side
+  // `loggedInStudent` is null, so every instructor screen keeps seeing the class date.
+  //
+  // Merging it HERE rather than at each call site is deliberate: the quizzes/homeworks arrays are
+  // what the module list, To Do rail, calendar, quiz screen and HomeworkRunner all read, so one
+  // change makes the extension real everywhere at once — including the two late checks that
+  // actually halve the score (`finishQuiz`, and HomeworkRunner's `late`).
+  const myDueOverrides = loggedInStudent ? (gradeOverrides[loggedInStudent.studentId] || {}) : null;
+  const dueFor = id => effectiveDue(dueDates[id] || null, myDueOverrides?.[id]);
   const quizzes = [
     ...courseQuizzes,
     ...Object.values(customQuizzes || {}).map(cq => ({
@@ -246,8 +256,8 @@ export default function App() {
       questions: [{ id: `${cq.id}_q1`, text: cq.text }],
       isCustom: true,
     })),
-  ].map(q => ({ ...q, dueDate: dueDates[q.id] || null }));
-  const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueDates[h.id] || null, grading: { ...HW_GRADING_DEFAULTS, ...(homeworkSettings[h.id] || {}) } }));
+  ].map(q => ({ ...q, dueDate: dueFor(q.id) }));
+  const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueFor(h.id), grading: { ...HW_GRADING_DEFAULTS, ...(homeworkSettings[h.id] || {}) } }));
   // Manual assignments (exams, labs) as dated events. They live only in the gradebook — there
   // is nothing to open and no submission — but they still belong on the calendar and the To Do
   // rail, so they're dated through the same `dueDates` node keyed by assignment id.

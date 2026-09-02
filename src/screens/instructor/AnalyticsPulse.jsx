@@ -136,10 +136,10 @@ export function AnalyticsPulse({
   // Slot order is the palette's own; see analytics-ui.jsx for why it must not be shuffled.
   const C = series(isLight);
   const funnelSegs = f => [
-    { key: "submitted", label: "Submitted", value: f.submitted, color: C[0] },
-    { key: "stalled", label: "Finished, not handed in", value: f.stalled, color: C[1] },
-    { key: "started", label: "In progress", value: f.started, color: C[2] },
-    { key: "notStarted", label: "Not started", value: f.notStarted, color: C[3] },
+    { key: "submitted", label: "Submitted", value: f.submitted, color: C[0], names: f.names?.submitted },
+    { key: "stalled", label: "Finished, not handed in", value: f.stalled, color: C[1], names: f.names?.stalled },
+    { key: "started", label: "In progress", value: f.started, color: C[2], names: f.names?.started },
+    { key: "notStarted", label: "Not started", value: f.notStarted, color: C[3], names: f.names?.notStarted },
   ];
 
   if (!roster?.length) return <EmptyCard title="No students enrolled">Add students in the Roster tab and this view fills in.</EmptyCard>;
@@ -184,7 +184,7 @@ export function AnalyticsPulse({
             It is the one bucket here that is usually worth an email, because the work is done.
           </InfoDot>
         }
-        subtitle="Work students can open right now, most recently due first. Late work still counts at half credit, so a past due assignment stays here."
+        subtitle="Work students can open right now, most recently due first. Late work still counts at half credit, so a past due assignment stays here. Hover any segment for the students in it."
       >
         {funnels.length === 0 ? (
           <p style={{ ...s.muted, margin: 0 }}>Nothing is open to students yet. Assignments appear here once their module is released.</p>
@@ -198,7 +198,6 @@ export function AnalyticsPulse({
                   <StackedBar segments={funnelSegs(f)} height={10} />
                   <span style={{ color: muted, fontSize: 11.5, textAlign: isMobile ? "left" : "right", whiteSpace: "nowrap" }}>
                     {f.submitted}/{f.total} submitted
-                    {f.stalled > 0 && <span style={{ color: "#fbbf24", fontWeight: 600 }}> · {f.stalled} stalled</span>}
                   </span>
                 </div>
               ))}

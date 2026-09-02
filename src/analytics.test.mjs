@@ -79,7 +79,12 @@ const f = buildFunnel({
   submissions: submissions.slice(0, 2),
   progress: { s3: { hw1: { done: 5, total: 5, pct: 100 } }, s4: { hw1: { done: 2, total: 5, pct: 40 } } },
 });
-eq("funnel", f, { notStarted: 2, started: 1, stalled: 1, submitted: 2, total: 6 });
+eq("funnel counts", { notStarted: f.notStarted, started: f.started, stalled: f.stalled, submitted: f.submitted, total: f.total },
+   { notStarted: 2, started: 1, stalled: 1, submitted: 2, total: 6 });
+// Each bucket names its students, so "1 stalled" can be answered without leaving the chart.
+eq("funnel names the stalled student", f.names.stalled, ["s3"]);
+eq("funnel names every bucket", Object.keys(f.names).sort(), ["notStarted", "stalled", "started", "submitted"].sort());
+eq("names and counts agree", Object.values(f.names).reduce((n, a) => n + a.length, 0), 6);
 
 // Activity by day.
 const act = buildActivityByDay({
