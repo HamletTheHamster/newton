@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTheme } from "../../theme.js";
-import { HW_GRADING_DEFAULTS } from "../../homework.js";
+import { HW_GRADING_DEFAULTS, itemsOf } from "../../homework.js";
+import { formatDuration, totalActiveMs, timeToFirstAttemptMs } from "../../hw-telemetry.js";
 import { dueToDate, useIsMobile } from "../../utils.js";
 import { categoryColor } from "../../category-colors.js";
 import { fbGet, classPath } from "../../firebase.js";
@@ -127,19 +128,169 @@ function ProgressCell({ summary, loading, onClick }) {
   );
 }
 
+// ── One student's engagement on one homework ──────────────────────────────────
+// Reads `hwTelemetry/{studentId}/{hwId}` (or, once they have handed in, the copy carried on
+// the submission, since the live node is cleared at final submit).
+//
+// What this is FOR: seeing where an assignment is costing the class its evening, and which
+// student is stuck rather than idle. What it is NOT for: a verdict. Every column here has an
+// innocent reading - a shared computer, a printed problem set, a reload on a bad connection, a
+// student who works on paper and only types answers in. Read a row against the rest of the
+// class on the SAME problem, never against a number in your head. See docs/analytics.md.
+function StudentTelemetry({ student, homework, classId, submission, onBack }) {
+  const { s, text, muted, border, teal, isLight } = useTheme();
+  const isMobile = useIsMobile();
+  const [tele, setTele] = useState(undefined); // undefined = loading, null = nothing recorded
+
+  useEffect(() => {
+    let live = true;
+    if (submission?.telemetry) { setTele(submission.telemetry); return; }
+    fbGet(classPath(classId, `hwTelemetry/${student.studentId}/${homework.id}`))
+      .then(d => { if (live) setTele(d && typeof d === "object" ? d : null); })
+      .catch(() => { if (live) setTele(null); });
+    return () => { live = false; };
+  }, [student.studentId, homework.id, classId, submission]);
+
+  // Item ids in the order a student meets them, labelled "3" / "3b" like the runner's parts.
+  const labelled = (homework.problems || []).flatMap((p, pi) => {
+    const its = itemsOf(p);
+    return its.map((it, ii) => ({
+      id: it.id,
+      label: its.length > 1 ? `${pi + 1}${"abcdefgh"[ii]}` : `${pi + 1}`,
+    }));
+  });
+
+  if (tele === undefined) return <p style={{ ...s.muted, margin: 0 }}>Loading…</p>;
+  if (!tele) {
+    return (
+      <p style={{ ...s.muted, margin: 0, lineHeight: 1.6 }}>
+        No engagement data recorded for this assignment. It is collected from the point the
+        student next opens a homework, so earlier work has none.
+      </p>
+    );
+  }
+
+  const rows = labelled.map(l => ({ ...l, t: tele.items?.[l.id] || null })).filter(r => r.t);
+  const total = totalActiveMs(tele);
+  const sessions = Array.isArray(tele.sessions) ? tele.sessions.length : 0;
+  const pasteTotal = rows.reduce((n, r) => n + (r.t.pasteCount || 0), 0);
+
+  const Cell = ({ children, mono, align = "right", dim }) => (
+    <td style={{
+      padding: "7px 8px", textAlign: align, fontSize: 12,
+      color: dim ? muted : text, fontFamily: mono ? "monospace" : "inherit", whiteSpace: "nowrap",
+    }}>{children}</td>
+  );
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
+      <button onClick={onBack} style={{ ...s.btnGhost, width: "auto", alignSelf: "flex-start", padding: "6px 12px" }}>
+        ‹ All students
+      </button>
+
+      <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "10px 12px", borderRadius: 8, border: `1px solid ${border}` }}>
+        {[
+          { label: "Time on task", value: formatDuration(total) },
+          { label: "Sittings", value: sessions || "-" },
+          { label: "Problems opened", value: rows.length || "-" },
+          { label: "Pasted", value: pasteTotal ? `${pasteTotal}x` : "never" },
+        ].map(f => (
+          <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ ...CARD_LABEL, color: muted }}>{f.label}</span>
+            <span style={{ color: text, fontSize: 13, fontWeight: 600 }}>{f.value}</span>
+          </div>
+        ))}
+      </div>
+
+      {rows.length === 0 ? (
+        <p style={{ ...s.muted, margin: 0 }}>Nothing worked yet on this assignment.</p>
+      ) : (
+        <div style={{ overflowX: "auto", overflowY: "auto", minHeight: 0 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: isMobile ? 0 : 420 }}>
+            <thead>
+              <tr>
+                {[["Problem", "left"], ["Time", "right"], ["To 1st try", "right"], ["Tries", "right"], ["Away", "right"]].map(([h, a]) => (
+                  <th key={h} style={{
+                    textAlign: a, color: muted, fontSize: 10, fontWeight: 600, letterSpacing: 0.4,
+                    textTransform: "uppercase", padding: "0 8px 7px", whiteSpace: "nowrap",
+                  }}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(r => {
+                const ttf = timeToFirstAttemptMs(r.t);
+                const tries = (r.t.attemptLog || []).length;
+                // Hidden and unfocused are shown as one trip COUNT rather than a summed
+                // duration: the two clocks measure different things and adding them would
+                // assert a total that means nothing. The tooltip keeps them apart.
+                const trips = (r.t.hiddenCount || 0) + (r.t.unfocusedCount || 0);
+                return (
+                  <tr key={r.id} style={{ borderTop: `1px solid ${border}` }}>
+                    <Cell align="left">
+                      <span style={{ fontWeight: 600 }}>{r.label}</span>
+                      {r.t.pasteCount > 0 && (
+                        <span style={{ ...s.badge(teal), marginLeft: 8 }} title="Answer was pasted rather than typed">
+                          pasted
+                        </span>
+                      )}
+                    </Cell>
+                    <Cell mono>{formatDuration(r.t.activeMs)}</Cell>
+                    <Cell mono dim={ttf == null}>{ttf == null ? "-" : formatDuration(ttf)}</Cell>
+                    <Cell mono dim={!tries}>{tries || "-"}</Cell>
+                    <Cell mono dim={!trips}>
+                      <span title={trips
+                        ? `${r.t.hiddenCount || 0} tab switch(es), ${formatDuration(r.t.hiddenMs)} · ${r.t.unfocusedCount || 0} left the window, ${formatDuration(r.t.unfocusedMs)}`
+                        : ""}>
+                        {trips || "-"}
+                      </span>
+                    </Cell>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p style={{ ...s.muted, fontSize: 11, margin: 0, lineHeight: 1.5 }}>
+        Time on task excludes time the tab was hidden or idle. "Away" counts trips out of the tab,
+        which are a normal part of doing homework: compare a row with the rest of the class on the
+        same problem rather than reading it on its own.
+      </p>
+    </div>
+  );
+}
+
 // Per-student breakdown, least progress first: the actionable order when you are deciding
 // whether to extend a deadline or spend class time on the set.
-function ProgressModal({ title, rows, summary, onClose }) {
+function ProgressModal({ title, rows, summary, homework, classId, roster, subByKey, onClose }) {
   const { s, text, muted, border, teal, isLight } = useTheme();
   const solidBg = isLight ? "#fff" : "#252627";
+  // Which student's engagement detail is open, if any. Held here rather than by the caller so
+  // closing the modal always returns to the class list next time it is opened.
+  const [openStudent, setOpenStudent] = useState(null);
+  const student = openStudent ? (roster || []).find(r => r.studentId === openStudent) : null;
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
       <div onClick={e => e.stopPropagation()} style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 560, maxHeight: "82vh", boxShadow: "0 20px 60px rgba(0,0,0,0.5)", display: "flex", flexDirection: "column", gap: 14 }}>
         <div>
-          <h3 style={{ color: text, fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>Class progress</h3>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 16, margin: "0 0 4px" }}>
+            {student ? (student.altName || student.fullName || student.studentId) : "Class progress"}
+          </h3>
           <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{title}</p>
         </div>
+
+        {student ? (
+          <StudentTelemetry
+            student={student}
+            homework={homework}
+            classId={classId}
+            submission={subByKey?.[`${student.studentId}|${homework?.id}`] || null}
+            onBack={() => setOpenStudent(null)}
+          />
+        ) : (<>
 
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "10px 12px", borderRadius: 8, border: `1px solid ${border}` }}>
           {[
@@ -158,12 +309,16 @@ function ProgressModal({ title, rows, summary, onClose }) {
         <div style={{ overflowY: "auto", display: "flex", flexDirection: "column" }}>
           {rows.length === 0 && <p style={{ ...s.muted, fontSize: 13, margin: 0 }}>No students enrolled.</p>}
           {rows.map((r, i) => (
-            <div
+            <button
               key={r.studentId}
+              onClick={() => homework && setOpenStudent(r.studentId)}
+              title={homework ? "See how this student worked the assignment" : ""}
               style={{
                 display: "grid", gridTemplateColumns: "1fr 90px 44px 96px", gap: 10,
                 alignItems: "center", padding: "8px 2px",
                 borderBottom: i < rows.length - 1 ? `1px solid ${border}` : "none",
+                background: "none", border: "none", borderRadius: 0, width: "100%",
+                textAlign: "left", font: "inherit", cursor: homework ? "pointer" : "default",
               }}
             >
               <span style={{ color: text, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
@@ -177,9 +332,11 @@ function ProgressModal({ title, rows, summary, onClose }) {
               <span style={{ color: muted, fontSize: 11, textAlign: "right" }} title={fmtExact(r.at) || ""}>
                 {r.submitted ? "Submitted" : fmtSince(r.at) || "-"}
               </span>
-            </div>
+            </button>
           ))}
         </div>
+
+        </>)}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ ...s.btnSec, width: "auto", padding: "8px 20px" }}>Close</button>
@@ -645,6 +802,10 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
             title={progressDetail.title}
             rows={sm.rows}
             summary={sm}
+            homework={(homeworks || []).find(h => h.id === progressDetail.hwId) || null}
+            classId={classId}
+            roster={roster}
+            subByKey={subByKey}
             onClose={() => setProgressDetail(null)}
           />
         );

@@ -792,3 +792,22 @@ export async function evaluateHomeworkAnswer({ item, hwId, studentAnswer, attemp
     studentAnswer, attemptNum, phase, fullPrompt, figureBlock, history, diagramContext,
   });
 }
+
+// Flatten a problem into its gradable items (a single item, or one per multipart part).
+// Each item carries a `weight` = its fraction of the problem's 1 point, `_problemId`, and the
+// problem-level context the grader needs: `_figure` (image) and, for multipart parts,
+// `_problemPrompt` (the shared stem shown above the parts). These let evaluateHomeworkAnswer
+// give Claude the FULL problem + figure, not just an isolated part prompt.
+export function itemsOf(p) {
+  if (p.parts && p.parts.length) {
+    return p.parts.map(pt => ({
+      ...pt, weight: 1 / p.parts.length, _problemId: p.id,
+      _figure: p.figure || null, _problemPrompt: p.prompt || null,
+    }));
+  }
+  return [{
+    id: p.id, prompt: p.prompt, answerType: p.answerType, freeHint: p.freeHint,
+    unit: p.unit, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
+    _figure: p.figure || null, _problemPrompt: null,
+  }];
+}

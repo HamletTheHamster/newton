@@ -5,8 +5,8 @@ answers questions about the class that the Gradebook can show but not summarize:
 assignments actually predict exam performance, which problems the class struggles with, and
 how students are engaging with the work.
 
-It is being built in phases. **Phase 1 (the correlation view) is shipped**; phases 2 and 3 are
-planned and described at the bottom so the data design stays coherent.
+It is being built in phases. **Phase 1 (the correlation view) and phase 2 (engagement telemetry)
+are shipped**; phase 3 is described at the bottom so the data design stays coherent.
 
 ## Why a separate tab
 
@@ -103,55 +103,96 @@ have been a third copy.
 > keep a grading refactor out of a feature change. Fold it into `countsTowardGrade` next time
 > that file is touched.
 
-## Planned
+## Phase 2 — engagement telemetry (shipped)
 
-### Phase 2 — `hwTelemetry`
-
-Time-on-problem, visibility/blur, paste counts and a bounded attempt log, so engagement can be
-measured rather than guessed at. The design:
+`src/hw-telemetry.js` is the accumulator; `HomeworkRunner` feeds it browser events and writes it
+to `classes/{classId}/hwTelemetry/{studentId}/{hwId}`:
 
 ```
-classes/{classId}/hwTelemetry/{studentId}/{hwId}
-  items: { [itemId]: {
-    activeMs, hiddenMs, hiddenCount, unfocusedMs, unfocusedCount,
-    pasteCount, firstSeenAt, firstSubmitAt, resolvedAt,
-    attemptLog: [{ at, answer, correct, awayMsBefore, msSinceReturn }]
-  }},
-  sessions: [{ start, end }],
-  updatedAt
-}
+items: { [itemId]: {
+  activeMs, hiddenMs, hiddenCount, unfocusedMs, unfocusedCount,
+  pasteCount, firstSeenAt, firstSubmitAt, resolvedAt,
+  attemptLog: [{ at, answer, correct, awayMsBefore, msSinceReturn }]
+}},
+sessions: [{ start, end }],
+updatedAt
 ```
 
-Design constraints that matter:
+Roughly 1-3 KB per student per assignment.
+
+### Why it is built this way
 
 - **Aggregates, not a raw event stream.** An append-only event log is O(seconds) and would
-  balloon RTDB. Per-item accumulators are O(items), roughly 1-3 KB per student per assignment.
-  The `attemptLog` is naturally bounded at `maxAttempts` (5).
+  balloon RTDB. Per-item accumulators are O(items), and `attemptLog` is bounded by `maxAttempts`.
 - **Written through `persistDraft()`**, the same chokepoint that already writes `hwDrafts` and
-  `hwProgress`, so the three cannot drift. Copied onto the submission at final submit, since the
-  draft is cleared there.
+  `hwProgress`, so the three cannot drift. Cleared by `clearDraft()` on final submit and copied
+  onto the submission by `buildSubmission`, which is then the only record.
 - **Kept out of the App.jsx class cache**, like `hwDrafts`/`hwAttempts`/`hwProgress` — it is
-  per-student and only the Analytics tab wants it. Add the node to `database.rules.json`.
-- **`activeMs` must exclude hidden time**, or every number is meaningless: a student who opens a
-  problem at 9pm, eats dinner, and submits at 11pm would read as 120 minutes on that problem.
-  Tick only while `visibilityState === "visible"` and the window has focus, pausing after ~120s
-  with no pointer or key event (reading a problem is legitimately idle). Ignore excursions under
-  ~2s (notification flicker); treat anything over ~30 min as a session boundary.
-- **`hiddenMs` and `unfocusedMs` are separate and must not be summed.** Tab-backgrounded
-  (`visibilitychange`) is a reliable signal; window-unfocused (`window.blur`) also fires on OS
-  notifications, screenshot tools, devtools and the app's own file picker.
-- **Paste is logged, not blocked**, on homework inputs. Blocking a numeric field is user-hostile
-  and trivially defeated; a count is free evidence. (The quiz textarea still blocks paste — that
-  is a different surface with a different purpose.)
+  per-student and only the instructor's drill-down wants it. Only `database.rules.json` changed.
+- **Never written in practice or preview mode**, like every other per-student path in the runner.
+- **Restored on mount** from the saved node, so a student working across several sittings
+  accumulates time rather than restarting the clock each visit.
+- **Cannot break homework.** Every call goes through a `tele()` guard that swallows throws, and
+  the snapshot is wrapped separately so a malformed accumulator cannot stop the draft saving.
 
-**How this must be presented.** Blur never appears as a standalone ranked column. Its uses are:
-correcting `activeMs`; the shape of excursions relative to submits inside a single student's
-profile; and per-problem class aggregates ("problem 7 has triple the away-time" usually means
-the figure is unclear, not that anyone cheated). A raw away-time leaderboard invites a wrong
-conclusion at a glance, and these signals all have innocent explanations — a shared computer, a
-printed problem set, a reload on a bad connection, a student who reads on paper. Build for "who
-should I talk to", never for a verdict, the same way the integrity flag defaults to full credit
-until an instructor upholds it.
+### The accounting rules
+
+These are what make the numbers mean anything, and they are the reason the module is separate
+and tested rather than inline in the runner.
+
+1. **Active time excludes time away.** Accrual runs only while the tab is visible, the window is
+   focused, and the student has done something in the last `IDLE_MS` (120s, generous because
+   reading a problem and working it on paper are both legitimately input-free). A segment that
+   runs through an idle stretch banks only the part before the student went quiet — **this was
+   a real bug caught by the tests**, where the whole stretch was credited as time on task.
+2. **`hiddenMs` and `unfocusedMs` are different things and are never summed.** Hidden comes from
+   the Page Visibility API and is reliable. Unfocused means the window lost OS focus while the
+   tab was still on screen, and is noisy (OS notifications, screenshot tools, devtools, the
+   app's own file picker). They are kept **disjoint** — unfocused only accrues while the
+   document is visible — so a tab switch is never counted twice. The UI shows a trip *count*,
+   never a summed duration, with the two broken out in the tooltip.
+3. **Excursion shape beats excursion total.** Each attempt records `awayMsBefore` and
+   `msSinceReturn`, so "left for 90s, came back, submitted a correct answer 4s later, on every
+   problem" is distinguishable from one long gap mid-set.
+
+Excursions under 2s are ignored (notification flicker); a gap over 30 minutes opens a new
+session rather than counting as an excursion; a single segment is capped at 10 minutes so a
+sleeping laptop that never fired a visibility event cannot dump hours onto one problem.
+
+**Paste is logged, not blocked**, on the numeric and text inputs. Blocking a numeric field is
+user-hostile and trivially defeated; a count is free evidence and costs the honest student
+nothing. (The quiz textarea still blocks paste — a different surface with a different purpose.)
+MathLive's `math-field` is a web component and is not covered.
+
+### Where it surfaces
+
+The Assignments hub's progress modal: click the Progress cell for a homework, then click any
+student. The panel shows time on task, sittings, problems opened and paste count, then a
+per-problem table of time, time-to-first-attempt, tries and trips away. Reading it back is
+`totalActiveMs` / `formatDuration` / `timeToFirstAttemptMs` from the same module.
+
+### Limits, and what follows from them
+
+It does not see a phone next to the laptop, and it cannot tell a textbook tab from a chatbot tab
+— no browser API exposes other tabs, and none should. Leaving the tab is also completely normal:
+the syllabus, a unit converter and Desmos all live elsewhere. So:
+
+- **Away time never appears as a standalone ranked column.** Its legitimate uses are correcting
+  `activeMs`, the shape of excursions inside one student's own timeline, and per-problem class
+  aggregates ("problem 7 has triple the away-time" usually means the figure is unclear).
+- **`timeToFirstAttemptMs` is the sharpest single number** but must be read as a percentile
+  against the class on the *same* item, never against a fixed threshold, and never alone.
+- Build for "who might be worth a conversation", never for a verdict — the way the integrity
+  flag defaults to full credit until an instructor upholds it.
+
+### Tests
+
+`src/hw-telemetry.test.mjs`, run with `node src/hw-telemetry.test.mjs`. Plain node, no framework,
+in keeping with the repo having no test runner. It exists because every figure this module
+produces is silently plausible when wrong, and an instructor may make a judgement about a student
+from it.
+
+## Planned
 
 ### Phase 3 — item analysis, student profile, class pulse
 
@@ -159,7 +200,7 @@ until an instructor upholds it.
   `problems[].parts[]` with `earned`, `max`, `attempts`, `status` and `studentAnswer`. Per-item
   difficulty, attempt distribution, reveal/hint rate, and **discrimination** (the correlation of
   item score with total score, which separates "hard problem" from "badly worded problem").
-  Top wrong answers need phase 2's `attemptLog` and are the highest-value output of the three.
+  Top wrong answers come straight off phase 2's `attemptLog` and are the highest-value output of the three.
 - **Student profile** — one student, everything: session timeline, per-problem time and attempts
   as a percentile against the class on that item, score trend, attendance, integrity flags.
 - **Class pulse** — active students per day, a per-assignment funnel (not started → started →

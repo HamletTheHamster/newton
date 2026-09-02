@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
 import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
+import { createTelemetry } from "../../hw-telemetry.js";
 import { MathField, hideMathKeyboard } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import { GraphField } from "../../components/GraphField.jsx";
@@ -28,6 +29,7 @@ import {
   gradeFBD,
   snapVectorMagnitudes,
   snapFBDDirections,
+  itemsOf,
   graphHint,
   vectorHint,
   fbdHint,
@@ -84,25 +86,6 @@ function FreeHint({ children }) {
 
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
 const HW_INTEGRITY_MODEL = "claude-opus-4-8";
-
-// Flatten a problem into its gradable items (a single item, or one per multipart part).
-// Each item carries a `weight` = its fraction of the problem's 1 point, `_problemId`, and the
-// problem-level context the grader needs: `_figure` (image) and, for multipart parts,
-// `_problemPrompt` (the shared stem shown above the parts). These let evaluateHomeworkAnswer
-// give Claude the FULL problem + figure, not just an isolated part prompt.
-function itemsOf(p) {
-  if (p.parts && p.parts.length) {
-    return p.parts.map(pt => ({
-      ...pt, weight: 1 / p.parts.length, _problemId: p.id,
-      _figure: p.figure || null, _problemPrompt: p.prompt || null,
-    }));
-  }
-  return [{
-    id: p.id, prompt: p.prompt, answerType: p.answerType, freeHint: p.freeHint,
-    unit: p.unit, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
-    _figure: p.figure || null, _problemPrompt: null,
-  }];
-}
 
 // MasteringPhysics-style homework runner. Owns all per-item state; on finish, builds a
 // submission object and calls onFinish(submission) (which persists it and may throw).
@@ -175,6 +158,19 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const progressPath = !practice && classId
     ? classPath(classId, `hwProgress/${loggedInStudent.studentId}/${homework.id}`)
     : null;
+  // Engagement telemetry — see src/hw-telemetry.js for the accounting rules and the limits of
+  // what these numbers can support. Written beside the draft on the same chokepoint, kept in a
+  // node of its own because it is ~10x the size of hwProgress and only the Analytics tab wants
+  // it. Never written in practice/preview mode, like every other per-student path here.
+  const telemetryPath = !practice && classId
+    ? classPath(classId, `hwTelemetry/${loggedInStudent.studentId}/${homework.id}`)
+    : null;
+  // Held in a ref, not state: it is a mutable accumulator fed by browser events many times a
+  // minute, and re-rendering the runner on every mouse move would be absurd.
+  const teleRef = useRef(null);
+  if (telemetryPath && !teleRef.current) teleRef.current = createTelemetry();
+  // Telemetry must never be able to break an attempt, so every call goes through this guard.
+  const tele = (fn, ...args) => { try { teleRef.current?.[fn]?.(...args); } catch { /* never blocks homework */ } };
   const [draftLoading, setDraftLoading] = useState(!!draftPath);
   const [pendingDraft, setPendingDraft] = useState(null);
   const [savedAttempts, setSavedAttempts] = useState({});
@@ -184,7 +180,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     Promise.all([
       fbGet(draftPath).catch(() => null),
       fbGet(attemptsPath).catch(() => null),
-    ]).then(([d, att]) => {
+      telemetryPath ? fbGet(telemetryPath).catch(() => null) : Promise.resolve(null),
+    ]).then(([d, att, saved]) => {
+      // Seed from the saved node so a student working across several sittings accumulates time
+      // rather than restarting the clock each visit.
+      if (saved) tele("restore", saved);
       const sa = att && typeof att === "object" ? att : {};
       setSavedAttempts(sa);
       // Seed local attempts from the authoritative node ALWAYS — not just when a resume
@@ -213,6 +213,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     if (!draftPath) return;
     fbSet(draftPath, null).catch(() => {});
     fbSet(progressPath, null).catch(() => {});
+    // Telemetry is cleared with the draft: from final submission on, the submission carries its
+    // own copy, so leaving this node behind would only duplicate it.
+    if (telemetryPath) fbSet(telemetryPath, null).catch(() => {});
   };
 
   // One source of truth for the draft snapshot shape, reused by the auto-save effect, the
@@ -239,10 +242,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     };
   };
 
+  // Telemetry snapshotting is wrapped: a malformed accumulator must not stop the draft saving.
+  const telemetrySnapshot = () => { try { return teleRef.current?.snapshot() || null; } catch { return null; } };
+
   const persistDraft = () => draftPath
     ? Promise.all([
         fbSet(draftPath, draftSnapshot()).catch(() => {}),
         fbSet(progressPath, progressSnapshot()).catch(() => {}),
+        telemetryPath ? fbSet(telemetryPath, telemetrySnapshot()).catch(() => {}) : Promise.resolve(),
       ]).then(() => {})
     : Promise.resolve();
 
@@ -296,6 +303,57 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     if (!practice && !acked) return;
     focusInput();
   }, [idx, acked]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Engagement telemetry ────────────────────────────────────────────────────
+  // Time is attributed to the deepest part the student can actually see, which is the same
+  // item the scroll and focus effects target: on a multipart problem the parts reveal in
+  // sequence, so the last visible one is the one being worked.
+  const deepestVisibleId = (() => {
+    const its = itemsOf(problems[idx]);
+    if (!its.length) return null;
+    const firstOpen = its.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
+    const lastVisible = problems[idx]?.parts?.length
+      ? (firstOpen === -1 ? its.length - 1 : firstOpen)
+      : its.length - 1;
+    return its[lastVisible]?.id || null;
+  })();
+
+  useEffect(() => {
+    if (!telemetryPath) return;
+    // Nothing is being worked until the student is past the resume modal and the ack gate.
+    tele("setItem", (draftLoading || pendingDraft || !acked) ? null : deepestVisibleId);
+  }, [deepestVisibleId, draftLoading, pendingDraft, acked]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!telemetryPath) return;
+    const onVis = () => tele("noteVisibility", document.visibilityState === "visible");
+    const onFocus = () => tele("noteFocus", true);
+    const onBlur = () => tele("noteFocus", false);
+    const onActivity = () => tele("noteActivity");
+    document.addEventListener("visibilitychange", onVis);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    // `passive` + capture: these fire constantly and must never delay or intercept a real
+    // interaction. They only bump a timestamp.
+    const opts = { passive: true, capture: true };
+    window.addEventListener("pointerdown", onActivity, opts);
+    window.addEventListener("keydown", onActivity, opts);
+    window.addEventListener("wheel", onActivity, opts);
+    // A tab closed outright never runs React cleanup, so bank the sitting on pagehide too. This
+    // is best-effort only: the draft's own save paths are what actually guarantee no lost work.
+    const onHide = () => tele("endSession");
+    window.addEventListener("pagehide", onHide);
+    return () => {
+      document.removeEventListener("visibilitychange", onVis);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+      window.removeEventListener("pointerdown", onActivity, opts);
+      window.removeEventListener("keydown", onActivity, opts);
+      window.removeEventListener("wheel", onActivity, opts);
+      window.removeEventListener("pagehide", onHide);
+      tele("endSession");
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Green "burst" on the advance (Next / Finish) button once the current problem is fully
   // resolved, to invite the student onward. Armed once per problem (tracked in glowedRef) and
@@ -366,6 +424,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       const credit = hintUsed[item.id] ? G.hintCredit : 1;
       setEarned(e => ({ ...e, [item.id]: credit * item.weight }));
       setStatus(s2 => ({ ...s2, [item.id]: "correct" }));
+      // Graphical items have no Submit button (they grade live as pieces are placed), so this
+      // is the only place their resolution can be stamped.
+      tele("noteResolved", item.id);
       setFeedback(f => ({ ...f, [item.id]: { text: `Your ${graphicalNoun(item)} matches.` + (hintUsed[item.id] ? ` (Hint used, ${Math.round(G.hintCredit * 100)}% credit.)` : ""), kind: "correct" } }));
       setSubmitNonce(n => n + 1);                                       // scroll + unlock next part / play buildup
     }
@@ -382,6 +443,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const revealGraphical = item => {
     setConfirmReveal(null);
     setStatus(s2 => ({ ...s2, [item.id]: "revealed" }));
+    tele("noteResolved", item.id);
     setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
     setFeedback(f => ({ ...f, [item.id]: { text: `Here is the correct ${graphicalNoun(item)}.`, kind: "revealed" } }));
     setSubmitNonce(n => n + 1);
@@ -432,6 +494,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         // drawn-but-unverified piece never shows as correct until it's actually been submitted right.
         if (result._gradePass) setGradePass(g => ({ ...g, [item.id]: result._gradePass }));
         setAttempts(a => ({ ...a, [item.id]: attemptNum }));
+        // One graded attempt. A `retry` nudge is deliberately excluded above: it costs no
+        // attempt, so recording it would inflate the log with convention slips.
+        tele("noteSubmit", item.id, { answer: ans, correct: !!result.correct });
         // Persist attempt count immediately — written even for wrong-but-still-open items so
         // the count survives a logout or leaving without resuming.
         if (attemptsPath) fbSet(attemptsPath, { ...attempts, [item.id]: attemptNum }).catch(() => {});
@@ -439,11 +504,13 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum, G) * item.weight }));
           setStatus(st => ({ ...st, [item.id]: "correct" }));
           setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "correct" } }));
+          tele("noteResolved", item.id);
         } else if (attemptNum >= G.maxAttempts) {
           setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
           setStatus(st => ({ ...st, [item.id]: "revealed" }));
           setRevealed(r => ({ ...r, [item.id]: result.revealedAnswer || revealAnswerFor(item) }));
           setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: "revealed" } }));
+          tele("noteResolved", item.id);
         } else {
           setFeedback(f => ({ ...f, [item.id]: { text: result.message, kind: attemptNum >= G.hintAfterAttempt ? "hint" : "wrong" } }));
         }
@@ -494,6 +561,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       problems: problemsBreakdown,
       workFiles: workFilesMeta || [],
       integrity: integrity || null,
+      // Copied onto the submission because `clearDraft` removes the live node at this point;
+      // from here the submission is the only record of how the work was done.
+      telemetry: telemetrySnapshot(),
     };
   };
 
@@ -638,6 +708,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             disabled={locked || isBusy}
             rows={2}
             placeholder="Type your answer…"
+            onPaste={() => tele("notePaste", item.id)}
             style={{ ...s.input, resize: "none", lineHeight: 1.5 }}
             onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitItem(item); } }}
           />
@@ -658,6 +729,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             onChange={e => setAns(item.id, e.target.value)}
             disabled={locked || isBusy}
             placeholder="Enter a number…"
+            onPaste={() => tele("notePaste", item.id)}
             style={{ ...s.input, width: 200 }}
             onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); submitItem(item); } }}
           />
@@ -921,6 +993,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const glowStyle = glow ? { animation: "hwGlowBurst 5s ease-in-out infinite", outline: "2px solid transparent", outlineOffset: 2 } : {};
 
   const handleLeaveConfirm = async () => {
+    // Close the sitting before the snapshot, so this visit is recorded with an end time rather
+    // than being left open for the unmount cleanup to guess at.
+    tele("endSession");
     // Save progress before leaving. The answers guard ensures even a typed-but-not-yet-submitted
     // answer is persisted, so the "your progress will be saved" promise always holds.
     if (draftPath && (Object.keys(status).length > 0 || Object.keys(attempts).length > 0 || Object.keys(answers).length > 0)) {
