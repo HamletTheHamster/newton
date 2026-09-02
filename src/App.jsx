@@ -2059,6 +2059,7 @@ export default function App() {
             attendance={attendance}
             dueDates={dueDates}
             gradeCategories={gradeCategories}
+            assignmentLocks={assignmentLocks}
             assignmentNameOverrides={assignmentNameOverrides}
             assignmentOrderOverrides={assignmentOrderOverrides}
           />

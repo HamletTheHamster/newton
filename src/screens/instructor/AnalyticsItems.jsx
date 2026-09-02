@@ -4,7 +4,7 @@ import { useIsMobile } from "../../utils.js";
 import { InfoDot } from "../../components/InfoDot.jsx";
 import { buildItemAnalysis, discriminationNote } from "../../analytics.js";
 import { formatDuration } from "../../hw-telemetry.js";
-import { CORR_POS, corrNeg, ordinal, fmtR, fmtPct, Stat, StatRow, Meter, StackedBar, Legend, Panel, EmptyCard } from "./analytics-ui.jsx";
+import { CORR_POS, corrNeg, series, fmtR, fmtPct, Stat, StatRow, Meter, StackedBar, Legend, Panel, EmptyCard } from "./analytics-ui.jsx";
 
 // Analytics -> Items. Per-problem statistics for one homework, answering "what should I reteach
 // on Monday" and "which problems are worth keeping".
@@ -76,12 +76,13 @@ export function AnalyticsItems({ assignments, quizzes, submissions, telemetryAll
   // badly-worded problems, and saying so is more honest than shortlisting three at random.
   const wholeSetWeak = rows.length > 0 && weak.length > rows.length / 2;
 
-  const ORD = ordinal(isLight);
+  // Slot order is the palette's own; see analytics-ui.jsx for why it must not be shuffled.
+  const C = series(isLight);
   const segs = r => [
-    { key: "first", label: "Correct first try", value: r.firstTry, color: ORD[3] },
-    { key: "later", label: "Correct on a later try", value: r.later, color: ORD[2] },
-    { key: "revealed", label: "Gave up (answer revealed)", value: r.revealed, color: ORD[1] },
-    { key: "open", label: "Never resolved", value: r.unresolved, color: ORD[0] },
+    { key: "first", label: "Correct first try", value: r.firstTry, color: C[0] },
+    { key: "later", label: "Correct on a later try", value: r.later, color: C[1] },
+    { key: "revealed", label: "Gave up (answer revealed)", value: r.revealed, color: C[2] },
+    { key: "open", label: "Never resolved", value: r.unresolved, color: C[3] },
   ];
   const legendItems = segs({ firstTry: 1, later: 1, revealed: 1, unresolved: 1 }).map(x => ({ key: x.key, label: x.label, color: x.color }));
 

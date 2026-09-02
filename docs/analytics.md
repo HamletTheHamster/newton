@@ -5,8 +5,9 @@ answers questions about the class that the Gradebook can show but not summarize:
 assignments actually predict exam performance, which problems the class struggles with, and
 how students are engaging with the work.
 
-All three phases are shipped. The tab has four views, switched by tabs across the top:
-**Correlation**, **Items**, **Students** and **Pulse**.
+All three phases are shipped. The tab has four views, switched by tabs across the top, ordered
+from the most immediate question to the most reflective: **Pulse**, **Students**, **Items**,
+**Correlation**. The first tab is also the landing view.
 
 ## Why a separate tab
 
@@ -298,6 +299,14 @@ Students active per day (single-series area, from telemetry sessions and submiss
 count per student per day however long they worked), a completion funnel per recently-due or
 upcoming assignment, and a list of students nobody has seen in over a week.
 
+Only work students can **actually open** is listed. "Open" means released, not un-expired: late
+work is always accepted at half credit (`isLate` in utils.js, and the `late` handling in
+`HomeworkRunner` and `finishQuiz`), so a past-due assignment is still open and still worth
+chasing. What is excluded is anything a student cannot reach - an unreleased module or a hidden
+item - which used to appear with the whole class in "not started", which is true and useless.
+The filter is App.jsx's own `assignmentLocks`, the same map that gates the student calendar and
+To Do rail, so the three cannot disagree.
+
 The funnel's third bucket is why this view exists: **finished, not handed in**. A student who
 completed every problem and never pressed Finish and Submit reads as *missing* in the gradebook,
 exactly like a student who did nothing, so without this they are invisible until the grade is
@@ -313,11 +322,20 @@ already a zero. It is the one bucket usually worth an email, because the work is
 - **The engagement reads are lazy.** `hwProgress` and `hwTelemetry` are fetched as two whole-node
   GETs the first time an engagement view is opened, so a visit that only wants the exam scatter
   never pays for them. They reset when the class changes.
-- **Chart forms** follow the same rules as phase 1. The attempt spread and the funnel are ordered
-  categories, so they use the validated **ordinal ramp** (one hue, monotone lightness, visible
-  step gaps) and never a categorical set; both ship a legend, since identity is never carried by
-  color alone. The activity chart is one series, so it has no legend. Palette and shared marks
-  live in `analytics-ui.jsx` with the validator command in a comment at the top.
+- **Chart forms** follow the same rules as phase 1. The activity chart is one series, so it has
+  no legend. Palette and shared marks live in `analytics-ui.jsx` with the validator command in a
+  comment at the top.
+- **The stacked bars use a four-slot categorical series, not an ordinal ramp.** They started as
+  a single-hue ramp, which is the textbook choice for ordered buckets, and it was replaced
+  because it did not work for the person reading it: four steps of one hue in a 10px bar are
+  genuinely hard to tell apart. Legibility for the actual reader beats the orthodoxy, and these
+  buckets are better described as distinct states than as points on a magnitude scale. The hues
+  and **their order** are the validated reference palette's first four slots (blue, orange,
+  aqua, yellow); a stacked bar only puts *adjacent* segments side by side, and that sequence is
+  what clears the colorblind and normal-vision floors on the adjacent pairlist in both modes.
+  **Re-run the validator rather than shuffling the slots.** Light mode leaves two slots under
+  the 3:1 contrast target, which obliges visible relief: both charts ship a legend, per-segment
+  tooltips, and the numbers in text beside or below the bar.
 - **Tests:** `node src/analytics.test.mjs` covers the item statistics, the discrimination
   direction (checked against hand arithmetic, not pinned to whatever the code returned), the
   wrong-answer guards, the funnel and the activity window.

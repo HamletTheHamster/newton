@@ -14,13 +14,26 @@ import { useTheme } from "../../theme.js";
 export const CORR_POS = "#0e9e90";
 export const corrNeg = isLight => (isLight ? "#c25d10" : "#dd7024");
 
-// Ordinal ramp, for ORDERED categories only: an attempt distribution (first try -> later ->
-// gave up), a completion funnel. Never for nominal categories - that would double-encode length
-// as hue and burn the only free channel on information the chart already shows.
-// Both directions run weakest-to-strongest so index 0 is always the "least" bucket.
-const ORDINAL_DARK = ["#0b5f58", "#0e8a7f", "#14b8a6", "#5eead4"];
-const ORDINAL_LIGHT = ["#4db8a8", "#199382", "#0a6f63", "#054942"];
-export const ordinal = isLight => (isLight ? ORDINAL_LIGHT : ORDINAL_DARK);
+// Four-slot categorical series, for the stacked bars: an attempt distribution (first try ->
+// later -> gave up -> unresolved) and the completion funnel.
+//
+// These started as a single-hue ordinal ramp, which is the textbook choice for ordered buckets.
+// It was replaced because it did not work for the person reading it: four steps of one hue in a
+// 10px bar are genuinely hard to tell apart, and legibility for the actual reader beats the
+// orthodoxy. These buckets are also better described as distinct STATES than as points on a
+// magnitude scale, which is what a categorical set is for.
+//
+// The hues and their ORDER are the validated reference palette's first four slots (blue,
+// orange, aqua, yellow). Order matters: a stacked bar only ever puts ADJACENT segments side by
+// side, and this sequence is the one that clears the colorblind and normal-vision floors on the
+// adjacent pairlist in both modes. Reordering the slots breaks that guarantee - if you need a
+// different reading order, re-run the validator rather than shuffling them.
+//
+// Light mode leaves two slots under the 3:1 contrast target, which obliges visible relief: both
+// charts ship a legend, per-segment tooltips, and the numbers in text beside or below the bar.
+const SERIES_LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
+const SERIES_DARK  = ["#3987e5", "#d95926", "#199e70", "#c98500"];
+export const series = isLight => (isLight ? SERIES_LIGHT : SERIES_DARK);
 
 // Rounds to 2dp, and normalizes negative zero: a discrimination of -0.001 must print "0.00",
 // not "-0.00", which reads as a real negative and is the difference between "no relationship"

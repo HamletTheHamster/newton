@@ -615,11 +615,14 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
 // ── Shell ─────────────────────────────────────────────────────────────────────
 // Owns the assignment list, the shared score matrix, and the two on-demand RTDB reads the
 // engagement views need. Everything below it is a pure render of derived data.
+// Order runs from the most immediate question to the most reflective one: what is happening
+// right now, then who, then which problems, then what any of it predicts. The first tab is also
+// the landing view.
 const VIEWS = [
-  { id: "correlation", label: "Correlation" },
-  { id: "items", label: "Items" },
-  { id: "students", label: "Students" },
   { id: "pulse", label: "Pulse" },
+  { id: "students", label: "Students" },
+  { id: "items", label: "Items" },
+  { id: "correlation", label: "Correlation" },
 ];
 
 // Views that always need hwProgress / hwTelemetry. The correlation view needs them only once an
@@ -628,11 +631,11 @@ const NEEDS_ENGAGEMENT = new Set(["items", "students", "pulse"]);
 
 export function Analytics({
   classId, roster, modules, quizzes, submissions, gradeOverrides, assignmentCategories,
-  manualAssignments, attendance, dueDates, gradeCategories,
+  manualAssignments, attendance, dueDates, gradeCategories, assignmentLocks,
   assignmentNameOverrides, assignmentOrderOverrides,
 }) {
   const { s, text } = useTheme();
-  const [view, setView] = useState("correlation");
+  const [view, setView] = useState(VIEWS[0].id);
   // What the correlation view measures an assignment BY. Lifted here because it decides whether
   // the engagement read is needed, which is the shell's job.
   const [feature, setFeature] = useState("score");
@@ -751,7 +754,7 @@ export function Analytics({
         <AnalyticsPulse
           roster={roster} assignments={assignments} submissions={rosterSubmissions}
           progress={progress} telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
-          dueDates={dueDates}
+          dueDates={dueDates} assignmentLocks={assignmentLocks}
         />
       )}
     </div>

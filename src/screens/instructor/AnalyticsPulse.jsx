@@ -3,7 +3,7 @@ import { useTheme } from "../../theme.js";
 import { useIsMobile, dueToDate } from "../../utils.js";
 import { InfoDot } from "../../components/InfoDot.jsx";
 import { buildActivityByDay, buildFunnel, lastActiveMap } from "../../analytics.js";
-import { CORR_POS, ordinal, Stat, StatRow, StackedBar, Legend, Panel, EmptyCard, fmtSince } from "./analytics-ui.jsx";
+import { CORR_POS, series, Stat, StatRow, StackedBar, Legend, Panel, EmptyCard, fmtSince } from "./analytics-ui.jsx";
 
 // Analytics -> Pulse. The "is anything wrong right now" view: who is working, and where each
 // open assignment has got to.
@@ -15,6 +15,8 @@ import { CORR_POS, ordinal, Stat, StatRow, StackedBar, Legend, Panel, EmptyCard,
 const ACT = { w: 640, h: 170, padL: 30, padT: 10, padR: 8, padB: 22 };
 // Longest quiet list before it stops being a shortlist.
 const QUIET_LIMIT = 10;
+// Longest funnel list before the panel stops being a summary.
+const MAX_FUNNELS = 8;
 
 // Distinct students active per day. One series over time, so an area with a 2px cap line and no
 // legend - the panel title names it.
@@ -98,6 +100,7 @@ function shortDate(key) {
 
 export function AnalyticsPulse({
   roster, assignments, submissions, progress, telemetryAll, telemetryLoading, dueDates,
+  assignmentLocks = {},
 }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
@@ -115,26 +118,28 @@ export function AnalyticsPulse({
     return Object.values(lastActive).filter(iso => new Date(iso).getTime() >= cutoff).length;
   }, [lastActive]);
 
-  // Assignments worth a funnel: quizzes and homework, most recent due date first, capped so the
-  // panel stays a summary rather than a wall.
-  const funnelTargets = useMemo(() => {
-    const now = Date.now();
-    return (assignments || [])
-      .filter(a => a.type === "quiz" || a.type === "homework")
-      .map(a => ({ a, due: a.dueDate ? dueToDate(a.dueDate)?.getTime() ?? null : null }))
-      // Anything already due, plus anything due within the next two weeks.
-      .filter(x => x.due == null || x.due <= now + 14 * 86400000)
-      .sort((p, q) => (q.due ?? 0) - (p.due ?? 0))
-      .slice(0, 6)
-      .map(x => x.a);
-  }, [assignments]);
+  // Assignments worth a funnel: the quizzes and homework a student can ACTUALLY open right now.
+  //
+  // "Open" is release, not the due date. Late work is always accepted at half credit (see
+  // `isLate` in utils.js and the `late` handling in HomeworkRunner / finishQuiz), so a past-due
+  // assignment is still open and still worth chasing - the stalled bucket especially. What is
+  // NOT open is anything a student cannot reach: an unreleased module, or a hidden item. Those
+  // used to appear here with the whole class in "not started", which is true and useless.
+  const funnelTargets = useMemo(() => (assignments || [])
+    .filter(a => a.type === "quiz" || a.type === "homework")
+    .filter(a => !assignmentLocks?.[a.id]?.locked)
+    .map(a => ({ a, due: a.dueDate ? dueToDate(a.dueDate)?.getTime() ?? null : null }))
+    .sort((p, q) => (q.due ?? 0) - (p.due ?? 0))
+    .slice(0, MAX_FUNNELS)
+    .map(x => x.a), [assignments, assignmentLocks]);
 
-  const ORD = ordinal(isLight);
+  // Slot order is the palette's own; see analytics-ui.jsx for why it must not be shuffled.
+  const C = series(isLight);
   const funnelSegs = f => [
-    { key: "submitted", label: "Submitted", value: f.submitted, color: ORD[3] },
-    { key: "stalled", label: "Finished, not handed in", value: f.stalled, color: ORD[2] },
-    { key: "started", label: "In progress", value: f.started, color: ORD[1] },
-    { key: "notStarted", label: "Not started", value: f.notStarted, color: ORD[0] },
+    { key: "submitted", label: "Submitted", value: f.submitted, color: C[0] },
+    { key: "stalled", label: "Finished, not handed in", value: f.stalled, color: C[1] },
+    { key: "started", label: "In progress", value: f.started, color: C[2] },
+    { key: "notStarted", label: "Not started", value: f.notStarted, color: C[3] },
   ];
 
   if (!roster?.length) return <EmptyCard title="No students enrolled">Add students in the Roster tab and this view fills in.</EmptyCard>;
@@ -179,10 +184,10 @@ export function AnalyticsPulse({
             It is the one bucket here that is usually worth an email, because the work is done.
           </InfoDot>
         }
-        subtitle="Recently due and upcoming work, most recent first."
+        subtitle="Work students can open right now, most recently due first. Late work still counts at half credit, so a past due assignment stays here."
       >
         {funnels.length === 0 ? (
-          <p style={{ ...s.muted, margin: 0 }}>No quizzes or homework with due dates yet.</p>
+          <p style={{ ...s.muted, margin: 0 }}>Nothing is open to students yet. Assignments appear here once their module is released.</p>
         ) : (
           <>
             <div style={{ marginBottom: 14 }}><Legend items={funnelSegs({ submitted: 1, stalled: 1, started: 1, notStarted: 1 }).map(x => ({ key: x.key, label: x.label, color: x.color }))} /></div>
