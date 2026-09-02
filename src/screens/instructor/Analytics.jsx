@@ -7,6 +7,7 @@ import { fbGet, classPath } from "../../firebase.js";
 import { InfoDot } from "../../components/InfoDot.jsx";
 import {
   buildScoreMatrix, buildCorrelations, linearFit, strengthLabel, strengthNote, mergeTelemetry,
+  effortByStudent, PREDICTORS,
 } from "../../analytics.js";
 import { CORR_POS, corrNeg, fmtR, fmtPct, Stat, StatRow, ViewTabs, EmptyCard, Panel } from "./analytics-ui.jsx";
 import { AnalyticsItems } from "./AnalyticsItems.jsx";
@@ -27,10 +28,17 @@ import { AnalyticsPulse } from "./AnalyticsPulse.jsx";
 //   • Both palettes were run through the colorblind/contrast validator for light AND dark rather
 //     than picked by eye — see CORR_POS / corrNeg below.
 
+// Round a raw axis step up to 1, 2 or 5 times a power of ten.
+function niceStep(raw) {
+  if (!(raw > 0)) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+  const n = raw / mag;
+  return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag;
+}
+
 // Scatter geometry. The plot area is deliberately SQUARE: both axes are percentages, so equal
 // px-per-percent is what lets the eye read the trend line's slope honestly.
 const SC = { w: 360, h: 354, padL: 44, padT: 14, padR: 14, padB: 38, plot: 302 };
-const scX = v => SC.padL + (v / 100) * SC.plot;
 const scY = v => SC.padT + (1 - v / 100) * SC.plot;
 
 // ── Ranked correlation bars ───────────────────────────────────────────────────
@@ -111,7 +119,9 @@ function CorrelationBars({ rows, selectedId, onSelect }) {
 }
 
 // ── Scatter with least-squares trend line ─────────────────────────────────────
-function Scatter({ row, outcome, isLight }) {
+// `xDomain`/`xTicks`/`xLabel` are supplied by the caller: the y axis is always a score
+// percentage, but x may be a percentage, a count of attempts, or minutes.
+function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
   const { text, muted, border } = useTheme();
   const [hover, setHover] = useState(null);
   // A document-unique clip id: a hardcoded one would be silently reused if a second scatter is
@@ -131,7 +141,10 @@ function Scatter({ row, outcome, isLight }) {
     );
   }
 
-  const ticks = [0, 25, 50, 75, 100];
+  const [x0, x1] = xDomain;
+  const span = x1 - x0 || 1;
+  const sx = v => SC.padL + ((v - x0) / span) * SC.plot;
+  const yTicks = [0, 25, 50, 75, 100];
 
   return (
     <div style={{ position: "relative", width: "100%", maxWidth: 420, margin: "0 auto" }}>
@@ -143,11 +156,15 @@ function Scatter({ row, outcome, isLight }) {
         </defs>
 
         {/* Recessive solid hairline grid, one shade off the surface. Never dashed. */}
-        {ticks.map(t => (
-          <g key={`g${t}`}>
-            <line x1={scX(t)} y1={scY(0)} x2={scX(t)} y2={scY(100)} stroke={gridInk} strokeWidth="1" />
-            <line x1={scX(0)} y1={scY(t)} x2={scX(100)} y2={scY(t)} stroke={gridInk} strokeWidth="1" />
-            <text x={scX(t)} y={scY(0) + 15} textAnchor="middle" fontSize="10" fill={muted}>{t}</text>
+        {xTicks.map(t => (
+          <g key={`gx${t}`}>
+            <line x1={sx(t)} y1={scY(0)} x2={sx(t)} y2={scY(100)} stroke={gridInk} strokeWidth="1" />
+            <text x={sx(t)} y={scY(0) + 15} textAnchor="middle" fontSize="10" fill={muted}>{t}</text>
+          </g>
+        ))}
+        {yTicks.map(t => (
+          <g key={`gy${t}`}>
+            <line x1={SC.padL} y1={scY(t)} x2={SC.padL + SC.plot} y2={scY(t)} stroke={gridInk} strokeWidth="1" />
             <text x={SC.padL - 8} y={scY(t) + 3.5} textAnchor="end" fontSize="10" fill={muted}>{t}</text>
           </g>
         ))}
@@ -155,8 +172,8 @@ function Scatter({ row, outcome, isLight }) {
         {/* Trend line, clipped to the plot so a steep fit cannot run into the axis labels. */}
         {fit && (
           <line
-            x1={scX(0)} y1={scY(fit.intercept)}
-            x2={scX(100)} y2={scY(fit.slope * 100 + fit.intercept)}
+            x1={sx(x0)} y1={scY(fit.slope * x0 + fit.intercept)}
+            x2={sx(x1)} y2={scY(fit.slope * x1 + fit.intercept)}
             stroke={text} strokeWidth="2" strokeOpacity="0.5" clipPath={`url(#${clipId})`}
           />
         )}
@@ -167,7 +184,7 @@ function Scatter({ row, outcome, isLight }) {
           return (
             <circle
               key={p.studentId}
-              cx={scX(p.x)} cy={scY(p.y)} r={on ? 6.5 : 5}
+              cx={sx(p.x)} cy={scY(p.y)} r={on ? 6.5 : 5}
               fill={CORR_POS} fillOpacity={on ? 1 : 0.85}
               stroke={isLight ? "#faf8f6" : "#1e1e1f"} strokeWidth="2"
               style={{ cursor: "pointer", transition: "r 0.1s" }}
@@ -178,7 +195,7 @@ function Scatter({ row, outcome, isLight }) {
         })}
 
         <text x={SC.padL + SC.plot / 2} y={SC.h - 4} textAnchor="middle" fontSize="10.5" fill={muted}>
-          {row.assignment.title} (%)
+          {xLabel}
         </text>
         <text
           x={12} y={SC.padT + SC.plot / 2} textAnchor="middle" fontSize="10.5" fill={muted}
@@ -191,7 +208,7 @@ function Scatter({ row, outcome, isLight }) {
       {hover && (
         <div style={{
           position: "absolute", pointerEvents: "none", zIndex: 5,
-          left: `${(scX(hover.x) / SC.w) * 100}%`,
+          left: `${(sx(hover.x) / SC.w) * 100}%`,
           top: `${(scY(hover.y) / SC.h) * 100}%`,
           transform: "translate(-50%, calc(-100% - 12px))",
           background: isLight ? "#fff" : "#252627",
@@ -200,7 +217,7 @@ function Scatter({ row, outcome, isLight }) {
         }}>
           <div style={{ color: text, fontSize: 12, fontWeight: 600 }}>{hover.name}</div>
           <div style={{ color: muted, fontSize: 11, fontFamily: "monospace" }}>
-            {fmtPct(hover.x)} / {fmtPct(hover.y)}
+            {fmtX(hover.x)} / {fmtPct(hover.y)}
           </div>
         </div>
       )}
@@ -209,12 +226,14 @@ function Scatter({ row, outcome, isLight }) {
 }
 
 // ── Correlation view ──────────────────────────────────────────────────────────
-function CorrelationView({ roster, assignments, matrix }) {
+function CorrelationView({ roster, assignments, matrix, feature, onFeature, effort, effortLoading }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
   const [outcomeId, setOutcomeId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [countMissing, setCountMissing] = useState(true);
+  const pred = PREDICTORS[feature] || PREDICTORS.score;
+  const isScore = feature === "score";
 
   // Default outcome: the midterm if there is one, then the final, then any manual assignment,
   // then simply the last assignment. Exams are what an instructor almost always wants on the y
@@ -230,7 +249,8 @@ function CorrelationView({ roster, assignments, matrix }) {
 
   const rows = useMemo(() => (outcome ? buildCorrelations({
     roster, assignments, outcomeId: activeOutcomeId, matrix, countMissingAsZero: countMissing,
-  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome]);
+    feature, effort,
+  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort]);
 
   const activeSelectedId = selectedId && rows.some(r => r.assignment.id === selectedId)
     ? selectedId
@@ -248,11 +268,12 @@ function CorrelationView({ roster, assignments, matrix }) {
   }, [roster, outcome, matrix]);
 
   const exportCsv = () => {
-    const head = ["Assignment", "Type", "n", "r", "r squared", "CI low", "CI high", "Reading"];
+    const head = ["Assignment", "Measured by", "Type", "n", "r", "r squared", "CI low", "CI high", "Reading"];
     const lines = [head.join(",")];
     for (const row of rows) {
       lines.push([
         `"${(row.assignment.title || "").replace(/"/g, '""')}"`,
+        pred.label,
         row.assignment.type,
         row.n,
         row.r == null ? "" : row.r.toFixed(4),
@@ -266,12 +287,40 @@ function CorrelationView({ roster, assignments, matrix }) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `correlations-${(outcome?.title || "outcome").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase()}.csv`;
+    const slug = t => (t || "").replace(/[^a-zA-Z0-9]+/g, "-").toLowerCase();
+    a.download = `correlations-${slug(pred.short)}-vs-${slug(outcome?.title || "outcome")}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
   const selColor = selected?.r == null ? muted : selected.r < 0 ? corrNeg(isLight) : CORR_POS;
+
+  // The x axis is a percentage only for the score feature. Attempts and minutes get a domain
+  // fitted to the data (rounded outward), because pinning them to 0-100 would squash every point
+  // into the left edge.
+  const axis = useMemo(() => {
+    const xs = (selected?.points || []).map(p => p.x);
+    if (isScore || !xs.length) {
+      return { domain: [0, 100], ticks: [0, 25, 50, 75, 100], label: `${selected?.assignment.title || ""} (%)`, fmt: v => `${Math.round(v)}%` };
+    }
+    const lo = feature === "attempts" ? 1 : 0;
+    const rawHi = Math.max(lo + 1, Math.max(...xs));
+    // Round the axis outward to a "nice" step so the ticks read 0/100/200 rather than
+    // 0/111.3/222.5. Evenly dividing the data range gives arithmetically correct but unreadable
+    // labels, and an axis nobody can read at a glance is a chart that does not work.
+    const step = niceStep((rawHi - lo) / 5);
+    const hi = lo + Math.ceil((rawHi - lo) / step) * step;
+    const ticks = [];
+    for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+    return {
+      domain: [lo, hi],
+      ticks,
+      label: feature === "attempts"
+        ? `${selected?.assignment.title || ""} - mean attempts to correct`
+        : `${selected?.assignment.title || ""} - minutes on task`,
+      fmt: v => (feature === "attempts" ? `${v.toFixed(1)} tries` : `${Math.round(v)} min`),
+    };
+  }, [selected, isScore, feature]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -291,6 +340,21 @@ function CorrelationView({ roster, assignments, matrix }) {
           </select>
         </div>
 
+        <div style={{ display: "flex", flexDirection: "column", gap: 5, flex: isMobile ? "none" : "0 1 230px" }}>
+          <label style={{ ...s.label, marginBottom: 0 }}>Measured by</label>
+          <select
+            value={feature}
+            onChange={e => { onFeature(e.target.value); setSelectedId(null); }}
+            style={{ ...s.input, padding: "9px 12px", colorScheme: isLight ? "light" : "dark" }}
+          >
+            {Object.values(PREDICTORS).map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+          </select>
+        </div>
+
+        {/* The missing-work policy is a question about SCORES. There is no "zero attempts" for a
+            student who never opened the assignment, so the toggle is hidden rather than left
+            visible and inert. */}
+        {isScore && (
         <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: isMobile ? 0 : 10 }}>
           <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: text, fontSize: 13 }}>
             <input
@@ -312,6 +376,7 @@ function CorrelationView({ roster, assignments, matrix }) {
             Excused work is left out either way, and an exam with no marks entered is never treated as a zero.
           </InfoDot>
         </div>
+        )}
 
         <div style={{ flex: 1 }} />
 
@@ -320,7 +385,14 @@ function CorrelationView({ roster, assignments, matrix }) {
         </button>
       </div>
 
-      {outcomeScored === 0 ? (
+      {!isScore && effortLoading ? (
+        <EmptyCard title="Loading engagement data">Attempts and time come from homework engagement tracking, which is read on demand.</EmptyCard>
+      ) : !isScore && effort && Object.keys(effort).length === 0 ? (
+        <EmptyCard title="No engagement data yet">
+          Attempts and time are recorded from the point a student next opens a homework, so a class whose work
+          predates that has none. Assignment score still works in the meantime.
+        </EmptyCard>
+      ) : outcomeScored === 0 ? (
         <div style={{ ...s.card, padding: 28, textAlign: "center" }}>
           <p style={{ color: text, fontWeight: 600, fontSize: 15, margin: "0 0 6px" }}>
             No scores entered for {outcome?.title || "this assignment"}
@@ -351,11 +423,14 @@ function CorrelationView({ roster, assignments, matrix }) {
                 </InfoDot>
               </div>
               <p style={{ ...s.muted, fontSize: 11.5, margin: "0 0 12px" }}>
-                Ranked by strength. Click any row to plot it.
+                {isScore ? "Ranked by strength. Click any row to plot it."
+                  : `Homework measured by ${pred.short}. Ranked by strength, with every problem across the term pooled at the top. Click any row to plot it.`}
               </p>
               <CorrelationBars rows={rows} selectedId={activeSelectedId} onSelect={setSelectedId} />
               <p style={{ ...s.muted, fontSize: 11, margin: "12px 0 0", paddingTop: 12, lineHeight: 1.5, marginTop: "auto", borderTop: `1px solid ${border}` }}>
-                Right of the line: higher scores go with higher {outcome?.title} scores. Left: the reverse.
+                Right of the line: more {pred.short} goes with higher {outcome?.title} scores. Left: the reverse.
+                {pred.expected === "negative" && " A bar to the LEFT is the healthy result here: students who needed fewer attempts did better."}
+                {pred.expected === "either" && " Neither direction is the \u0022right\u0022 one; which way it points is the finding."}
               </p>
             </div>
 
@@ -369,6 +444,13 @@ function CorrelationView({ roster, assignments, matrix }) {
                   <p style={{ ...s.muted, fontSize: 11.5, margin: "0 0 12px" }}>
                     One dot per student. Hover a dot for the name.
                   </p>
+                  {!isScore && (
+                    <p style={{
+                      color: muted, fontSize: 11.5, margin: "0 0 12px", lineHeight: 1.5,
+                      padding: "8px 10px", borderRadius: 8, border: `1px solid ${border}`,
+                      background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)",
+                    }}>{pred.blurb}</p>
+                  )}
 
                   <div style={{
                     display: "flex", gap: 20, flexWrap: "wrap", padding: "10px 12px", marginBottom: 14,
@@ -388,7 +470,10 @@ function CorrelationView({ roster, assignments, matrix }) {
                     />
                   </div>
 
-                  <Scatter row={selected} outcome={outcome} isLight={isLight} />
+                  <Scatter
+                    row={selected} outcome={outcome} isLight={isLight}
+                    xDomain={axis.domain} xTicks={axis.ticks} xLabel={axis.label} fmtX={axis.fmt}
+                  />
 
                   {strengthNote(selected) && (
                     <p style={{
@@ -495,8 +580,8 @@ const VIEWS = [
   { id: "pulse", label: "Pulse" },
 ];
 
-// Views that need hwProgress / hwTelemetry. The correlation view does not, so a visit that only
-// wants the exam scatter never pays for the telemetry read.
+// Views that always need hwProgress / hwTelemetry. The correlation view needs them only once an
+// effort predictor is chosen, so a visit that just wants the exam scatter never pays for the read.
 const NEEDS_ENGAGEMENT = new Set(["items", "students", "pulse"]);
 
 export function Analytics({
@@ -506,6 +591,9 @@ export function Analytics({
 }) {
   const { s, text } = useTheme();
   const [view, setView] = useState("correlation");
+  // What the correlation view measures an assignment BY. Lifted here because it decides whether
+  // the engagement read is needed, which is the shell's job.
+  const [feature, setFeature] = useState("score");
   // null while unloaded; {} once a load has finished (including a failed one, so a broken read
   // shows "nothing recorded" rather than a spinner that never resolves).
   const [engagement, setEngagement] = useState(null);
@@ -523,8 +611,10 @@ export function Analytics({
   // Two whole-node reads, once per visit, the first time an engagement view is opened.
   // `hwProgress` is tiny; `hwTelemetry` is the larger one and is deliberately not fetched for
   // the correlation view, which is derived entirely from data App.jsx already holds.
+  const wantsEngagement = NEEDS_ENGAGEMENT.has(view) || (view === "correlation" && feature !== "score");
+
   useEffect(() => {
-    if (!classId || engagement || loadingEngagement || !NEEDS_ENGAGEMENT.has(view)) return;
+    if (!classId || engagement || loadingEngagement || !wantsEngagement) return;
     setLoadingEngagement(true);
     Promise.all([
       fbGet(classPath(classId, "hwProgress")).catch(() => null),
@@ -533,7 +623,7 @@ export function Analytics({
       .then(([p, t]) => setEngagement({ progress: p || {}, telemetryAll: t || {} }))
       .catch(() => setEngagement({ progress: {}, telemetryAll: {} }))
       .finally(() => setLoadingEngagement(false));
-  }, [classId, view, engagement, loadingEngagement]);
+  }, [classId, wantsEngagement, engagement, loadingEngagement]);
 
   // Reset when the class changes, or one class's telemetry would be shown under another's name.
   useEffect(() => { setEngagement(null); }, [classId]);
@@ -545,6 +635,15 @@ export function Analytics({
     () => mergeTelemetry({ telemetryAll: engagement?.telemetryAll || {}, submissions }),
     [engagement, submissions]
   );
+
+  // Per-student attempts and time, for the correlation view's effort predictors. Only computed
+  // once the engagement read has landed, so it is null (not an empty object) while loading and
+  // the view can tell "still loading" from "genuinely nothing recorded".
+  const effort = useMemo(() => {
+    if (!engagement) return null;
+    const homeworkIds = assignments.filter(a => a.type === "homework").map(a => a.id);
+    return effortByStudent({ homeworkIds, submissions, telemetryAll });
+  }, [engagement, assignments, submissions, telemetryAll]);
 
   if (!assignments.length) {
     return (
@@ -558,7 +657,9 @@ export function Analytics({
   }
 
   const blurb = {
-    correlation: "Which assignments predict performance on an exam, measured across the students who have both scores.",
+    correlation: feature === "score"
+      ? "Which assignments predict performance on an exam, measured across the students who have both scores."
+      : `Whether ${PREDICTORS[feature]?.short} on homework predicts exam performance. Unlike scores, these are not capped by the attempt schedule, so they often carry signal a score cannot.`,
     items: "Per-problem difficulty for one homework, and which problems are separating strong students from weak ones.",
     students: "Where each student stands across the term, and how they worked.",
     pulse: "Who is working right now, and where each open assignment has got to.",
@@ -574,7 +675,11 @@ export function Analytics({
       <ViewTabs views={VIEWS} active={view} onSelect={setView} />
 
       {view === "correlation" && (
-        <CorrelationView roster={roster} assignments={assignments} matrix={matrix} />
+        <CorrelationView
+          roster={roster} assignments={assignments} matrix={matrix}
+          feature={feature} onFeature={setFeature}
+          effort={effort} effortLoading={feature !== "score" && !engagement}
+        />
       )}
       {view === "items" && (
         <AnalyticsItems

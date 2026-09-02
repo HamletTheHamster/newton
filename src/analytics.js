@@ -125,6 +125,25 @@ export function correlationCI(r, n, z = 1.96) {
   return [Math.tanh(zr - z * se), Math.tanh(zr + z * se)];
 }
 
+const median = xs => {
+  const a = xs.filter(v => v != null && Number.isFinite(v)).sort((p, q) => p - q);
+  if (!a.length) return null;
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+};
+
+// Flatten a stored submission's `problems` into per-item rows. A submission mirrors the
+// runner's own shape: a multipart problem carries `parts`, a single-part one IS the item.
+function submissionItems(sub) {
+  const out = [];
+  for (const p of (sub?.problems || [])) {
+    if (Array.isArray(p.parts) && p.parts.length) {
+      for (const pt of p.parts) out.push(pt);
+    } else out.push(p);
+  }
+  return out;
+}
+
 // ── Pairing students against an outcome ───────────────────────────────────────
 
 // Turn one assignment into a per-student percentage, applying the missing-work policy.
@@ -156,47 +175,194 @@ function pctFor(assignment, sid, { scoreMap, excusedMap, subsByStudent, countMis
   return counts ? 0 : null;
 }
 
-// Pair every student who has a usable percentage on BOTH assignments.
+// Pair every student for whom BOTH getters return a number.
 // Returns [{ studentId, name, x, y }] — the scatter's points, and the input to `pearson`.
-export function pairStudents({ roster, predictor, outcome, matrix, countMissingAsZero = true, now = new Date() }) {
-  const opts = { ...matrix, countMissingAsZero, now };
+// `xOf`/`yOf` take a studentId, so a predictor can be anything per-student, not just a score.
+export function pairBy({ roster, xOf, yOf }) {
   const out = [];
   for (const stu of (roster || [])) {
-    const x = pctFor(predictor, stu.studentId, opts);
-    const y = pctFor(outcome, stu.studentId, opts);
-    if (x == null || y == null) continue;
+    const x = xOf(stu.studentId);
+    const y = yOf(stu.studentId);
+    if (x == null || y == null || !Number.isFinite(x) || !Number.isFinite(y)) continue;
     out.push({ studentId: stu.studentId, name: stu.altName || stu.fullName || stu.studentId, x, y });
   }
   return out;
 }
 
-// The ranked table behind the correlation view: every assignment except the outcome, scored by
-// how well it predicts that outcome, strongest relationship first.
-export function buildCorrelations({ roster, assignments, outcomeId, matrix, countMissingAsZero = true, now = new Date() }) {
+// Score-vs-score pairing, the phase 1 behaviour, expressed through pairBy.
+export function pairStudents({ roster, predictor, outcome, matrix, countMissingAsZero = true, now = new Date() }) {
+  const opts = { ...matrix, countMissingAsZero, now };
+  return pairBy({
+    roster,
+    xOf: sid => pctFor(predictor, sid, opts),
+    yOf: sid => pctFor(outcome, sid, opts),
+  });
+}
+
+// Strongest |r| first. A row we cannot correlate at all sinks to the bottom rather than sorting
+// as if it were r = 0, which would place "no data" among the genuinely unrelated.
+const byStrength = (p, q) => {
+  if (p.r == null && q.r == null) return 0;
+  if (p.r == null) return 1;
+  if (q.r == null) return -1;
+  return Math.abs(q.r) - Math.abs(p.r);
+};
+
+const statsFor = points => {
+  const r = pearson(points.map(p => [p.x, p.y]));
+  return { n: points.length, r, r2: r == null ? null : r * r, ci: correlationCI(r, points.length), points };
+};
+
+// ── Predictors ────────────────────────────────────────────────────────────────
+//
+// The correlation view can measure an assignment by more than its score. Homework scores are
+// heavily CEILING-COMPRESSED by the 3-attempt/hint/reveal schedule — most students end up near
+// full credit — and restriction of range attenuates correlation badly at class-sized n. So a
+// homework can genuinely teach the exam while its SCORE correlates weakly, simply because the
+// score has almost no variance left to correlate with. Attempts and time are not ceiling-bound
+// and often carry the signal the score cannot.
+//
+// `expected` is the direction a healthy course should show, and it differs per feature. It is
+// displayed rather than baked into the sign, because reversing a coefficient to make every bar
+// point right would hide exactly the surprises worth seeing.
+export const PREDICTORS = {
+  score: {
+    id: "score", label: "Assignment score", short: "score", unit: "%",
+    expected: "positive",
+    blurb: "Higher score goes with higher exam performance. The obvious measure, and the one most weakened by the attempt schedule: if nearly everyone finishes near full credit there is little variance left to correlate.",
+  },
+  attempts: {
+    id: "attempts", label: "Attempts to correct", short: "attempts", unit: "",
+    expected: "negative",
+    blurb: "The average number of tries a student needed on the problems they eventually got right. A NEGATIVE correlation is the healthy result: students who needed fewer attempts did better on the exam. Not ceiling-bound, so it often separates students the score cannot.",
+  },
+  time: {
+    id: "time", label: "Time on task", short: "time", unit: "min",
+    expected: "either",
+    blurb: "Minutes actually spent, excluding time the tab was hidden or idle. The direction is genuinely informative here rather than assumed: positive suggests effort paying off, negative suggests the students taking longest are the ones struggling. Both are real findings.",
+  },
+};
+
+// Minimum items a student must have resolved before a mean-attempts figure means anything. Below
+// this the average swings wildly on one lucky or unlucky problem.
+const MIN_RESOLVED_FOR_ATTEMPTS = 3;
+
+// Per-student effort measures per homework, plus a pooled "all homework" entry.
+//
+//   { [studentId]: { [hwId]: { attempts, timeMs, resolved }, all: { … } } }
+//
+// Attempts come from the SUBMISSION where there is one — it stores the exact per-item count and
+// is the completed record — falling back to the telemetry attempt log for a student still
+// working. The two are not mixed for the same student, so one student's figure is never half
+// exact and half approximate. Time comes only from telemetry, which is the only place it exists.
+export function effortByStudent({ homeworkIds = [], submissions = [], telemetryAll = {} }) {
+  const ids = new Set(homeworkIds);
+  const out = {};
+  const blank = () => ({ attemptSum: 0, resolved: 0, timeMs: 0, hasTime: false });
+
+  const bump = (sid, hwId, add) => {
+    const stu = (out[sid] ||= {});
+    for (const key of [hwId, "all"]) {
+      const e = (stu[key] ||= blank());
+      e.attemptSum += add.attemptSum; e.resolved += add.resolved;
+      e.timeMs += add.timeMs; e.hasTime = e.hasTime || add.hasTime;
+    }
+  };
+
+  const withSubmission = new Set();
+  for (const sub of submissions) {
+    if (sub.type !== "homework" || !ids.has(sub.quizId)) continue;
+    withSubmission.add(`${sub.studentId}|${sub.quizId}`);
+    let attemptSum = 0, resolved = 0;
+    for (const it of submissionItems(sub)) {
+      // Only items the student actually got right have an "attempts to correct". A revealed or
+      // abandoned item has no such number, and counting its 5 failed tries as though they were
+      // the cost of success would make giving up look like diligence.
+      if (it.status === "correct" && it.attempts > 0) { attemptSum += it.attempts; resolved += 1; }
+    }
+    const tele = sub.telemetry || telemetryAll?.[sub.studentId]?.[sub.quizId] || null;
+    const timeMs = tele ? Object.values(tele.items || {}).reduce((n, x) => n + (x.activeMs || 0), 0) : 0;
+    bump(sub.studentId, sub.quizId, { attemptSum, resolved, timeMs, hasTime: !!tele });
+  }
+
+  for (const [sid, byHw] of Object.entries(telemetryAll)) {
+    for (const [hwId, tele] of Object.entries(byHw || {})) {
+      if (!ids.has(hwId) || withSubmission.has(`${sid}|${hwId}`)) continue;
+      let attemptSum = 0, resolved = 0, timeMs = 0;
+      for (const it of Object.values(tele?.items || {})) {
+        timeMs += it.activeMs || 0;
+        const log = it.attemptLog || [];
+        const win = log.findIndex(a => a.correct);
+        if (win >= 0) { attemptSum += win + 1; resolved += 1; }
+      }
+      bump(sid, hwId, { attemptSum, resolved, timeMs, hasTime: true });
+    }
+  }
+
+  // Collapse the accumulators into the two reported measures.
+  const final = {};
+  for (const [sid, byKey] of Object.entries(out)) {
+    final[sid] = {};
+    for (const [key, e] of Object.entries(byKey)) {
+      final[sid][key] = {
+        attempts: e.resolved >= MIN_RESOLVED_FOR_ATTEMPTS ? e.attemptSum / e.resolved : null,
+        timeMs: e.hasTime && e.timeMs > 0 ? e.timeMs : null,
+        resolved: e.resolved,
+      };
+    }
+  }
+  return final;
+}
+
+// The ranked list behind the correlation view.
+//
+// `feature` selects what an assignment is measured BY. "score" ranks every assignment except the
+// outcome. The effort features only exist for homework, so they rank the homework assignments
+// plus a pooled "All homework" row — pooling every item across the term is the most statistically
+// powerful row available at class-sized n, and is usually the one worth reading first.
+export function buildCorrelations({
+  roster, assignments, outcomeId, matrix, countMissingAsZero = true, now = new Date(),
+  feature = "score", effort = null,
+}) {
   const outcome = (assignments || []).find(a => a.id === outcomeId);
   if (!outcome) return [];
-  const rows = [];
-  for (const a of (assignments || [])) {
-    if (a.id === outcomeId) continue;
-    const points = pairStudents({ roster, predictor: a, outcome, matrix, countMissingAsZero, now });
-    const r = pearson(points.map(p => [p.x, p.y]));
+  const opts = { ...matrix, countMissingAsZero, now };
+  const yOf = sid => pctFor(outcome, sid, opts);
+
+  if (feature === "score" || !effort) {
+    return (assignments || [])
+      .filter(a => a.id !== outcomeId)
+      .map(a => ({ assignment: a, ...statsFor(pairBy({ roster, xOf: sid => pctFor(a, sid, opts), yOf })) }))
+      .sort(byStrength);
+  }
+
+  const valueOf = (sid, key) => {
+    const e = effort[sid]?.[key];
+    if (!e) return null;
+    if (feature === "attempts") return e.attempts;
+    if (feature === "time") return e.timeMs == null ? null : e.timeMs / 60000; // minutes
+    return null;
+  };
+
+  const homework = (assignments || []).filter(a => a.type === "homework" && a.id !== outcomeId);
+  const rows = homework.map(a => ({
+    assignment: a,
+    ...statsFor(pairBy({ roster, xOf: sid => valueOf(sid, a.id), yOf })),
+  }));
+
+  // The pooled row is not an assignment, so it carries a synthetic one. `pooled` marks it for
+  // the UI, which pins it to the top rather than letting it sort among the individual sets.
+  if (homework.length > 1) {
     rows.push({
-      assignment: a,
-      n: points.length,
-      r,
-      r2: r == null ? null : r * r,
-      ci: correlationCI(r, points.length),
-      points,
+      assignment: { id: "__all_homework__", title: "All homework combined", type: "homework", catId: "cat_hw", maxPts: 10 },
+      pooled: true,
+      ...statsFor(pairBy({ roster, xOf: sid => valueOf(sid, "all"), yOf })),
     });
   }
-  // Strongest |r| first; an assignment we cannot correlate at all sinks to the bottom rather
-  // than sorting as if it were r = 0.
-  return rows.sort((p, q) => {
-    if (p.r == null && q.r == null) return 0;
-    if (p.r == null) return 1;
-    if (q.r == null) return -1;
-    return Math.abs(q.r) - Math.abs(p.r);
-  });
+
+  const sorted = rows.filter(x => !x.pooled).sort(byStrength);
+  const pooled = rows.find(x => x.pooled);
+  return pooled ? [pooled, ...sorted] : sorted;
 }
 
 // ── Reading a correlation in words ────────────────────────────────────────────
@@ -228,25 +394,6 @@ export function strengthNote(row) {
 }
 
 // ── Phase 3: item analysis ────────────────────────────────────────────────────
-
-const median = xs => {
-  const a = xs.filter(v => v != null && Number.isFinite(v)).sort((p, q) => p - q);
-  if (!a.length) return null;
-  const m = a.length >> 1;
-  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
-};
-
-// Flatten a stored submission's `problems` into per-item rows. A submission mirrors the
-// runner's own shape: a multipart problem carries `parts`, a single-part one IS the item.
-function submissionItems(sub) {
-  const out = [];
-  for (const p of (sub?.problems || [])) {
-    if (Array.isArray(p.parts) && p.parts.length) {
-      for (const pt of p.parts) out.push(pt);
-    } else out.push(p);
-  }
-  return out;
-}
 
 // Normalize a typed answer for grouping. Wrong answers are only interesting in aggregate, so
 // "9.8 " and "9.8" must land in the same bucket.

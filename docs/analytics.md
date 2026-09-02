@@ -82,6 +82,40 @@ Per the house data-viz rules:
   under the title. Letting it scroll sideways instead left a truncated "R SQUARED" header
   reading as a second "R".
 
+### Predictors: what an assignment is measured by
+
+The **Measured by** selector switches what the correlation is computed on. This exists because
+homework scores are **ceiling-compressed** by the 3-attempt/hint/reveal schedule: most students
+finish near full credit, and restriction of range attenuates correlation badly at class-sized n.
+A homework can genuinely teach the exam while its *score* correlates weakly, simply because the
+score has almost no variance left to correlate with.
+
+| Measure | What it is | Expected direction |
+|---|---|---|
+| **Assignment score** | percentage earned. Every assignment, the phase 1 behaviour. | positive |
+| **Attempts to correct** | mean tries on the problems the student eventually got right. Homework only. | **negative** — fewer tries should go with a higher exam score |
+| **Time on task** | minutes actually spent, excluding hidden and idle time. Homework only. | **either** — and which way it points is the finding |
+
+Details that matter:
+
+- **Only items the student got right contribute an attempts figure.** A revealed item's five
+  failed tries are the cost of giving up, not of succeeding, and counting them would make giving
+  up look like diligence. A student needs at least three resolved items before a mean is
+  reported at all; below that it swings on one lucky problem.
+- **Attempts come from the submission where there is one** (it stores the exact per-item count
+  and is the completed record), falling back to the telemetry attempt log for a student still
+  working. The two are never mixed *for the same student*, so one student's figure is never half
+  exact and half approximate.
+- **The effort measures add a pooled "All homework combined" row**, pinned to the top. Pooling
+  every problem across the term is the most statistically powerful row available at class-sized
+  n, and is usually the one worth reading first.
+- **The expected direction is displayed, never baked into the sign.** Flipping a coefficient so
+  every bar points right would hide exactly the surprises worth seeing.
+- **The missing-work toggle is hidden for the effort measures.** It is a question about scores;
+  there is no "zero attempts" for a student who never opened the assignment.
+- The x axis is a percentage only for scores. Attempts and minutes get a domain fitted to the
+  data and rounded outward to a nice step, so ticks read 0/100/200 rather than 0/111.3/222.5.
+
 ## The shared score matrix
 
 `buildScoreMatrix` (`src/analytics.js`) builds the student × assignment grid of **effective**
@@ -268,11 +302,6 @@ already a zero. It is the one bucket usually worth an email, because the work is
 
 Nothing here is committed to. Candidates, roughly in order of value:
 
-- **Correlate exam performance against the non-score features** now that telemetry exists.
-  Homework scores are ceiling-compressed by the 3-attempt/hint/reveal schedule, and restriction
-  of range attenuates correlation badly at class-sized n, so **attempts-to-correct** and
-  **time-on-problem** should predict exam performance better than homework score does. The
-  correlation view currently only accepts assignment scores as predictors.
 - **Item analysis across a whole course**, not one homework at a time, so a topic that never
   lands is visible as a run of weak items rather than one bad problem.
 - **Quiz item analysis.** Quizzes store a chat transcript rather than a per-item breakdown, so

@@ -98,5 +98,104 @@ eq("time on task sums every assignment", timeOnTaskMap({
   s1: { hw1: { items: { a: { activeMs: 1000 }, b: { activeMs: 2000 } } }, hw2: { items: { c: { activeMs: 500 } } } },
 }).s1, 3500);
 
+
+
+// ── Effort predictors (attempts to correct, time on task) ─────────────────────
+{
+  const { effortByStudent, buildCorrelations, PREDICTORS } = await import("./analytics.js");
+
+  const sub = (studentId, quizId, items, telemetry) => ({
+    studentId, quizId, type: "homework", timestamp: "2026-09-01T10:00:00.000Z",
+    problems: items.map(([id, attempts, status]) => ({ id, attempts, status, earned: status === "correct" ? 1 : 0, max: 1 })),
+    telemetry,
+  });
+  const tele = perItem => ({ items: Object.fromEntries(Object.entries(perItem).map(([k, v]) => [k, v])) });
+
+  // Only items the student got RIGHT contribute an "attempts to correct": a revealed item's five
+  // failed tries are the cost of giving up, not of succeeding.
+  const e1 = effortByStudent({
+    homeworkIds: ["hw1"],
+    submissions: [sub("s1", "hw1", [["a", 1, "correct"], ["b", 3, "correct"], ["c", 5, "revealed"], ["d", 2, "correct"]],
+      tele({ a: { activeMs: 60000 }, b: { activeMs: 120000 } }))],
+    telemetryAll: {},
+  });
+  near("attempts to correct ignores revealed items", e1.s1.hw1.attempts, (1 + 3 + 2) / 3, 0.001);
+  eq("resolved count", e1.s1.hw1.resolved, 3);
+  near("time in ms from the submission's telemetry", e1.s1.hw1.timeMs, 180000, 1);
+
+  // Below the floor a mean swings on one lucky problem, so it is withheld rather than reported.
+  const e2 = effortByStudent({
+    homeworkIds: ["hw1"],
+    submissions: [sub("s1", "hw1", [["a", 1, "correct"], ["b", 4, "revealed"]], tele({ a: { activeMs: 1000 } }))],
+    telemetryAll: {},
+  });
+  eq("too few resolved items reports null, not a number", e2.s1.hw1.attempts, null);
+
+  // A student still working is read from telemetry; one with a submission is NOT topped up from
+  // the live node, so a single student's figure is never half exact and half approximate.
+  const e3 = effortByStudent({
+    homeworkIds: ["hw1"],
+    submissions: [sub("s1", "hw1", [["a", 2, "correct"], ["b", 2, "correct"], ["c", 2, "correct"]], tele({ a: { activeMs: 1000 } }))],
+    telemetryAll: {
+      s1: { hw1: { items: { z: { activeMs: 999999, attemptLog: [{ correct: true }] } } } },
+      s2: { hw1: { items: {
+        a: { activeMs: 30000, attemptLog: [{ correct: false }, { correct: true }] },
+        b: { activeMs: 30000, attemptLog: [{ correct: true }] },
+        c: { activeMs: 30000, attemptLog: [{ correct: false }, { correct: false }, { correct: true }] },
+      } } },
+    },
+  });
+  near("submitted student keeps the submission's attempts", e3.s1.hw1.attempts, 2, 0.001);
+  near("submitted student's time is not double counted", e3.s1.hw1.timeMs, 1000, 1);
+  near("in-progress student read from the attempt log", e3.s2.hw1.attempts, (2 + 1 + 3) / 3, 0.001);
+
+  // Pooling across assignments.
+  const e4 = effortByStudent({
+    homeworkIds: ["hw1", "hw2"],
+    submissions: [
+      sub("s1", "hw1", [["a", 1, "correct"], ["b", 1, "correct"], ["c", 1, "correct"]], tele({ a: { activeMs: 60000 } })),
+      sub("s1", "hw2", [["d", 3, "correct"], ["e", 3, "correct"], ["f", 3, "correct"]], tele({ d: { activeMs: 60000 } })),
+    ],
+    telemetryAll: {},
+  });
+  near("pooled attempts average every item across the term", e4.s1.all.attempts, 2, 0.001);
+  near("pooled time sums every assignment", e4.s1.all.timeMs, 120000, 1);
+
+  // End to end: more attempts must come out NEGATIVELY correlated with exam score.
+  const rosterE = [0, 1, 2, 3, 4, 5].map(i => ({ studentId: "e" + i, fullName: "E" + i }));
+  const exam = [95, 88, 80, 70, 60, 50];
+  const tries = [1, 1, 2, 3, 4, 5];
+  const effort = effortByStudent({
+    homeworkIds: ["hw1"],
+    submissions: rosterE.map((r, i) => sub(r.studentId, "hw1",
+      [["a", tries[i], "correct"], ["b", tries[i], "correct"], ["c", tries[i], "correct"]],
+      tele({ a: { activeMs: tries[i] * 60000 } }))),
+    telemetryAll: {},
+  });
+  const assignmentsE = [
+    { id: "hw1", title: "HW1", type: "homework", catId: "cat_hw", maxPts: 10 },
+    { id: "hw2", title: "HW2", type: "homework", catId: "cat_hw", maxPts: 10 },
+    { id: "mid", title: "Midterm", type: "manual", catId: "cat_midterm", maxPts: 100 },
+  ];
+  const matrixE = {
+    scoreMap: Object.fromEntries(rosterE.map((r, i) => [r.studentId, { mid: exam[i] }])),
+    excusedMap: Object.fromEntries(rosterE.map(r => [r.studentId, {}])),
+    subsByStudent: Object.fromEntries(rosterE.map(r => [r.studentId, {}])),
+    flaggedMap: {}, absentMap: {},
+  };
+  const attRows = buildCorrelations({ roster: rosterE, assignments: assignmentsE, outcomeId: "mid", matrix: matrixE, feature: "attempts", effort });
+  const hw1Row = attRows.find(r => r.assignment.id === "hw1");
+  if (!(hw1Row.r < -0.9)) { fails++; console.log("FAIL more attempts should predict a LOWER exam score, got r=" + hw1Row.r); }
+  else console.log(`ok   more attempts predicts a lower exam score (r=${hw1Row.r.toFixed(2)})`);
+  eq("attempts predictor declares its expected direction", PREDICTORS.attempts.expected, "negative");
+  eq("effort rows cover homework only, plus the pooled row", attRows.map(r => r.assignment.id).sort(), ["__all_homework__", "hw1", "hw2"].sort());
+  eq("pooled row is pinned first", attRows[0].assignment.id, "__all_homework__");
+  eq("an assignment with no effort data still appears, uncorrelatable", attRows.find(r => r.assignment.id === "hw2").r, null);
+
+  const timeRows = buildCorrelations({ roster: rosterE, assignments: assignmentsE, outcomeId: "mid", matrix: matrixE, feature: "time", effort });
+  const t1 = timeRows.find(r => r.assignment.id === "hw1");
+  near("time is paired in minutes, not milliseconds", t1.points[0].x, 1, 0.001);
+}
+
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall passed");
 process.exit(fails ? 1 : 0);
