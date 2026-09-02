@@ -7,9 +7,22 @@ import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
 import { formatSessionDate } from "../../attendance.js";
 import { buildScoreMatrix, countsTowardGrade } from "../../analytics.js";
+import { readBlackboardExport, mergeImport, pairColumn, buildBlackboardCsv, isCalculatedColumn, gradebookFilename } from "../../blackboard.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 function catColor(catId) { return categoryColor(catId, TEAL); }
+
+// One place that turns a CSV string into a saved file, shared by both exports. Every filename is
+// stamped with the LOCAL date and time (gradebookFilename) so a folder of downloads reads and
+// sorts by when it was taken — which matters most for the Blackboard file, where uploading a
+// stale one silently rolls grades back.
+function download(filename, csv) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 
 function overallColor(pct) {
   if (pct == null) return MUTED;
@@ -543,6 +556,248 @@ function BulkScoreModal({ assignment, students, scoreMap, excusedMap, onClose, o
   );
 }
 
+// ── BlackboardModal ───────────────────────────────────────────────────────────
+// Links Newton's gradebook to a Blackboard Grade Center, then downloads a file that Grade
+// Center will accept. The two facts the link exists to capture — each student's Blackboard
+// USERNAME and each column's COLUMN ID — can only come from a Blackboard download; the reasons
+// are spelled out at the top of src/blackboard.js.
+//
+// The link is deliberately explicit rather than automatic. An assignment with no Blackboard
+// column is LEFT OUT of the upload instead of being invented: a header without a column id makes
+// Blackboard create a zero-point text column that can't feed a calculated total, and undoing 37
+// of those inside Blackboard is far worse than being told which ones to make first.
+function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard, onSave, courseCode, onClose }) {
+  const { s, muted, border, text, teal, isLight } = useTheme();
+  const cellBorder = `1px solid ${border}`;
+  const solidBg = isLight ? "#fff" : "#252627";
+  const fileRef = useRef(null);
+
+  const [link, setLink] = useState(() => blackboard || { columns: [], map: {}, usernames: {} });
+  const [importMsg, setImportMsg] = useState(null);   // { tone: "ok"|"warn"|"err", lines: [] }
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  // Default ON: hand-creating a column per assignment is the thing this is meant to avoid.
+  const [createMissing, setCreateMissing] = useState(true);
+  // Default OFF, and it stays off for PHY 215: the instructor matches points possible by hand in
+  // Blackboard so the raw marks read identically on both platforms. Scaling is the fallback for
+  // anyone who would rather not, not the house route.
+  const [scaleToColumn, setScaleToColumn] = useState(false);
+
+  const columns = link.columns || [];
+  const map = link.map || {};
+  const usernames = link.usernames || {};
+  const usable = columns.filter(c => !isCalculatedColumn(c));
+  const colById = Object.fromEntries(columns.map(c => [c.bbId, c]));
+
+  const unlinkedStudents = roster.filter(st => !usernames[st.studentId]);
+  const unusedColumns = usable.filter(c => !Object.values(map).includes(c.bbId));
+
+  const onFile = e => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const res = readBlackboardExport(String(ev.target.result || ""), roster);
+      if (res.error) { setImportMsg({ tone: "err", lines: [res.error] }); return; }
+      // Merge, never replace — mergeImport (blackboard.js) keeps hand-made pairings and
+      // accumulates usernames, which is what makes "add a column in Blackboard, download, import
+      // again" safe to repeat all term.
+      const { link: next, newlyMatched } = mergeImport(link, res, assignments, file.name);
+      setLink(next);
+      setDirty(true);
+      const lines = [
+        `${res.links.length} of ${roster.length} students matched to a Blackboard username.`,
+        `${res.columns.filter(c => !isCalculatedColumn(c)).length} gradable Blackboard columns found, ${newlyMatched} newly matched by name.`,
+      ];
+      if (res.unmatchedStudents.length) lines.push(`Not in the Blackboard file: ${res.unmatchedStudents.map(st => st.fullName).join(", ")}.`);
+      if (res.unmatchedRows.length) lines.push(`In Blackboard but not on the Newton roster: ${res.unmatchedRows.map(r => r.name || r.username).join(", ")}.`);
+      setImportMsg({ tone: res.unmatchedStudents.length || res.unmatchedRows.length ? "warn" : "ok", lines });
+    };
+    reader.readAsText(file);
+  };
+
+  const setPair = (assignmentId, bbId) => {
+    setLink(prev => ({ ...prev, map: pairColumn(prev.map || {}, assignmentId, bbId) }));
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try { await onSave(columns.length || Object.keys(usernames).length ? link : null); setDirty(false); }
+    finally { setSaving(false); }
+  };
+
+  // Built on every render so the counts under the toggle are the real contents of the file the
+  // button would download, not a second estimate that could disagree with it.
+  const preview = buildBlackboardCsv({ roster, assignments, link, scoreMap, excusedMap, createMissing, scaleToColumn });
+
+  const handleDownload = async () => {
+    if (dirty) await handleSave();
+    download(gradebookFilename(courseCode, "blackboard"), preview.csv);
+  };
+
+  const ready = preview.exportedCount > 0 && preview.studentCount > 0;
+
+  const noteColor = tone => tone === "err" ? "#f87171" : tone === "warn" ? "#facc15" : "#4ade80";
+
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+      <div style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 720, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: cellBorder, flexShrink: 0 }}>
+          <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0 }}>Blackboard</h3>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: "16px 22px", flex: 1 }}>
+          {/* Step 1 — import */}
+          <h4 style={{ color: text, fontWeight: 700, fontSize: 14, margin: "0 0 6px" }}>1. Import a Blackboard download</h4>
+          <p style={{ color: muted, fontSize: 13, lineHeight: 1.5, margin: "0 0 10px" }}>
+            In Blackboard, go to Grade Center, then Work Offline, then Download, and choose the full Grade Center as a comma-delimited file. Import that file here. It is the only place Blackboard publishes each student's username and each column's ID, and Blackboard matches an upload on the username alone. Nothing is sent to Blackboard by this step.
+          </p>
+          <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+            <input ref={fileRef} type="file" accept=".csv,.txt" onChange={onFile} style={{ display: "none" }} />
+            <button onClick={() => fileRef.current?.click()} style={{ ...s.btnSec, width: "auto", padding: "7px 16px", fontSize: 13 }}>
+              {columns.length ? "Import a newer download…" : "Choose Blackboard file…"}
+            </button>
+            {link.importedAt && (
+              <span style={{ color: muted, fontSize: 12 }}>
+                Last imported {new Date(link.importedAt).toLocaleString()}{link.sourceFile ? ` from ${link.sourceFile}` : ""}
+              </span>
+            )}
+          </div>
+          {importMsg && (
+            <div style={{ border: `1px solid ${noteColor(importMsg.tone)}55`, background: `${noteColor(importMsg.tone)}12`, borderRadius: 8, padding: "10px 12px", marginBottom: 16 }}>
+              {importMsg.lines.map((l, i) => (
+                <p key={i} style={{ color: i === 0 ? text : muted, fontSize: 12.5, lineHeight: 1.5, margin: i ? "4px 0 0" : 0 }}>{l}</p>
+              ))}
+            </div>
+          )}
+
+          {columns.length > 0 && (
+            <>
+              {/* Step 2 — pair the columns */}
+              <h4 style={{ color: text, fontWeight: 700, fontSize: 14, margin: "18px 0 6px" }}>2. Match assignments to Blackboard columns</h4>
+              <p style={{ color: muted, fontSize: 13, lineHeight: 1.5, margin: "0 0 10px" }}>
+                A matched assignment writes into that exact Blackboard column. An unmatched one is created by Blackboard on upload if the box below is ticked. Matches are suggested by name and you can change any of them. Calculated columns such as Overall Grade are not listed, because Blackboard recomputes those and will not accept them in an upload.
+              </p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0 4px" }}>
+                <span style={{ flex: 1, color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Newton assignment</span>
+                <span style={{ width: 270, color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Blackboard column</span>
+              </div>
+              {assignments.map(a => {
+                const col = colById[map[a.id]];
+                const bad = col && col.points != null && Number(col.points) !== Number(a.maxPts);
+                return (
+                  <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: cellBorder }}>
+                    <span style={{ flex: 1, color: col ? text : muted, fontSize: 13, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={a.title}>
+                      {a.title} <span style={{ color: muted, fontSize: 11 }}>/{a.maxPts}</span>
+                    </span>
+                    <select
+                      value={map[a.id] || ""}
+                      onChange={e => setPair(a.id, e.target.value)}
+                      // colorScheme is required, not cosmetic: the option list a native <select>
+                      // drops is browser chrome, not our DOM, so no CSS of ours reaches inside it
+                      // — without the hint it renders white over the dark app. Same reason
+                      // DueDateField sets it on its date/time inputs.
+                      style={{ ...s.input, width: 270, flexShrink: 0, padding: "5px 8px", fontSize: 12.5, height: "auto", color: col ? text : muted, borderColor: bad ? "#facc15" : undefined, colorScheme: isLight ? "light" : "dark" }}
+                    >
+                      <option value="">Not in Blackboard</option>
+                      {usable.map(c => (
+                        <option key={c.bbId} value={c.bbId}>{c.title} (/{c.points ?? "?"})</option>
+                      ))}
+                    </select>
+                  </div>
+                );
+              })}
+              {preview.pointMismatches.length > 0 && (
+                <div style={{ border: "1px solid #facc1555", background: "#facc1512", borderRadius: 8, padding: "10px 12px", marginTop: 12 }}>
+                  <p style={{ color: text, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+                    Points differ on {preview.pointMismatches.length} matched assignment{preview.pointMismatches.length > 1 ? "s" : ""}: {preview.pointMismatches.map(m => `${m.assignment.title} is /${m.assignment.maxPts} here and /${m.col.points} in Blackboard`).join("; ")}.
+                  </p>
+                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", marginTop: 8 }}>
+                    <input type="checkbox" checked={scaleToColumn} onChange={e => setScaleToColumn(e.target.checked)} style={{ marginTop: 2, accentColor: teal, cursor: "pointer" }} />
+                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: text }}>
+                      Scale the scores to match Blackboard's points
+                      <span style={{ display: "block", color: muted, marginTop: 3 }}>
+                        An 8/10 uploads as 80 into a column Blackboard made worth 100, so the percentage behind the Overall Grade is right without editing the column. Leave this off if you would rather the raw marks match Newton, and set each column's points in Blackboard instead. Either way the numbers agree again the moment the points do.
+                      </span>
+                    </span>
+                  </label>
+                </div>
+              )}
+              {unusedColumns.length > 0 && (
+                <p style={{ color: muted, fontSize: 12.5, lineHeight: 1.5, margin: "10px 0 0" }}>
+                  Blackboard columns not matched to anything here: {unusedColumns.map(c => c.title).join(", ")}. They are left untouched by the upload.
+                </p>
+              )}
+
+              {/* Missing-column policy. Stated in full at the point of choosing, because the
+                  consequence lands inside Blackboard where it is tedious to undo. */}
+              <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", marginTop: 14, padding: "10px 12px", border: cellBorder, borderRadius: 8 }}>
+                <input type="checkbox" checked={createMissing} onChange={e => setCreateMissing(e.target.checked)} style={{ marginTop: 2, accentColor: teal, cursor: "pointer" }} />
+                <span style={{ fontSize: 13, lineHeight: 1.5, color: text }}>
+                  Let Blackboard create the columns it does not have yet
+                  <span style={{ display: "block", color: muted, marginTop: 3 }}>
+                    An unmatched assignment is uploaded under its plain title and Blackboard makes a column for it. Two things to know: the upload cannot set the points total, so the new column arrives at <strong>Blackboard's own default</strong> (100 in Ultra) rather than yours, and Blackboard only creates a column that has <strong>at least one grade</strong> in it, so assignments nobody has done yet are held back until they do. Download and import the Grade Center again afterwards: every new column links itself, and Newton then knows its real points total.
+                  </span>
+                </span>
+              </label>
+
+              {/* Step 3 — download */}
+              <h4 style={{ color: text, fontWeight: 700, fontSize: 14, margin: "18px 0 6px" }}>3. Download and upload it</h4>
+              <p style={{ color: muted, fontSize: 13, lineHeight: 1.5, margin: "0 0 10px" }}>
+                In Blackboard, go to Grade Center, then Work Offline, then Upload, and choose the file this button saves. Excused assignments are left blank, since a grade upload cannot set Blackboard's exempt flag; mark those exempt in Blackboard by hand.
+              </p>
+              <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: muted, marginBottom: 10 }}>
+                <span>{preview.studentCount} of {roster.length} students</span>
+                <span>{preview.exportedCount} of {assignments.length} assignments</span>
+                {preview.created.length > 0 && <span style={{ color: teal }}>{preview.created.length} new column{preview.created.length > 1 ? "s" : ""} for Blackboard to create</span>}
+              </div>
+              {preview.created.length > 0 && (
+                <p style={{ color: muted, fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  Blackboard will create: {preview.created.map(a => a.title).join(", ")}. Set each one's points total in Blackboard afterwards, then download and import the Grade Center again so they link for next time.
+                </p>
+              )}
+              {preview.scaled.length > 0 && (
+                <p style={{ color: teal, fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  Scaled to Blackboard's points: {preview.scaled.map(x => `${x.assignment.title} (/${x.assignment.maxPts} to /${x.col.points})`).join(", ")}.
+                </p>
+              )}
+              {preview.skippedEmpty.length > 0 && (
+                <p style={{ color: muted, fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  Waiting on a first grade before Blackboard can create a column for them: {preview.skippedEmpty.length} assignment{preview.skippedEmpty.length > 1 ? "s" : ""}, including {preview.skippedEmpty.slice(0, 4).map(a => a.title).join(", ")}{preview.skippedEmpty.length > 4 ? ", and others" : ""}. They will go up on a later upload on their own.
+                </p>
+              )}
+              {preview.skippedAssignments.length > 0 && (
+                <p style={{ color: "#facc15", fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  Left out because they have no Blackboard column and the box above is unticked: {preview.skippedAssignments.length} assignment{preview.skippedAssignments.length > 1 ? "s" : ""}.
+                </p>
+              )}
+              {unlinkedStudents.length > 0 && (
+                <p style={{ color: "#facc15", fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
+                  No Blackboard username for {unlinkedStudents.map(st => st.fullName).join(", ")}, so they are left out of the file. If they are enrolled in Blackboard, download the Grade Center again and re-import it.
+                </p>
+              )}
+            </>
+          )}
+        </div>
+
+        <div style={{ padding: "14px 22px", borderTop: cellBorder, flexShrink: 0, display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ flex: 1, color: muted, fontSize: 12 }}>{dirty ? "Unsaved changes" : ""}</span>
+          <button onClick={onClose} style={{ ...s.btnSec, width: "auto", padding: "9px 18px" }}>Close</button>
+          <button onClick={handleSave} disabled={!dirty || saving} style={{ ...s.btnSec, width: "auto", padding: "9px 18px", opacity: !dirty || saving ? 0.5 : 1, cursor: !dirty || saving ? "default" : "pointer" }}>
+            {saving ? "Saving…" : "Save link"}
+          </button>
+          <button onClick={handleDownload} disabled={!ready} style={{ ...s.btnPri, width: "auto", padding: "9px 18px", opacity: ready ? 1 : 0.5, cursor: ready ? "pointer" : "default" }}>
+            Download for Blackboard
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Gradebook ─────────────────────────────────────────────────────────────────
 export function Gradebook({
   roster,
@@ -567,12 +822,16 @@ export function Gradebook({
   onSaveAssignmentOrderOverrides,
   customQuizzes,
   onEditCustomQuiz,
+  blackboard,
+  onSaveBlackboardLink,
+  courseCode,
 }) {
   const { s, muted, border, text, teal, bg, card, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const [editingCell, setEditingCell] = useState(null); // { studentId, assignmentId }
   const [editScore, setEditScore] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [showBlackboard, setShowBlackboard] = useState(false);
   const panelRef = useRef(null);
   const scrollRef = useRef(null);
   const thumbDragRef = useRef(null);
@@ -880,11 +1139,15 @@ export function Gradebook({
       ]),
     ];
     const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
-    a.download = "gradebook.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
+    download(gradebookFilename(courseCode, "gradebook"), csv);
+  };
+
+  // Blackboard upload file. The shape rules and the reasons behind them live in
+  // src/blackboard.js; this only gathers the inputs and hands the result to the browser.
+  const exportBlackboard = () => {
+    const res = buildBlackboardCsv({ roster, assignments, link: blackboard || {}, scoreMap, excusedMap });
+    download(gradebookFilename(courseCode, "blackboard"), res.csv);
+    return res;
   };
 
   const toggleCat = catId => setFilterCatIds(prev => {
@@ -928,6 +1191,7 @@ export function Gradebook({
       <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
         {roster?.length > 0 && <span style={{ color: muted, fontSize: 12 }}>{displayedStudents.length}/{roster.length} students · {displayedAssignments.length}/{assignments.length} assignments</span>}
         <button onClick={exportCsv} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Export CSV</button>
+        <button onClick={() => setShowBlackboard(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Blackboard</button>
         <button onClick={() => setAddingAssignment(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>+ Assignment</button>
         <button onClick={() => setShowSettings(true)} style={{ ...s.btnGhost, width: "auto", padding: "8px 16px" }}>Grade Settings</button>
       </div>
@@ -941,6 +1205,7 @@ export function Gradebook({
         {filterBar}
         <div style={{ ...s.card, padding: 40, textAlign: "center", color: muted }}>No students enrolled in this class yet.</div>
         {showSettings && <GradeSettingsModal gradeCategories={gradeCategories} onSave={onSaveGradeCategories} onClose={() => setShowSettings(false)} />}
+        {showBlackboard && <BlackboardModal roster={roster || []} assignments={assignments} scoreMap={scoreMap} excusedMap={excusedMap} blackboard={blackboard} onSave={onSaveBlackboardLink} courseCode={courseCode} onClose={() => setShowBlackboard(false)} />}
       </div>
     );
   }
@@ -1240,6 +1505,18 @@ export function Gradebook({
           gradeCategories={gradeCategories}
           onSave={onSaveGradeCategories}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+      {showBlackboard && (
+        <BlackboardModal
+          roster={roster}
+          assignments={assignments}
+          scoreMap={scoreMap}
+          excusedMap={excusedMap}
+          blackboard={blackboard}
+          onSave={onSaveBlackboardLink}
+          courseCode={courseCode}
+          onClose={() => setShowBlackboard(false)}
         />
       )}
       {bulkEntryFor && (

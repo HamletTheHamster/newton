@@ -27,7 +27,8 @@
         "hwAttempts": {},
         "hwProgress": {},
         "hwTelemetry": {},
-        "attendance": {}
+        "attendance": {},
+        "blackboard": {}
       }
     },
     "settings": {},

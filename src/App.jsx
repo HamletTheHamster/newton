@@ -11,6 +11,7 @@ import {
   parseRoster,
 } from "./utils.js";
 import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, defaultModulesForCourse } from "./courses/index.js";
+import { COURSE_META } from "./course-meta.js";
 import { HW_GRADING_DEFAULTS } from "./homework.js";
 import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
@@ -146,6 +147,11 @@ export default function App() {
   const [assignmentNameOverrides, setAssignmentNameOverrides] = useState({}); // { [assignmentId]: string }
   const [assignmentOrderOverrides, setAssignmentOrderOverrides] = useState({}); // { [assignmentId]: number }
   const [homeworkSettings, setHomeworkSettings] = useState({});                 // { [hwId]: grading override obj }
+  // Blackboard Grade Center link — { columns:[…], map:{ [assignmentId]: bbId }, usernames:{ [studentId]: username }, importedAt, sourceFile }.
+  // Learned by importing a Blackboard full-Grade-Center download; see src/blackboard.js for why
+  // the username and column id can't be derived. Kept OFF the roster deliberately: a roster CSV
+  // re-upload replaces the whole array, which would silently drop every username.
+  const [blackboard, setBlackboard] = useState(null);
   const [studentAvailableClasses, setStudentAvailableClasses] = useState([]);
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
   const [dataReady, setDataReady] = useState(false);
@@ -437,6 +443,7 @@ export default function App() {
           if (c.attendance && typeof c.attendance === 'object') setAttendance(c.attendance);
           if (c.customQuizzes && typeof c.customQuizzes === 'object') setCustomQuizzes(c.customQuizzes);
           if (c.homeworkSettings && typeof c.homeworkSettings === 'object') setHomeworkSettings(c.homeworkSettings);
+          if (c.blackboard && typeof c.blackboard === 'object') setBlackboard(c.blackboard);
         } else if (storedId) {
           setCurrentClassId(null);
         }
@@ -460,7 +467,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData, attendanceData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData, attendanceData, blackboardData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -481,6 +488,7 @@ export default function App() {
         fbGet(classPath(classId, 'customQuizzes')).catch(() => null),
         fbGet(classPath(classId, 'homeworkSettings')).catch(() => null),
         fbGet(classPath(classId, 'attendance')).catch(() => null),
+        fbGet(classPath(classId, 'blackboard')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -558,7 +566,9 @@ export default function App() {
       setHomeworkSettings(hwSettingsObj);
       const attendanceObj = (attendanceData && typeof attendanceData === 'object') ? attendanceData : {};
       setAttendance(attendanceObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj, attendance: attendanceObj } }));
+      const blackboardObj = (blackboardData && typeof blackboardData === 'object') ? blackboardData : null;
+      setBlackboard(blackboardObj);
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj, attendance: attendanceObj, blackboard: blackboardObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -909,6 +919,14 @@ export default function App() {
     const cid = requireClass();
     setAssignmentNameOverrides(next);
     await fbSave(classPath(cid, 'assignmentNameOverrides'), Object.keys(next).length ? next : null);
+  };
+  // The Blackboard link is instructor-only bookkeeping (no student ever reads it), so it needs
+  // the three-place wiring but NOT refreshClassContent.
+  const saveBlackboardLink = async next => {
+    const cid = requireClass();
+    setBlackboard(next);
+    updateClassCache(cid, 'blackboard', next);
+    await fbSave(classPath(cid, 'blackboard'), next);
   };
   const saveAssignmentOrderOverrides = async next => {
     const cid = requireClass();
@@ -2047,6 +2065,9 @@ export default function App() {
             onSaveManualAssignments={saveManualAssignments}
             onSaveAssignmentNameOverrides={saveAssignmentNameOverrides}
             onSaveAssignmentOrderOverrides={saveAssignmentOrderOverrides}
+            blackboard={blackboard}
+            onSaveBlackboardLink={saveBlackboardLink}
+            courseCode={COURSE_META[classMeta?.courseType]?.code || ""}
             customQuizzes={customQuizzes}
             onEditCustomQuiz={quizId => {
               const cq = customQuizzes[quizId];

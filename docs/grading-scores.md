@@ -190,3 +190,130 @@ Covered by `node src/due-dates.test.mjs`.
   (App.jsx ~662). Because both portals read the same `gradeOverrides` node, a saved
   override is already available to the student on their next load; the only gap is the
   **client-side computation** divergence above, not the data plumbing.
+
+## Exporting to Blackboard
+
+The instructor is required to keep a detailed gradebook in Blackboard, so Newton's grades have to
+land there without being retyped. `src/blackboard.js` is the whole interchange (pure and
+env-agnostic, like `category-colors.js`), covered by `node src/blackboard.test.mjs`; the UI is
+`BlackboardModal` in `Gradebook.jsx`, behind the header's **Blackboard** button.
+
+### Why a "link" step exists at all
+
+Blackboard's own advice is to download the current Grade Center and upload that same shape back,
+because two facts in a downloaded file are load-bearing and **cannot be derived** from anything
+Newton knows:
+
+1. **Username.** Blackboard matches an uploaded row to a student by the `Username` column and
+   nothing else. Newton's roster carries a name and a student ID, neither of which Blackboard
+   matches on, and a username is not a function of a name — the Fall 26 PHY 215 roster alone
+   contains `kunj.patel2`, which no rule would produce.
+2. **Column ID.** A grade column downloads as `Quiz 1 [Total Pts: 10 Score] |1281892`. The
+   `|1281892` routes values into the **existing** column. A header without one makes Blackboard
+   *create* a column, at Blackboard's own default points total rather than yours — **verified
+   against Ultra on 2026-09-02: 100 points**; Original creates a 0-point text column that cannot
+   feed a calculated total at all.
+
+Both facts live only in a Blackboard download, so the flow is: import the download once to learn
+them, then export against that link as often as you like. The link is stored per class at
+`classes/{classId}/blackboard` = `{ columns[], map: { [assignmentId]: bbId }, usernames:
+{ [studentId]: username }, importedAt, sourceFile }`, wired through the standard three places in
+App.jsx. It is **not** in `refreshClassContent` (no student reads it), and usernames are kept in
+this node rather than on the roster **on purpose**: a roster CSV re-upload replaces the whole
+array and would silently drop every username.
+
+### Letting Blackboard create the columns
+
+You do **not** have to hand-create a column per assignment. An unmatched assignment is uploaded
+under its bare title and Blackboard creates the column for it — the modal's "Let Blackboard create
+the columns it does not have yet" toggle, on by default (`createMissing`). Two documented
+constraints shape how this is done:
+
+1. **A created column arrives at Blackboard's default points total, not Newton's.** The upload
+   format has no points field — the `[Total Pts: …]` part of a header is written on download and
+   ignored on upload, which is why Blackboard's own docs say to "edit the column after it appears
+   in the Gradebook to add the points total". Observed in Ultra: **100 points**. Original creates a
+   0-point *text* column, which "can't be included in calculated columns, such as weighted, total,
+   average". Either way it does not reflect Newton's marks until something is done about it — see
+   *Points mismatches* below. The modal says this at the toggle and names every column the upload
+   will create.
+2. **Ultra creates a column only if at least one student has a grade in it** — "you must add at
+   least one student's grade so the column is recognized and uploaded." An all-blank column is
+   silently ignored. `buildBlackboardCsv` therefore holds back an unlinked assignment nobody has
+   a score in (`skippedEmpty`) rather than exporting a column that would fail to appear while
+   looking like it worked. Those go up on their own once the first grade exists.
+
+The header for a new column is the **bare title** (`newColumnHeader`), with no `[Total Pts: …]`
+suffix: Blackboard does not parse that on the way in, so including it would most likely name the
+column `Quiz 2 [Total Pts: 10 Score]` verbatim. The bare title is also what makes the round trip
+close — on the next import `normalizeTitle` matches Newton's title to the column Blackboard just
+created from it, so `mergeImport` links it with no hand-pairing and every later upload routes by
+column id.
+
+The full cycle, verified end-to-end in the tests: upload → Blackboard creates the columns → set
+their points → download → import → linked forever.
+
+### Points mismatches, and `scaleToColumn`
+
+Because a created column lands at Blackboard's default (100) while Newton's quizzes, homework and
+labs are out of 10, a raw 8 would read as **8%** there. Two ways out, and the modal offers the
+choice at the point where it reports the mismatch:
+
+- **Fix the points in Blackboard** (Gradebook → Gradable Items → the item's ⋯ menu → Edit →
+  points → Save). The raw marks then match Newton exactly. One edit per column, forever.
+- **`scaleToColumn`** — upload 80 instead of 8 into a /100 column, so the percentage feeding the
+  Overall Grade is right with no column editing at all. Off by default: silently rescaling grades
+  is not something to do without being asked.
+
+**The house route is the first one.** PHY 215 Fall 26 matches points possible by hand in
+Blackboard as each column appears, so the raw marks read identically on both platforms and
+`scaleToColumn` stays off. That makes the modal's mismatch panel a **punch list**: after every
+upload-and-re-import it names exactly which Blackboard columns still have the wrong points total,
+and it empties itself as they are fixed. Don't suggest turning scaling on to clear it — clearing
+it is the point.
+
+Three rules keep scaling honest. The factor is only ever taken from a points total **Blackboard
+itself reported on a download** — a column being created this very upload has unknown points and
+is sent raw, because assuming "it'll be 100" would multiply every grade by ten the day that
+default changes. A column reporting 0 points is not treated as a scale (it would divide the grades
+away). And scaling **stops on its own** once the two agree, so fixing a column in Blackboard and
+re-importing quietly returns that assignment to raw marks.
+
+### What the export deliberately leaves out
+
+- **Unlinked assignments, when `createMissing` is off.** Skipped and reported, never invented.
+- **Calculated columns** (Total, Weighted Total, Overall Grade). Blackboard states plainly that
+  calculation formulas can be neither downloaded nor uploaded; the column recomputes itself from
+  the ones we do upload. `isCalculatedColumn` keeps them out of the picker so a mapping can never
+  be made in the first place.
+- **`Last Access` and `Availability`.** Read-only status fields, not grade data, and Newton has no
+  truthful value for them. Every uploaded column is a column Blackboard may act on, so the file
+  carries only identity (`Last Name`, `First Name`, `Username`, `Student ID`) plus grades.
+- **Students with no username** — they cannot be matched, so a row for them would be a silent
+  no-op at best. They are dropped and named in the modal instead.
+
+### Values
+
+Scores come from the shared `buildScoreMatrix` (analytics.js), so an exported number is the same
+effective score the gradebook cell and the student's grades list show — attendance zeros and
+upheld integrity penalties included. One derivation, no third opinion. They are written as raw
+points (rounded to 2dp, trailing zeros dropped), which is what a Blackboard `Score` column wants,
+so the modal warns when a linked column's points differ from Newton's.
+
+An **excused** assignment exports as an empty cell. Blackboard's exempt flag is a per-cell property
+a grade upload cannot set, so the honest options are "blank" or "a number that isn't true"; blank
+it is, and the modal says to mark those exempt in Blackboard by hand.
+
+### Filenames
+
+Both exports are stamped with the **local** date and time (`gradebookFilename`, e.g.
+`phy215-blackboard-2026-09-02-1449.csv`) rather than ISO/UTC — the instructor reads the stamp
+against the clock on the wall to tell which of several downloads in an afternoon is newest, and a
+UTC stamp reads hours off. This matters most for the Blackboard file, where uploading a stale one
+silently rolls grades back.
+
+### Round trip
+
+The file Newton writes is itself a valid Blackboard export (UTF-8 BOM, every field quoted, headers
+reproduced byte-for-byte), which the tests assert by feeding it back through
+`readBlackboardExport`.

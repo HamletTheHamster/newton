@@ -23,3 +23,9 @@ deno.lock
 # Layout: source/<courseCode>/{quizzes,hw/HWn,lectures}/  e.g. source/phy215/hw/HW1/
 # The figures the app actually serves live in public/homeworkFigures/<courseType>/HWn/
 source/
+
+# Blackboard interchange files — a Grade Center download carries every student's name, student
+# ID and Blackboard USERNAME, and the files Newton exports for upload carry their grades too.
+# Same reason source/ is ignored: real student data, never in the repo.
+Fall * gradebook/
+*/gc_*_fullgc_*.csv
