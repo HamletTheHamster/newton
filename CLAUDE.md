@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - **LMS-style redesign (multi-session plan):** see [docs/lms-redesign.md](docs/lms-redesign.md)
 - **Homework — process, engine & remaining buildout (course-agnostic):** see [docs/homework-roadmap.md](docs/homework-roadmap.md)
 - **Per-course content notes (which problems, figures, why a part isn't numeric):** [docs/courses/phy115.md](docs/courses/phy115.md) (PHY 115 = `physics1`) · [docs/courses/phy215.md](docs/courses/phy215.md) (PHY 215 = `physics2`)
-- **Score handling / instructor↔student override parity:** see [docs/grading-scores.md](docs/grading-scores.md)
+- **Score handling / instructor↔student override parity, and the Blackboard Grade Center export:** see [docs/grading-scores.md](docs/grading-scores.md)
 - **Instructor analytics (correlation view, planned telemetry & item analysis):** see [docs/analytics.md](docs/analytics.md)
 
 ## Key Patterns

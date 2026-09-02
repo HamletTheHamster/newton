@@ -38,6 +38,7 @@ classes/
     manualAssignments/             {[id]: {id, title, catId, maxPts, order}}  — seeded on first load (Midterm, Final, Lab 1a–14b)
     assignmentNameOverrides/       {[assignmentId]: overrideTitle}
     assignmentOrderOverrides/      {[assignmentId]: number}  — column drag/drop order; overrides natural sort
+    blackboard/                    {columns: [{title, points, variablePoints, display, bbId}], map: {[assignmentId]: bbId}, usernames: {[studentId]: username}, importedAt, sourceFile}  — the Blackboard Grade Center link, learned by importing a Grade Center download (Gradebook → Blackboard). `usernames` is the ONLY thing Blackboard matches an uploaded grade row on, and `bbId` is what routes a value into an existing column instead of creating a new one; neither is derivable from anything else Newton stores. Instructor-only bookkeeping, so it is deliberately NOT in `refreshClassContent` — no student ever reads it. Usernames live here rather than on the `roster` on purpose: a roster CSV re-upload replaces the whole array and would silently drop every one. See [grading-scores.md](grading-scores.md) § Exporting to Blackboard
 settings/                          {passwordHash, passwordSalt, totpSecret?, trustedDevices?}  — shared across classes
 bugReports/                        {id: {id, message, timestamp, read}}                       — shared across classes
 courseEvals/                       {id: {id, type, classId, message?, responses?, openEnded?, timestamp, read}}  — shared across classes, scoped by classId field
