@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades } from "../../utils.js";
-import { integrityState } from "../../homework.js";
+import { integrityState, resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
@@ -158,6 +158,12 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
           </button>
           {sub.type === "homework" && ov.partScores && Object.keys(ov.partScores).length > 0 && (
             <div style={{ fontSize: 11, color: "#60a5fa" }}>✎ Part scores overridden</div>
+          )}
+          {/* An override that replaces the submission's own score is stated outright. It used
+              to sit in the data with nothing on screen saying so, which is how four cells
+              ended up pinned by nothing more than a click. */}
+          {ov.score != null && sub.score != null && Math.abs(ov.score - sub.score) > 0.0001 && (
+            <div style={{ fontSize: 11, color: "#60a5fa" }}>✎ Score overridden (submitted {sub.score})</div>
           )}
         </div>
       )}
@@ -913,7 +919,7 @@ export function Gradebook({
   // `buildScoreMatrix` (analytics.js) so the gradebook grid and the Analytics tab's correlations
   // are computed from ONE derivation and cannot drift. See that file for the map shapes and the
   // rule that an integrity flag never withholds credit until the instructor upholds it.
-  const { scoreMap, excusedMap, flaggedMap, absentMap } = buildScoreMatrix({
+  const { scoreMap, excusedMap, flaggedMap, absentMap, subsByStudent } = buildScoreMatrix({
     roster, assignments, submissions, gradeOverrides, attendance,
   });
 
@@ -972,7 +978,22 @@ export function Gradebook({
       // exams are out of 100, labs and quizzes out of 10.
       const maxPts = assignments.find(a => a.id === assignmentId)?.maxPts || 10;
       const { excused: _e, previousScore: _p, ...rest } = existing;
-      current[assignmentId] = { ...rest, score: Math.max(0, Math.min(maxPts, parsed)) };
+      const clamped = Math.max(0, Math.min(maxPts, parsed));
+      // A score that changes nothing is not stored. Grading is what the student's work says
+      // unless the instructor overrules it, so re-entering the number already on screen must
+      // leave the cell reading from the submission, not pin it: `ov.score` outranks
+      // `partScores`, and a pinned value would silently swallow a later per-part regrade.
+      // Skipped for an absence-zeroed cell, where the typed score is the mark the policy
+      // struck through and has to be kept even though the cell reads 0.
+      const isAbsent = !!absentMap[studentId]?.[assignmentId];
+      const sub = subsByStudent[studentId]?.[assignmentId];
+      const natural = (!isAbsent && sub) ? resolveScore(sub, rest).effective : null;
+      if (natural != null && Math.abs(natural - clamped) < 0.005) {
+        if (Object.keys(rest).length) current[assignmentId] = rest;
+        else delete current[assignmentId];
+      } else {
+        current[assignmentId] = { ...rest, score: clamped };
+      }
     } else {
       // No score entered — preserve existing override as-is (keeps excused, dueDate, etc.)
       const { score: _, ...rest } = existing;
