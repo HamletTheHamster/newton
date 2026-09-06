@@ -123,6 +123,19 @@ decision is `gradeOverrides[...].integrityReview`. Shared logic: `integrityState
 `Gradebook.jsx` and `StudentGrades.jsx`. The Gradebook flags such cells with a red `*` marker;
 students never see the AI verdict (`SubViewModal` is passed `showIntegrity={false}`).
 
+**Uploads are compressed before they leave the browser** (`src/work-files.js`, added after a real
+failed submission). A student's four phone photos run through iOS "Create PDF" arrive as a 145 MB
+file whose pages are uncompressed 3024×4032 bitmaps; the `hwWork` Storage rule refuses anything
+over 25 MB, and that refusal used to surface as an unexplained "your submission couldn't be sent"
+after a multi-minute upload, with no retry that could ever succeed. `normalizeWorkFile` now runs at
+attach time: pages are rasterized (lazy-loaded pdf.js) and reassembled as a JPEG-per-page PDF,
+oversized images take the same downscale. That file compresses to **1.0 MB, 134x smaller, in about
+1.7 s, with the handwriting fully legible**. Files already under `WORK_TARGET_BYTES` (2.5 MB) are
+passed through untouched so vector PDFs keep their quality; the target is set by the integrity
+check, whose base64 POST has to stay under a Netlify function's ~6 MB body cap (large PDFs were
+previously uploading fine and silently never being checked). Anything that still will not fit is
+refused at attach time, naming the file and its size.
+
 ### ~~Prompts are not copyable~~ ✅ Done
 Every problem statement in the runner (the shared multipart stem and each part's prompt)
 renders through `HomeworkRunner`'s local `Prompt` component, which wraps `MathText` in the

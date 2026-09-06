@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
 import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
+import { normalizeWorkFile, formatBytes } from "../../work-files.js";
 import { createTelemetry } from "../../hw-telemetry.js";
 import { MathField, hideMathKeyboard } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
@@ -128,7 +129,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [busy, setBusy] = useState(null);          // itemId currently evaluating
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState("");   // the failure message, so a screenshot is diagnosable
   const [showLeave, setShowLeave] = useState(false);
   const [navWarn, setNavWarn] = useState(null);    // { go } — pending Next/Finish while a diagram is unfinished
   const [confirmReveal, setConfirmReveal] = useState(null); // graphical item pending a "Show answer" confirm
@@ -140,9 +141,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   // Written-work integrity step (skipped in practice mode).
   const [submitStep, setSubmitStep] = useState(false);   // showing the upload-your-work step
-  const [workFiles, setWorkFiles] = useState([]);        // [{ file, name, mime, previewUrl|null }]
+  const [workFiles, setWorkFiles] = useState([]);        // [{ file, name, mime, previewUrl|null, size, originalSize, compressed, pages }]
   const [uploadedWork, setUploadedWork] = useState(null);// cached Storage results so retry doesn't re-upload
   const [integrityResult, setIntegrityResult] = useState(null); // cached Claude verdict so retry doesn't re-check
+  const [preparing, setPreparing] = useState(null);      // { name, pct } while a file is being compressed
+  const [workError, setWorkError] = useState("");        // why an attached file was refused
 
   // Draft + attempt persistence (skipped in practice mode).
   // hwAttempts is a separate node from the draft: it is written on every submission attempt
@@ -571,23 +574,49 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const finish = () => { if (practice) { setDone(true); return; } setSubmitStep(true); };
 
   // ── Work-file handling (graded submit step) ───────────────────────────────────
-  const addWorkFiles = e => {
+  // Every attached file is normalized in the browser BEFORE it is staged (see work-files.js).
+  // A phone's "Create PDF" of four photos is ~145 MB of uncompressed bitmaps, which the hwWork
+  // Storage rule rejects at 25 MB - and it used to do so only after a multi-minute upload, as
+  // an unexplained "couldn't be sent" at the very end. Compressing here means the common case
+  // just works, and the rare file that still cannot fit is refused at attach time, in words.
+  const readDataUrl = file => new Promise(resolve => {
+    const r = new FileReader();
+    r.onload = ev => resolve(ev.target.result);
+    r.onerror = () => resolve(null);
+    r.readAsDataURL(file);
+  });
+
+  const addWorkFiles = async e => {
     const files = Array.from(e.target.files || []);
     e.target.value = "";
+    if (!files.length) return;
     // New files invalidate any cached upload/integrity result from a prior attempt.
-    setUploadedWork(null); setIntegrityResult(null);
-    files.forEach(file => {
-      if (!ACCEPTED_WORK_TYPES.includes(file.type)) return;
-      if (file.type.startsWith("image/")) {
-        const reader = new FileReader();
-        reader.onload = ev => setWorkFiles(w => [...w, { file, name: file.name, mime: file.type, previewUrl: ev.target.result }]);
-        reader.readAsDataURL(file);
-      } else {
-        setWorkFiles(w => [...w, { file, name: file.name, mime: file.type, previewUrl: null }]);
+    setUploadedWork(null); setIntegrityResult(null); setWorkError("");
+    const refused = [];
+    for (const file of files) {
+      if (!ACCEPTED_WORK_TYPES.includes(file.type)) {
+        refused.push(`"${file.name}" is not a photo or PDF, so it can't be attached.`);
+        continue;
       }
-    });
+      setPreparing({ name: file.name, pct: 0 });
+      let norm = null;
+      try { norm = await normalizeWorkFile(file, pct => setPreparing({ name: file.name, pct })); }
+      catch { norm = null; }
+      if (!norm || norm.tooLarge) {
+        refused.push(`"${file.name}" is ${formatBytes(file.size)}, which is too big to upload even after compressing. Try saving your pages as JPEG photos, or attach them as separate files.`);
+        continue;
+      }
+      const previewUrl = norm.mime.startsWith("image/") ? await readDataUrl(norm.file) : null;
+      setWorkFiles(w => [...w, {
+        file: norm.file, name: norm.name, mime: norm.mime, previewUrl,
+        size: norm.size, originalSize: norm.originalSize, compressed: norm.compressed, pages: norm.pages,
+      }]);
+    }
+    setPreparing(null);
+    if (refused.length) setWorkError(refused.join(" "));
   };
-  const removeWorkFile = i => { setWorkFiles(w => w.filter((_, j) => j !== i)); setUploadedWork(null); setIntegrityResult(null); };
+
+  const removeWorkFile = i => { setWorkFiles(w => w.filter((_, j) => j !== i)); setUploadedWork(null); setIntegrityResult(null); setWorkError(""); };
 
   // Upload the work files (once, cached), run the integrity sniff-check (once, cached), then
   // build + persist the submission. On a save failure, retrySave reuses the cached results.
@@ -618,9 +647,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       await onFinish(buildSubmission(uploaded, integ, serverAnswers));
       clearDraft();
       if (attemptsPath) fbSet(attemptsPath, null).catch(() => {});
-      setSaveError(false); setSubmitStep(false); setDone(true);
-    } catch {
-      setSaveError(true); setSubmitStep(false); setDone(true);
+      setSaveError(""); setSubmitStep(false); setDone(true);
+    } catch (err) {
+      // Keep the real reason: this used to be a bare boolean, so an upload rejected by the
+      // Storage size rule reached the student (and the instructor) as an unexplained failure.
+      setSaveError(err?.message || "Something went wrong while sending your submission.");
+      setSubmitStep(false); setDone(true);
     }
     setSaving(false);
   };
@@ -628,7 +660,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // Retry from the result screen reruns the whole pipeline (workFiles state is still held;
   // uploads/integrity are reused from cache, so only the failed step is re-attempted).
   const retrySave = async () => {
-    setSaveError(false);
+    setSaveError("");
     await submitWork();
   };
 
@@ -848,6 +880,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 12, padding: "16px 20px", display: "flex", flexDirection: "column", gap: 10 }}>
               <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission couldn't be sent</p>
               <p style={{ color: muted, fontSize: 13, margin: 0, lineHeight: 1.5 }}>Don't worry, <strong style={{ color: text }}>your work is saved</strong>. All your answers and progress are stored, so you can tap Retry now, or leave and come back later to finish submitting. If it keeps failing, contact your instructor and show them this screen.</p>
+              {saveError && (
+                <div style={{ color: muted, fontSize: 11.5, fontFamily: "monospace", wordBreak: "break-word" }}>Details: {saveError}</div>
+              )}
               <button onClick={retrySave} disabled={saving} style={{ ...s.btnPri, background: "#b91c1c", border: "1px solid #f87171" }}>{saving ? "Retrying…" : "Retry saving"}</button>
               <button onClick={async () => { await persistDraft(); onLeave(); }} disabled={saving} style={{ ...s.btnSec, opacity: saving ? 0.4 : 1 }}>Leave, my work is saved</button>
             </div>
@@ -892,10 +927,13 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   // ── Submit step: upload your written work ─────────────────────────────────────
   if (submitStep) {
+    // Compressing and submitting both lock the step: a file swapped mid-flight would upload
+    // one thing and integrity-check another.
+    const stepBusy = saving || !!preparing;
     return (
       <div style={{ ...s.page, display: "flex", flexDirection: "column" }}>
         <div style={{ background: card, borderBottom: `1px solid ${border}`, padding: "14px 24px", display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-          <button onClick={() => { if (!saving) setSubmitStep(false); }} disabled={saving} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto", opacity: saving ? 0.4 : 1 }}>← Back</button>
+          <button onClick={() => { if (!stepBusy) setSubmitStep(false); }} disabled={stepBusy} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto", opacity: stepBusy ? 0.4 : 1 }}>← Back</button>
           <div style={{ width: 1, height: 20, background: border }} />
           <div>
             <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>{homework.title}</div>
@@ -910,10 +948,24 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
               Upload photos or a PDF of your handwritten work for these problems, your proof that you solved them yourself.
             </div>
 
-            <label style={{ ...s.btnSec, width: "auto", alignSelf: "flex-start", padding: "8px 18px", cursor: saving ? "default" : "pointer", opacity: saving ? 0.4 : 1 }}>
+            <label style={{ ...s.btnSec, width: "auto", alignSelf: "flex-start", padding: "8px 18px", cursor: stepBusy ? "default" : "pointer", opacity: stepBusy ? 0.4 : 1 }}>
               + Add photos / PDF
-              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple disabled={saving} onChange={addWorkFiles} style={{ display: "none" }} />
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif,application/pdf" multiple disabled={stepBusy} onChange={addWorkFiles} style={{ display: "none" }} />
             </label>
+
+            {/* Compressing a big scan takes a few seconds per page, so it is never silent. */}
+            {preparing && (
+              <div style={{ color: muted, fontSize: 13 }}>
+                Preparing {preparing.name}
+                {preparing.pct > 0 ? ` (${Math.round(preparing.pct * 100)}%)` : ""}…
+              </div>
+            )}
+
+            {workError && (
+              <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 10, padding: "10px 14px", color: "#f87171", fontSize: 13, lineHeight: 1.5 }}>
+                {workError}
+              </div>
+            )}
 
             {workFiles.length > 0 && (
               <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
@@ -922,10 +974,13 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
                     {wf.previewUrl
                       ? <img src={wf.previewUrl} alt={wf.name} style={{ width: 110, height: 110, objectFit: "cover", borderRadius: 8, border: `1px solid ${border}` }} />
                       : <div style={{ width: 110, height: 110, borderRadius: 8, border: `1px solid ${border}`, background: solidBg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, color: muted, fontSize: 12 }}><span style={{ fontSize: 28 }}>📄</span>PDF</div>}
-                    {!saving && (
+                    {!stepBusy && (
                       <button onClick={() => removeWorkFile(i)} title="Remove" style={{ position: "absolute", top: -8, right: -8, width: 22, height: 22, borderRadius: "50%", background: "#b91c1c", color: "#fff", border: "none", cursor: "pointer", fontSize: 14, lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>×</button>
                     )}
                     <div style={{ color: muted, fontSize: 11, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{wf.name}</div>
+                    <div style={{ color: muted, fontSize: 10.5, opacity: 0.8 }}>
+                      {formatBytes(wf.size)}{wf.compressed ? ` (from ${formatBytes(wf.originalSize)})` : ""}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -934,11 +989,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
           <button
             onClick={submitWork}
-            disabled={saving || workFiles.length === 0}
+            disabled={stepBusy || workFiles.length === 0}
             title={workFiles.length === 0 ? "Attach at least one file" : ""}
-            style={{ ...s.btnPri, opacity: saving || workFiles.length === 0 ? 0.4 : 1 }}
+            style={{ ...s.btnPri, opacity: stepBusy || workFiles.length === 0 ? 0.4 : 1 }}
           >
-            {saving ? "Submitting & checking your work…" : "Submit homework"}
+            {saving ? "Submitting & checking your work…" : preparing ? "Preparing your files…" : "Submit homework"}
           </button>
           {workFiles.length === 0 && <div style={{ color: muted, fontSize: 12, textAlign: "center" }}>Attach at least one photo or PDF of your work to submit.</div>}
         </div>

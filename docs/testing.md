@@ -79,6 +79,52 @@ Everything that signals the run's mode is in the **top bar**, not the chat: prac
 
 Clicking the title also opens the other item types the way a student gets them — `file` and `link`/`reading`/`notes` in a new tab, `page` in the student `PageViewer` — which is the quickest way to confirm an upload or URL actually resolves.
 
+## Written-work uploads — verifying compression without a browser session
+
+`src/work-files.js` is the one browser-only module with a headless verification path, and it is
+worth using: the failure it prevents (a 145 MB phone PDF rejected by the Storage rule as an
+unexplained submit failure) cannot be reproduced by reading the code, and the failure it could
+*introduce* (a malformed PDF) is invisible until an instructor opens the file weeks later.
+
+`node src/work-files.test.mjs` covers the pure half — the PDF assembler's xref byte offsets, the
+20-byte entry format, JPEG streams surviving byte-identically, and MediaBox fitting. It needs no
+browser. The rasterization half needs a real canvas and a real pdf.js worker, so drive it through
+headless Chrome:
+
+1. Put a throwaway harness page at the project root (Vite dev serves any root file, and it will
+   also serve a big fixture straight out of the gitignored `source/` tree, so nothing has to be
+   copied into `public/`). Have it import `normalizeWorkFile` from `/src/work-files.js`, `fetch`
+   the fixture, run it, and write the result's base64 into a hidden `<textarea>` plus a
+   `#status` element it sets to `COMPLETE` only when **every** case has finished.
+2. `npm run dev`, then launch Chrome with `--headless=new --remote-debugging-port=9222
+   "--remote-allow-origins=*"`.
+3. Drive it over CDP from Node (global `WebSocket` is built in): open the page via
+   `PUT /json/new?<url>`, poll `Runtime.evaluate` for `#status`, then read the log and the base64.
+4. Decode the base64 to a file and check it renders: `file out.pdf` reports the real page count,
+   and `qlmanage -t -s 1000 -o <existing-dir> out.pdf` produces a PNG you can actually look at.
+   **Look at it** — the number that matters is not the byte count but whether pencil handwriting
+   and subscripts are still readable.
+
+Do **not** use `--virtual-time-budget --dump-dom` for this. It dumps mid-render on a large file
+and reports a half-finished run as if it were the result.
+
+Three cases are worth running, because they are three different code paths:
+
+- **An oversized photo PDF** (the 145 MB fixture): expect `compressed=true`, ~1 MB out, page count
+  preserved, a second or two.
+- **A PDF already under the 2.5 MB target**: expect `compressed=false` and `0ms`. This is the
+  passthrough that keeps a vector/scanner PDF from being needlessly rasterized.
+- **An image over the target**: expect a `.jpg` back at a fraction of the size.
+
+Also run the whole thing once against `vite preview` rather than `npm run dev`. pdf.js's worker is
+resolved with an `import(... "?url")`, and a worker path that works in dev but breaks in the
+production bundle is a classic way to ship this broken. Add `worktest.html` to
+`build.rollupOptions.input` temporarily to get the harness into `dist/`.
+
+**Clean up afterwards**: delete the harness page, restore `vite.config.js`, remove any fixture
+copied into `public/`, and confirm with `git status` — a 145 MB student PDF in `public/` would be
+committed, and it is a student's own work.
+
 ## Blackboard export — verifying without risking the real gradebook
 
 The Blackboard sync (Gradebook → **Blackboard**) is the one feature whose output lands in a system
