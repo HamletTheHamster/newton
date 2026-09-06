@@ -125,6 +125,22 @@ export async function fbSet(path, data) {
   if (!r.ok) throw new Error(`PUT ${path} → HTTP ${r.status}: ${await r.text()}`);
 }
 
+// Merge a patch into `path` without touching sibling keys (RTDB REST PATCH). Keys may be
+// deep paths ("answers/p1_a"), which is how a homework draft is saved: two tabs of the same
+// assignment then merge at the leaf instead of the later save replacing the whole object and
+// erasing whatever the other one had resolved. Use this for ANY node several sessions can
+// write concurrently; `fbSet` on a composite object is last-writer-wins and loses work.
+export async function fbUpdate(path, patch) {
+  if (!patch || !Object.keys(patch).length) return;
+  const [acToken, authToken] = await Promise.all([getAppCheckToken(), getAuthToken()]);
+  const r = await fetch(`${FIREBASE}/${path}.json?auth=${authToken}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", "X-Firebase-AppCheck": acToken },
+    body: JSON.stringify(patch),
+  });
+  if (!r.ok) throw new Error(`PATCH ${path} → HTTP ${r.status}: ${await r.text()}`);
+}
+
 export async function fbConnectTest() {
   const val = Date.now();
   await fbSet('_test', { t: val });

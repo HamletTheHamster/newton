@@ -98,10 +98,12 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }
 // Renders the per-problem/per-part breakdown for homework (`submission.type === "homework"`)
 // or the graded chat dialogue for quizzes.
 export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true }) {
-  const { s, muted, border, text, card, bg } = useTheme();
+  const { s, muted, border, text, card, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
-  const canEdit = isHomework && !!onSavePartScores;
+  // No breakdown means nothing to score part by part, so the editing controls would be a
+  // button that saves an empty map. A reconstructed record is the case that has none.
+  const canEdit = isHomework && !!onSavePartScores && (submission.problems || []).length > 0;
   // Derived from the instructor's override so the score the student sees here matches
   // their grades list exactly (whole-assignment score > per-part scores > submission).
   const partOverrides = override.partScores || {};
@@ -188,6 +190,18 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
+        {/* A record rebuilt by hand after the original was lost. Says so plainly, and says
+            which parts are real: without this the missing per-problem breakdown below reads
+            as a bug, and the fields that ARE genuine look no different from invented ones. */}
+        {submission.reconstructed && (
+          <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>Reconstructed record</span>
+            <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>{submission.reconstructed.note}</span>
+            {submission.reconstructed.at && (
+              <span style={{ color: muted, fontSize: 11 }}>Rebuilt {new Date(submission.reconstructed.at).toLocaleString()}</span>
+            )}
+          </div>
+        )}
         {/* Submitted written work + (instructor-only) integrity review (homework only) */}
         {isHomework && (
           <div style={{ ...s.card, padding: 16, display: "flex", flexDirection: "column", gap: 12, border: showIntegrity && integrity?.flagged ? "1px solid rgba(251,191,36,0.45)" : cellBorder }}>

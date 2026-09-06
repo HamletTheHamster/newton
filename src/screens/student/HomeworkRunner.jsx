@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../theme.js";
 import { isLate } from "../../utils.js";
-import { fbGet, fbSet, fbUpload, classPath } from "../../firebase.js";
+import { fbGet, fbSet, fbUpdate, fbUpload, classPath } from "../../firebase.js";
 import { normalizeWorkFile, formatBytes } from "../../work-files.js";
 import { createTelemetry } from "../../hw-telemetry.js";
+import { buildDraftPatch } from "../../student-work.js";
 import { MathField, hideMathKeyboard } from "../../components/MathField.jsx";
 import { MathText } from "../../components/MathText.jsx";
 import { GraphField } from "../../components/GraphField.jsx";
@@ -175,6 +176,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // Telemetry must never be able to break an attempt, so every call goes through this guard.
   const tele = (fn, ...args) => { try { teleRef.current?.[fn]?.(...args); } catch { /* never blocks homework */ } };
   const [draftLoading, setDraftLoading] = useState(!!draftPath);
+  // Set once the assignment is handed in and the draft node deleted. Every save path checks
+  // it, so a late autosave or an unmount flush can never resurrect the draft (and its
+  // instructor-facing progress row) after the submission has become the record.
+  const submittedRef = useRef(false);
   const [pendingDraft, setPendingDraft] = useState(null);
   const [savedAttempts, setSavedAttempts] = useState({});
 
@@ -214,17 +219,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // submission itself is the record of a completed assignment.
   const clearDraft = () => {
     if (!draftPath) return;
+    submittedRef.current = true;
+    clearTimeout(answersTimer.current);
     fbSet(draftPath, null).catch(() => {});
     fbSet(progressPath, null).catch(() => {});
     // Telemetry is cleared with the draft: from final submission on, the submission carries its
     // own copy, so leaving this node behind would only duplicate it.
     if (telemetryPath) fbSet(telemetryPath, null).catch(() => {});
   };
-
-  // One source of truth for the draft snapshot shape, reused by the auto-save effect, the
-  // leave-confirm handler, and the save-failure exit so the student's work is preserved
-  // identically in every exit path.
-  const draftSnapshot = () => ({ answers, attempts, status, earned, feedback, revealed, gradePass, hintUsed, history, idx, savedAt: new Date().toISOString() });
 
   // Instructor-facing progress summary, written beside the draft on every save path. It is a
   // tiny derived node so the Assignments hub can show how far the class has got WITHOUT
@@ -248,9 +250,23 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // Telemetry snapshotting is wrapped: a malformed accumulator must not stop the draft saving.
   const telemetrySnapshot = () => { try { return teleRef.current?.snapshot() || null; } catch { return null; } };
 
+  // The draft is written as a deep MERGE of leaf keys, never as a whole object.
+  //
+  // Writing the whole snapshot object was last-writer-wins: two sittings of the same
+  // assignment open at once (a phone and a laptop tab, or a tab restored from the background
+  // with stale state) meant the later save replaced the whole draft and erased every item the
+  // other one had resolved. Patching `answers/{itemId}`, `status/{itemId}` and so on merges at
+  // the item, so the worst a stale session can do is re-assert its own older value for an
+  // item it actually holds.
+  //
+  // Deliberately ADDITIVE — no key is ever nulled. The per-item maps are only ever added to
+  // by the runner, so nothing here needs deleting, and an answer the student typed and then
+  // cleared is worth keeping anyway: a resumed draft should show what they last wrote.
+  const draftPatch = () => buildDraftPatch({ answers, attempts, status, earned, feedback, revealed, gradePass, hintUsed, history, idx });
+
   const persistDraft = () => draftPath
     ? Promise.all([
-        fbSet(draftPath, draftSnapshot()).catch(() => {}),
+        fbUpdate(draftPath, draftPatch()).catch(() => {}),
         fbSet(progressPath, progressSnapshot()).catch(() => {}),
         telemetryPath ? fbSet(telemetryPath, telemetrySnapshot()).catch(() => {}) : Promise.resolve(),
       ]).then(() => {})
@@ -265,6 +281,59 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     if (!Object.keys(attempts).length && !Object.keys(status).length) return;
     persistDraft();
   }, [attempts, status]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save what has been TYPED but not yet submitted, debounced while the student is writing.
+  //
+  // The effect above only fires when an item is submitted or resolved, so a long written or
+  // LaTeX answer existed nowhere but this tab until the student pressed Submit. Closing the
+  // tab, a crash, or a phone reclaiming the page's memory lost it with nothing to resume
+  // from. Only the draft is patched here: nothing about typing changes the progress summary
+  // or the telemetry accumulator, so those stay on the submit path.
+  const answersTimer = useRef(null);
+  useEffect(() => {
+    if (!draftPath || draftLoading || pendingDraft || submittedRef.current) return;
+    if (!Object.keys(answers).length) return;
+    clearTimeout(answersTimer.current);
+    answersTimer.current = setTimeout(() => { fbUpdate(draftPath, draftPatch()).catch(() => {}); }, 1200);
+    return () => clearTimeout(answersTimer.current);
+  }, [answers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush immediately when the page is hidden or torn down — switching apps on a phone,
+  // closing the tab, leaving the runner. This is the last moment a request can still be
+  // issued; `sendBeacon` is not an option because the write needs an App Check header, which
+  // a beacon cannot carry, so anything lost inside the debounce window stays lost.
+  //
+  // The patch builder is kept in a ref rather than in the effect's closure: the listeners are
+  // registered once (a dep-array-less effect would re-run its cleanup, and so flush, on every
+  // render) but must always write the CURRENT answers.
+  const flushPatchRef = useRef(null);
+  useEffect(() => {
+    flushPatchRef.current = () => {
+      if (draftLoading || pendingDraft || submittedRef.current) return null;
+      // Nothing typed, drawn or submitted: opening a problem and leaving must not create a
+      // draft node (an empty one is noise the instructor's progress view would have to filter).
+      const hasWork = Object.keys(answers).length || Object.keys(status).length
+        || Object.keys(attempts).length || Object.keys(gradePass).length;
+      return hasWork ? draftPatch() : null;
+    };
+  });
+  useEffect(() => {
+    if (!draftPath) return;
+    const flush = () => {
+      const patch = flushPatchRef.current?.();
+      if (!patch) return;
+      clearTimeout(answersTimer.current);
+      fbUpdate(draftPath, patch).catch(() => {});
+    };
+    const onHide = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, [draftPath]);
 
   // After every submission, scroll the deepest visible item into view. This is the newly
   // revealed part when a correct answer unlocks the next one, and otherwise the item just
@@ -502,7 +571,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         tele("noteSubmit", item.id, { answer: ans, correct: !!result.correct });
         // Persist attempt count immediately — written even for wrong-but-still-open items so
         // the count survives a logout or leaving without resuming.
-        if (attemptsPath) fbSet(attemptsPath, { ...attempts, [item.id]: attemptNum }).catch(() => {});
+        // One leaf key, not the whole map: writing `{...attempts, [id]: n}` from local state
+        // let a second sitting with a stale copy reset every OTHER item's count back to what
+        // it had loaded, which quietly handed those items their free attempts again.
+        if (attemptsPath) fbSet(`${attemptsPath}/${item.id}`, attemptNum).catch(() => {});
         if (result.correct) {
           setEarned(e => ({ ...e, [item.id]: creditForAttempt(attemptNum, G) * item.weight }));
           setStatus(st => ({ ...st, [item.id]: "correct" }));

@@ -830,6 +830,8 @@ export function Gradebook({
   const cellBorder = `1px solid ${border}`;
   const [editingCell, setEditingCell] = useState(null); // { studentId, assignmentId }
   const [editScore, setEditScore] = useState("");
+  // What the editor was seeded with, so an untouched cell commits nothing. See commitEdit.
+  const [editScoreSeed, setEditScoreSeed] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showBlackboard, setShowBlackboard] = useState(false);
   const panelRef = useRef(null);
@@ -948,12 +950,20 @@ export function Gradebook({
     const sc = absence ? absence.base : scoreMap[studentId]?.[assignmentId];
     setEditingCell({ studentId, assignmentId });
     setEditScore(sc != null ? String(sc) : "");
+    setEditScoreSeed(sc != null ? String(sc) : "");
   };
 
   const commitEdit = async () => {
     if (!editingCell) return;
     const { studentId, assignmentId } = editingCell;
     setEditingCell(null);
+    // Nothing typed: this was a click to open the detail panel, not an edit. Writing anyway
+    // would stamp a whole-assignment override equal to the score already showing — which
+    // looks like a no-op but is not: `ov.score` OUTRANKS part-score overrides in
+    // `resolveScore`, so a later per-part regrade would silently have no effect on the cell.
+    // It is also what left a score behind when a submission went missing, making a deleted
+    // submission look like a graded one.
+    if (editScore === editScoreSeed) return;
     const current = { ...(gradeOverrides[studentId] || {}) };
     const existing = current[assignmentId] || {};
     const parsed = parseFloat(editScore);

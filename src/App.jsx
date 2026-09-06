@@ -2,7 +2,8 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react
 import QRCode from "qrcode";
 
 import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext } from "./theme.js";
-import { fbGet, fbSet, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage, fbListStorage } from "./firebase.js";
+import { fbGet, fbSet, fbUpdate, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage, fbListStorage } from "./firebase.js";
+import { flattenSubs, subsByStudentMap, submissionMergePatch, keyForSubmission } from "./student-work.js";
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
   ACCEPTED_IMG,
@@ -16,6 +17,7 @@ import { HW_GRADING_DEFAULTS } from "./homework.js";
 import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
+import { unseenAnnouncements } from "./announcements.js";
 
 import { SyncBadge } from "./components/SyncBadge.jsx";
 import { CustomSelect } from "./components/CustomSelect.jsx";
@@ -34,6 +36,7 @@ import { Stub } from "./screens/student/Stub.jsx";
 import { StudentSyllabus } from "./screens/student/StudentSyllabus.jsx";
 import { InstructorSyllabus } from "./screens/instructor/InstructorSyllabus.jsx";
 import { StudentAnnouncements } from "./screens/student/StudentAnnouncements.jsx";
+import { NewAnnouncementsModal } from "./components/lms/NewAnnouncementsModal.jsx";
 import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
 import { Modules as InstructorModules } from "./screens/instructor/Modules.jsx";
 import { Announcements as InstructorAnnouncements } from "./screens/instructor/Announcements.jsx";
@@ -115,6 +118,15 @@ const INSTRUCTOR_SECTIONS = [
   { id: "settings",     label: "Settings" },
 ];
 
+// A completed quiz whose save failed, held in localStorage until it lands. Unlike homework,
+// a quiz has no draft node: the sitting lives only in component state, so without this a
+// failed save plus a closed tab loses the whole attempt with nothing to redo it from. One
+// slot is enough — a student can only ever finish one quiz at a time.
+const PENDING_SUB_KEY = "newton_pending_sub";
+const stashPendingSub = (classId, sub) => { try { localStorage.setItem(PENDING_SUB_KEY, JSON.stringify({ classId, sub })); } catch { /* quota or private mode: the in-session retry still stands */ } };
+const readStashedSub = () => { try { return JSON.parse(localStorage.getItem(PENDING_SUB_KEY) || "null"); } catch { return null; } };
+const clearStashedSub = () => { try { localStorage.removeItem(PENDING_SUB_KEY); } catch { /* nothing to do */ } };
+
 export default function App() {
   // ── Classes & per-class state ───────────────────────────────────────────────
   const [classes, setClasses] = useState({});
@@ -131,6 +143,12 @@ export default function App() {
   const [studentPws, setStudentPws] = useState({});
   const [dueDates, setDueDates] = useState({});
   const [submissions, setSubmissions] = useState([]);
+  // Mirror of the above, so the submission helpers can compute the next array synchronously —
+  // a loop of per-key deletes would otherwise see the same stale `submissions` closure on
+  // every iteration and each write would undo the last. Kept current by the effect below AND
+  // eagerly by each helper, since the effect only runs after the render.
+  const submissionsRef = useRef([]);
+  useEffect(() => { submissionsRef.current = submissions; }, [submissions]);
   const [checkedSubs, setCheckedSubs] = useState({});
   const [modules, setModules] = useState([]);
   const [moduleConfig, setModuleConfig] = useState({});
@@ -139,6 +157,13 @@ export default function App() {
   const [uploads, setUploads] = useState({});
   const [syllabus, setSyllabus] = useState(null);          // { pdf, fields } or null
   const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
+  // Announcement read receipts for the SIGNED-IN student only:
+  // { classId, studentId, map: { [annId]: ISO timestamp } }, or null while unloaded.
+  // It carries the class and student it was fetched for because the unread popup needs the
+  // announcements and the receipts to come from the SAME class — deciding from a stale map
+  // after a class switch is what made the pre-6.9 version of this feature misfire. Per-student
+  // data, so like hwDrafts it is read on demand and never enters the class cache.
+  const [annReads, setAnnReads] = useState(null);
   const [gradeCategories, setGradeCategories] = useState({});
   const [gradeOverrides, setGradeOverrides] = useState({});     // { [studentId]: { [assignmentId]: { score?, excused? } } }
   const [assignmentCategories, setAssignmentCategories] = useState({});  // { [assignmentId]: catId }
@@ -313,6 +338,11 @@ export default function App() {
   const currentParts = currentQ && !isWidgetQ ? detectParts(currentQ.text) : null;
   const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId));
   const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // What the unread popup shows. Empty unless the loaded receipts belong to exactly this
+  // (class, student) pair, so a class switch shows nothing at all until the new class's
+  // receipts land rather than measuring one class's announcements against another's reads.
+  const myAnnReads = (annReads && annReads.classId === currentClassId && annReads.studentId === loggedInStudent?.studentId) ? annReads.map : null;
+  const unseenAnns = myAnnReads ? unseenAnnouncements(sortedAnnouncements, myAnnReads) : [];
   const syllabusBreakdown = syllabus?.fields?.gradingBreakdown ?? [];
   const gradeCatList = Object.values(gradeCategories ?? {});
   const syllabusMismatch = gradeCatList.length > 0 && syllabusBreakdown.length > 0 && (() => {
@@ -425,10 +455,7 @@ export default function App() {
           if (c.studentPws && typeof c.studentPws === 'object') setStudentPws(c.studentPws);
           if (c.dueDates && typeof c.dueDates === 'object') setDueDates(c.dueDates);
           if (c.checkedSubs && typeof c.checkedSubs === 'object') setCheckedSubs(c.checkedSubs);
-          if (c.submissions && typeof c.submissions === 'object') {
-            const allSubs = Object.values(c.submissions).flat().filter(Boolean);
-            setSubmissions(allSubs);
-          }
+          if (c.submissions && typeof c.submissions === 'object') setSubmissions(flattenSubs(c.submissions));
           if (c.moduleConfig && typeof c.moduleConfig === 'object') setModuleConfig(c.moduleConfig);
           if (c.pages && typeof c.pages === 'object') setPages(c.pages);
           if (c.uploads && typeof c.uploads === 'object') setUploads(c.uploads);
@@ -494,7 +521,7 @@ export default function App() {
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
       const datesObj = (datesData && typeof datesData === 'object') ? datesData : {};
       const checkedObj = (checkedData && typeof checkedData === 'object') ? checkedData : {};
-      const subsArr = (subsData && typeof subsData === 'object') ? Object.values(subsData).flat().filter(Boolean) : [];
+      const subsArr = flattenSubs(subsData);
       let moduleConfigObj = (moduleConfigData && typeof moduleConfigData === 'object') ? moduleConfigData : {};
       const pagesObj = (pagesData && typeof pagesData === 'object') ? pagesData : {};
       const uploadsObj = (uploadsData && typeof uploadsData === 'object') ? uploadsData : {};
@@ -646,10 +673,38 @@ export default function App() {
   // before the PUT resolves), so polling there could momentarily revert a change
   // that is still in flight.
   const studentPortalActive = screen === "student-portal" && !!loggedInStudent && !!currentClassId;
+
+  // Re-pull THIS student's own submissions alongside the content refresh. Their own node is
+  // the one per-student exception worth polling: it is the record of what they have already
+  // handed in, and a session that never refreshes it shows work they finished elsewhere as
+  // still to do — which is how the same assignment gets started twice. Scoped to their own
+  // key, so it neither ships the class's submissions to a student nor touches anyone else's
+  // entries in state. Safe to adopt wholesale now that every write is a single-key write:
+  // RTDB is always at least as fresh as this session, since saves are awaited before state.
+  const refreshOwnSubmissions = useCallback(async (cid, sid) => {
+    if (!cid || !sid) return;
+    let node;
+    try { node = await fbGet(classPath(cid, `submissions/${sid}`)); }
+    catch (e) { console.warn("Own-submission refresh failed:", e?.message || e); return; }
+    const mine = flattenSubs({ [sid]: node });
+    setSubmissions(prev => {
+      const others = prev.filter(s => s.studentId !== sid);
+      const next = [...others, ...mine];
+      // Only re-render when something actually changed, or the 60s poll churns the whole tree.
+      const sameLength = next.length === prev.length;
+      const sameIds = sameLength && next.every(s => prev.some(p => p.id === s.id));
+      return sameIds ? prev : next;
+    });
+  }, []);
+
   useEffect(() => {
     if (!studentPortalActive) return;
-    const cid = currentClassId;
-    const pull = () => { if (document.visibilityState === "visible") refreshClassContent(cid); };
+    const cid = currentClassId, sid = loggedInStudent.studentId;
+    const pull = () => {
+      if (document.visibilityState !== "visible") return;
+      refreshClassContent(cid);
+      refreshOwnSubmissions(cid, sid);
+    };
     pull();
     const timer = setInterval(pull, 60000);
     document.addEventListener("visibilitychange", pull);
@@ -659,7 +714,20 @@ export default function App() {
       document.removeEventListener("visibilitychange", pull);
       window.removeEventListener("focus", pull);
     };
-  }, [studentPortalActive, currentClassId, refreshClassContent]);
+  }, [studentPortalActive, currentClassId, loggedInStudent?.studentId, refreshClassContent, refreshOwnSubmissions]);
+
+  // The signed-in student's own read receipts, fetched once per (class, student). The cancel
+  // flag matters on a class switch: a fetch still in flight for the class they just left must
+  // never be adopted, or its receipts would be read against the new class's announcements.
+  useEffect(() => {
+    if (!studentPortalActive) return;
+    const cid = currentClassId, sid = loggedInStudent.studentId;
+    let cancelled = false;
+    fbGet(classPath(cid, `announcementReads/${sid}`))
+      .catch(() => null)
+      .then(d => { if (!cancelled) setAnnReads({ classId: cid, studentId: sid, map: (d && typeof d === 'object') ? d : {} }); });
+    return () => { cancelled = true; };
+  }, [studentPortalActive, currentClassId, loggedInStudent?.studentId]);
 
   // ── Scroll / focus ──────────────────────────────────────────────────────────
   const doScroll = useCallback(() => { const el = chatRef.current; if (!el) return; el.scrollTop = el.scrollHeight - el.clientHeight; }, []);
@@ -690,11 +758,15 @@ export default function App() {
   }, [busy]);
 
   // ── Firebase save helper ───────────────────────────────────────────────────
-  const fbSave = async (path, data, label) => {
+  // `opts.merge` sends a PATCH instead of a PUT, so only the keys in `data` are written and
+  // siblings are left alone. Use it wherever a write could otherwise clobber data another
+  // session added between this session's load and this save.
+  const fbSave = async (path, data, label, opts = {}) => {
     setSyncStatus('saving'); setSyncLabel(label || ''); setSyncError('');
     clearTimeout(syncTimer.current);
     try {
-      await fbSet(path, data);
+      if (opts.merge) await fbUpdate(path, data);
+      else await fbSet(path, data);
       setSyncStatus('saved');
       syncTimer.current = setTimeout(() => setSyncStatus('idle'), 3000);
     } catch (e) {
@@ -733,25 +805,65 @@ export default function App() {
     if (dropped > 0) console.warn(`saveRoster: collapsed ${dropped} duplicate/blank student ID(s) to preserve the one-student-per-ID invariant.`);
     setRoster(unique); updateClassCache(cid, 'roster', unique); await fbSave(classPath(cid, 'roster'), unique);
   };
-  const saveAltName = async stu => { const val = altNameInput.trim(); const updated = roster.map(r => r.studentId === stu.studentId ? { ...r, altName: val || undefined } : r); await saveRoster(updated); setEditingAltName(null); };
+  // Edit ONE field on ONE roster entry, without rewriting the roster array.
+  //
+  // `saveRoster` puts the whole array, which is right for a CSV upload or an add but wrong for
+  // a field edit: the array is a session-old snapshot, and a student's tab can sit open for
+  // hours. A student changing their own email therefore used to re-put the roster as it looked
+  // when they logged in, silently un-enrolling every student the instructor had added since —
+  // the same stale-session clobber that destroyed a homework submission.
+  //
+  // The roster has no per-student key to write (it is an array, and a positional path is only
+  // meaningful against the CURRENT array), so the index is resolved from a fresh read taken
+  // immediately before the write. That closes the window from hours to milliseconds, and the
+  // worst a residual race could do is mistype one field, never drop a student.
+  const saveRosterField = async (studentId, field, value) => {
+    const cid = requireClass();
+    let live;
+    try { live = await fbGet(classPath(cid, 'roster')); }
+    catch { live = null; }
+    const arr = Array.isArray(live) ? live : roster;
+    const i = arr.findIndex(r => r?.studentId === studentId);
+    if (i < 0) throw new Error("That student is no longer on the roster, so the change was not saved.");
+    await fbSave(classPath(cid, `roster/${i}/${field}`), value ?? null);
+    const next = arr.map(r => {
+      if (r?.studentId !== studentId) return r;
+      const { [field]: _drop, ...rest } = r;
+      return value ? { ...rest, [field]: value } : rest;
+    });
+    setRoster(next);
+    updateClassCache(cid, 'roster', next);
+  };
+  const saveAltName = async stu => { const val = altNameInput.trim(); await saveRosterField(stu.studentId, 'altName', val || null); setEditingAltName(null); };
   const isValidEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const saveEmail = async stu => {
     const val = emailInput.trim();
     if (val && !isValidEmail(val)) return;
-    const updated = roster.map(r => { if (r.studentId !== stu.studentId) return r; const { email: _, ...rest } = r; return val ? { ...rest, email: val } : rest; });
-    await saveRoster(updated);
+    await saveRosterField(stu.studentId, 'email', val || null);
     setEditingEmail(null);
   };
   const saveStudentEmail = async () => {
     const val = stuEmailDraft.trim();
     if (val && !isValidEmail(val)) { setStuEmailMsg("Please enter a valid email address."); return; }
-    const updated = roster.map(r => { if (r.studentId !== loggedInStudent.studentId) return r; const { email: _, ...rest } = r; return val ? { ...rest, email: val } : rest; });
-    await saveRoster(updated);
+    try { await saveRosterField(loggedInStudent.studentId, 'email', val || null); }
+    catch (e) { setStuEmailMsg(e?.message || "Could not save your email. Please try again."); return; }
     setLoggedInStudent(prev => { const { email: _, ...rest } = prev; return val ? { ...rest, email: val } : rest; });
     setStuEmailMsg("✅ Email updated.");
     setTimeout(() => setStuEmailMsg(""), 3000);
   };
   const saveStudentPws = async p => { const cid = requireClass(); setStudentPws(p); updateClassCache(cid, 'studentPws', p); await fbSave(classPath(cid, 'studentPws'), p); };
+  // One student's password hash, written at its own key. Passing the whole map through
+  // `saveStudentPws` meant a student's first login re-put every OTHER student's hash as this
+  // session had loaded them — so two students setting a password within the same window left
+  // one of them silently back on the default. `null` clears (an instructor's "Reset PW").
+  const saveStudentPw = async (studentId, hash) => {
+    const cid = requireClass();
+    const next = { ...studentPws };
+    if (hash) next[studentId] = hash; else delete next[studentId];
+    setStudentPws(next);
+    updateClassCache(cid, 'studentPws', next);
+    await fbSave(classPath(cid, `studentPws/${studentId}`), hash || null);
+  };
   const saveDueDates = async d => { const cid = requireClass(); setDueDates(d); updateClassCache(cid, 'dueDates', d); await fbSave(classPath(cid, 'dueDates'), d); };
   const saveHomeworkSettingFor = async (hwId, overrides) => {
     const cid = requireClass();
@@ -878,7 +990,38 @@ export default function App() {
     setAnnouncements(updated);
     updateClassCache(cid, 'announcements', updated);
     await fbSave(classPath(cid, `announcements/${annId}`), null);
+    // Drop the read receipts with it. Receipts are keyed student-first, so there is no single
+    // node to null out; each student who has one is rewritten. Best-effort, and deliberately
+    // after the announcement itself is gone: orphaned receipts are invisible either way.
+    try {
+      const all = await fbGet(classPath(cid, 'announcementReads'));
+      const owners = Object.keys(all || {}).filter(sid => all[sid] && annId in all[sid]);
+      await Promise.all(owners.map(sid => fbSet(classPath(cid, `announcementReads/${sid}/${annId}`), null)));
+    } catch (e) { console.warn("Announcement read-receipt cleanup failed:", e?.message || e); }
   };
+  // Record that the signed-in student has seen these announcements: dismissing the popup, or
+  // opening the Announcements page. One small PUT per announcement rather than one merged write
+  // of their whole map, so a receipt written in another tab can't be clobbered.
+  //
+  // Written with fbSet, not fbSave: this is background bookkeeping the student never asked for,
+  // and a sync badge for it (or worse, a red error badge) would be noise. A failed write simply
+  // means the notice pops again next time, which is self-healing.
+  const markAnnouncementsRead = async ids => {
+    if (!loggedInStudent || !currentClassId || !ids?.length) return;
+    const cid = currentClassId, sid = loggedInStudent.studentId, at = new Date().toISOString();
+    setAnnReads(prev => (prev && prev.classId === cid && prev.studentId === sid)
+      ? { ...prev, map: { ...prev.map, ...Object.fromEntries(ids.map(id => [id, at])) } }
+      : prev);
+    await Promise.all(ids.map(id => fbSet(classPath(cid, `announcementReads/${sid}/${id}`), at).catch(() => {})));
+  };
+  // Sitting on the Announcements page IS reading them, so the popup stays out of the way there
+  // and the page itself records the view. Without this the modal would cover the very list the
+  // student navigated to, and closing it would be the only way to read what is underneath.
+  useEffect(() => {
+    if (studentPortalActive && studentSection === "announcements" && unseenAnns.length) {
+      markAnnouncementsRead(unseenAnns.map(a => a.id));
+    }
+  }, [studentPortalActive, studentSection, unseenAnns.length]);
   const saveGradeCategories = async cats => {
     const cid = requireClass();
     setGradeCategories(cats);
@@ -955,20 +1098,101 @@ export default function App() {
     }
     setGradeOverrides(updated);
     updateClassCache(cid, 'gradeOverrides', updated);
-    await fbSave(classPath(cid, 'gradeOverrides'), updated, label);
+    // One PATCH of just the students in this batch, not a PUT of the whole node: a bulk exam
+    // entry must not roll back an excusal or an extension another session recorded meanwhile.
+    const patch = {};
+    for (const [sid, ov] of Object.entries(byStudent)) patch[sid] = (ov && Object.keys(ov).length) ? ov : null;
+    await fbSave(classPath(cid, 'gradeOverrides'), patch, label, { merge: true });
   };
 
-  const saveSubs = async (newSubs, studentId = null) => {
+  // ── Submissions: one key per submission, never a whole-array rewrite ───────
+  //
+  // A submission is the ONLY record of work a student cannot redo, so nothing here may ever
+  // write a composite value derived from local state. It used to: `submissions/{studentId}`
+  // held an ARRAY, and every save rewrote the whole array from whatever this session had
+  // loaded. Two sessions of the same student (a phone that submitted homework, a laptop tab
+  // opened before it) meant the second one's next submission silently deleted the first's —
+  // which is exactly how a completed homework was lost on 2026-09-06, an hour and a half
+  // after it was handed in, by the student then taking a quiz in a stale tab.
+  //
+  // Writing `submissions/{studentId}/{submissionId}` makes that structurally impossible: a
+  // save touches one key, so a stale session has nothing to overwrite with. Reads go through
+  // `flattenSubs`, which still understands the old array shape.
+  const addSubmission = async sub => {
     const cid = requireClass();
-    setSubmissions(newSubs);
-    const byStudent = {};
-    newSubs.forEach(sub => { if (!byStudent[sub.studentId]) byStudent[sub.studentId] = []; byStudent[sub.studentId].push(sub); });
-    updateClassCache(cid, 'submissions', byStudent);
-    if (studentId) {
-      await fbSave(classPath(cid, `submissions/${studentId}`), byStudent[studentId] || []);
-    } else {
-      await fbSave(classPath(cid, 'submissions'), byStudent);
+    if (!sub?.studentId || !sub?.id) throw new Error("Submission is missing its student or id, so it was not saved.");
+    // A brand new submission's id is unique, so its key is its id — but a RETRY (the failure
+    // banner, or the localStorage stash flushing next session) may be re-saving one that did
+    // land, and under the legacy array shape that copy sits at a positional key. Resolving the
+    // key means the retry updates it in place instead of adding a duplicate.
+    let live = null;
+    try { live = await fbGet(classPath(cid, `submissions/${sub.studentId}`)); } catch { /* fall back to the id */ }
+    // Write FIRST, then adopt into local state — a failed save must not look saved. The
+    // caller (quiz finish / homework finish) surfaces the throw and keeps its retry path.
+    await fbSave(classPath(cid, `submissions/${sub.studentId}/${keyForSubmission(live, sub.id)}`), sub);
+    const next = [...submissionsRef.current.filter(s => s.id !== sub.id), sub];
+    submissionsRef.current = next;
+    setSubmissions(next);
+    updateClassCache(cid, 'submissions', subsByStudentMap(next));
+  };
+
+  // Delete specific submissions by id. Per-key nulls, so clearing one student's quiz can
+  // never take out a submission this session hasn't heard about.
+  const deleteSubmissions = async (studentId, ids) => {
+    const cid = requireClass();
+    // Resolve each submission's real KEY first: under the legacy array shape it is a position,
+    // not the id, so deleting by id would silently miss and the record would reappear on the
+    // next load. A failed read leaves `live` null and `keyForSubmission` falls back to the id.
+    let live = null;
+    try { live = await fbGet(classPath(cid, `submissions/${studentId}`)); } catch { /* fall back to the id */ }
+    for (const id of ids) {
+      const key = keyForSubmission(live, id);
+      // Archive before deleting. Clearing a submission is a deliberate, password-gated act —
+      // usually to let a student retake — but it is still the only copy of work they cannot
+      // reproduce, and "I cleared the wrong row" has no undo otherwise. The archive is not
+      // read by the app; it exists so a record can be lifted back out by hand. Best-effort:
+      // a failed archive must not block the clear the instructor asked for.
+      const record = live?.[key] ?? submissionsRef.current.find(s => s.studentId === studentId && s.id === id);
+      if (record) {
+        try { await fbSet(classPath(cid, `submissionsArchive/${studentId}/${id}`), { ...record, archivedAt: new Date().toISOString() }); }
+        catch (e) { console.warn("Could not archive the submission before clearing it:", e?.message || e); }
+      }
+      await fbSave(classPath(cid, `submissions/${studentId}/${key}`), null);
     }
+    const gone = new Set(ids);
+    const next = submissionsRef.current.filter(s => !(s.studentId === studentId && gone.has(s.id)));
+    submissionsRef.current = next;
+    setSubmissions(next);
+    updateClassCache(cid, 'submissions', subsByStudentMap(next));
+  };
+
+  // Replace the entire node. The ONLY caller is the Danger Zone's "Clear All Submissions",
+  // which is password-gated and means precisely this. Never reach for it to save a submission.
+  const replaceAllSubmissions = async newSubs => {
+    const cid = requireClass();
+    const byStudent = subsByStudentMap(newSubs);
+    submissionsRef.current = newSubs;
+    setSubmissions(newSubs);
+    updateClassCache(cid, 'submissions', byStudent);
+    await fbSave(classPath(cid, 'submissions'), Object.keys(byStudent).length ? byStudent : null);
+  };
+
+  // Merge submissions in without removing anything — used by the backup import, which
+  // restores a snapshot that is by definition older than the live data. An import that
+  // REPLACED the node would delete every submission made since the backup was taken, so it
+  // adds and updates only. Duplicate ids resolve to the imported copy.
+  const mergeSubmissions = async incoming => {
+    const cid = requireClass();
+    const usable = (incoming || []).filter(s => s?.studentId && s?.id);
+    let live = null;
+    try { live = await fbGet(classPath(cid, 'submissions')); } catch { /* fall back to ids */ }
+    await fbSave(classPath(cid, 'submissions'), submissionMergePatch(usable, live), 'import submissions', { merge: true });
+    const byId = new Map(submissionsRef.current.map(s => [s.id, s]));
+    for (const s of usable) byId.set(s.id, s);
+    const next = [...byId.values()];
+    submissionsRef.current = next;
+    setSubmissions(next);
+    updateClassCache(cid, 'submissions', subsByStudentMap(next));
   };
 
   // Clear a single student's submission for one assignment (quiz or homework), gated behind
@@ -980,14 +1204,13 @@ export default function App() {
     const who = removed[0].studentName || studentId;
     const what = removed[0].quizTitle || assignmentId;
     confirmDanger(`clear ${who}'s submission for "${what}"`, async () => {
-      const newSubs = submissions.filter(s => !(s.studentId === studentId && s.quizId === assignmentId));
       const removedIds = removed.map(s => s.id);
       if (removedIds.some(id => checkedSubs[id])) {
         const nc = { ...checkedSubs };
         removedIds.forEach(id => { delete nc[id]; });
         await saveChecked(nc);
       }
-      await saveSubs(newSubs, studentId);
+      await deleteSubmissions(studentId, removedIds);
     });
   };
 
@@ -1019,23 +1242,29 @@ export default function App() {
       const marks = { ...newAttendance[id].marks }; delete marks[studentId];
       newAttendance[id] = { ...newAttendance[id], marks };
     }
-    const newSubsByStudent = {};
-    newSubs.forEach(sub => { (newSubsByStudent[sub.studentId] ||= []).push(sub); });
+    const newSubsByStudent = subsByStudentMap(newSubs);
 
     // RTDB deletes — null removes the node entirely. Scoped to this class.
     await fbSave(classPath(cid, 'roster'), newRoster, 'remove student');
     await fbSave(classPath(cid, 'studentPws'), newPws);
+    // Archive the whole set before it goes, for the same reason `deleteSubmissions` does.
+    try {
+      const live = await fbGet(classPath(cid, `submissions/${studentId}`));
+      if (live) await fbSet(classPath(cid, `submissionsArchive/${studentId}`), { ...live, archivedAt: new Date().toISOString() });
+    } catch (e) { console.warn("Could not archive this student's submissions before removal:", e?.message || e); }
     await fbSave(classPath(cid, `submissions/${studentId}`), null);
     await fbSave(classPath(cid, `gradeOverrides/${studentId}`), null);
     await fbSave(classPath(cid, `hwDrafts/${studentId}`), null);
     await fbSave(classPath(cid, `hwAttempts/${studentId}`), null);
     await fbSave(classPath(cid, `hwProgress/${studentId}`), null);
+    await fbSave(classPath(cid, `announcementReads/${studentId}`), null);
     for (const id of attendanceSessionIds) await fbSave(classPath(cid, `attendance/${id}/marks/${studentId}`), null);
     if (checkedChanged) await fbSave(classPath(cid, 'checkedSubs'), newChecked);
 
     // In-memory state + class cache.
     setRoster(newRoster); updateClassCache(cid, 'roster', newRoster);
     setStudentPws(newPws); updateClassCache(cid, 'studentPws', newPws);
+    submissionsRef.current = newSubs;
     setSubmissions(newSubs); updateClassCache(cid, 'submissions', newSubsByStudent);
     setGradeOverrides(newOverrides); updateClassCache(cid, 'gradeOverrides', newOverrides);
     if (attendanceSessionIds.length) { setAttendance(newAttendance); updateClassCache(cid, 'attendance', newAttendance); }
@@ -1064,7 +1293,7 @@ export default function App() {
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
     setLoggedInStudent(null); setSelectedStudent(null); setNameQuery("");
     setOpenQuizzes({});
-    setAnnouncements({});
+    setAnnouncements({}); setAnnReads(null);
     setCustomQuizzes({});
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     setAttendance({});
@@ -1075,7 +1304,7 @@ export default function App() {
     setCurrentClassId(classId);
     setActiveQuiz(null); setMessages([]); setQScores([]); setQIdx(0);
     setOpenQuizzes({});
-    setAnnouncements({});
+    setAnnouncements({}); setAnnReads(null);
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({});
     await loadClassData(classId);
   };
@@ -1147,7 +1376,10 @@ export default function App() {
         if (data.studentPws) await saveStudentPws(data.studentPws);
         if (data.dueDates) await saveDueDates(data.dueDates);
         if (data.checkedSubs) await saveChecked(data.checkedSubs);
-        if (data.submissions) await saveSubs(data.submissions);
+        // Merge, never replace: a backup is by definition older than the live data, so
+        // restoring one over the top of the node would delete every submission handed in
+        // since it was taken.
+        if (data.submissions) await mergeSubmissions(data.submissions);
         if (Array.isArray(data.modules)) await saveModules(data.modules);
         if (data.moduleConfig) {
           const cid = requireClass();
@@ -1177,8 +1409,8 @@ export default function App() {
   const handleStudentLogin = async () => {
     if (!selectedStudent) return;
     const stored = studentPws[selectedStudent.studentId]; let ok = false;
-    if (!stored) { ok = pwInput === selectedStudent.studentId; if (ok) { const h = await makeHash(pwInput); await saveStudentPws({ ...studentPws, [selectedStudent.studentId]: h }); } }
-    else if (typeof stored === "string") { ok = pwInput === stored; if (ok) { const h = await makeHash(pwInput); await saveStudentPws({ ...studentPws, [selectedStudent.studentId]: h }); } }
+    if (!stored) { ok = pwInput === selectedStudent.studentId; if (ok) { const h = await makeHash(pwInput); await saveStudentPw(selectedStudent.studentId, h); } }
+    else if (typeof stored === "string") { ok = pwInput === stored; if (ok) { const h = await makeHash(pwInput); await saveStudentPw(selectedStudent.studentId, h); } }
     else { ok = await verifyPw(pwInput, stored.hash, stored.salt); }
     if (ok) {
       const availableClasses = Object.entries(classes)
@@ -1199,7 +1431,7 @@ export default function App() {
     if (!newPw1.trim()) { setPwChangeMsg("Password cannot be empty."); return; }
     if (newPw1 !== newPw2) { setPwChangeMsg("Passwords do not match."); return; }
     if (newPw1.length < 4) { setPwChangeMsg("Password must be at least 4 characters."); return; }
-    const h = await makeHash(newPw1); await saveStudentPws({ ...studentPws, [loggedInStudent.studentId]: h });
+    const h = await makeHash(newPw1); await saveStudentPw(loggedInStudent.studentId, h);
     setNewPw1(""); setNewPw2(""); setPwChangeMsg("✅ Password updated successfully!");
   };
   const handleStudentLogout = () => {
@@ -1208,7 +1440,7 @@ export default function App() {
     setCurrentClassId(null);
     setRoster([]); setStudentPws({}); setDueDates({}); setCheckedSubs({}); setSubmissions([]);
     setModules([]); setModuleConfig({}); setPages({}); setUploads({});
-    setAnnouncements({});
+    setAnnouncements({}); setAnnReads(null);
     setGradeCategories({}); setGradeOverrides({}); setAssignmentCategories({}); setCustomQuizzes({});
     setScreen("student-search");
   };
@@ -1346,7 +1578,7 @@ export default function App() {
   const previewAssignment = (id, kind) => openAssignment(id, kind, "instructor");
   // Persist a completed-homework submission (reuses the quiz submissions array/paths).
   // Throws on failure so HomeworkRunner can show a retry affordance.
-  const saveHomeworkSub = async sub => { await saveSubs([...submissions, sub], sub.studentId); };
+  const saveHomeworkSub = async sub => { await addSubmission(sub); };
   // Leaving the quiz lands back where it was launched from, not unconditionally on the student
   // portal (an instructor previewing from Modules has no business being dropped there).
   const runnerReturnScreen = runnerFrom === "instructor" ? "instructor" : "student-portal";
@@ -1493,17 +1725,39 @@ export default function App() {
     setQuizDone(true); setMessages([...curMsgs, resultMsg]);
     if (!practiceMode) {
       const sub = { id: "sub_" + Date.now(), studentName: loggedInStudent.fullName, studentId: loggedInStudent.studentId, quizId: quiz.id, quizTitle: quiz.title, rawScore: raw, score: final, late, timestamp: new Date().toISOString(), dialogue: [...curMsgs, resultMsg].map(({ imageUrl, ...m }) => m) };
-      setPendingSub({ sub, allSubs: [...submissions, sub], studentId: sub.studentId });
-      try { await saveSubs([...submissions, sub], sub.studentId); setSubSaveError(false); setPendingSub(null); }
+      // Stash to localStorage BEFORE the network call. A quiz has no draft node — the whole
+      // sitting exists only in this component's state — so if the save fails and the student
+      // closes the tab, the on-screen retry button dies with it and the work is gone. The
+      // stash is picked up and flushed on the next load (see the recovery effect).
+      stashPendingSub(currentClassId, sub);
+      setPendingSub({ sub });
+      try { await addSubmission(sub); setSubSaveError(false); setPendingSub(null); clearStashedSub(); }
       catch { setSubSaveError(true); }
     }
   };
 
   const retrySaveSub = async () => {
     if (!pendingSub) return;
-    try { await saveSubs(pendingSub.allSubs, pendingSub.studentId); setSubSaveError(false); setPendingSub(null); }
+    try { await addSubmission(pendingSub.sub); setSubSaveError(false); setPendingSub(null); clearStashedSub(); }
     catch { setSubSaveError(true); }
   };
+
+  // Recover a quiz submission whose save failed in an earlier session (network dropped, tab
+  // closed on the failure screen). Runs once per session, as soon as the class it belongs to
+  // is loaded. If the submission turns out to be there after all — the save landed but the
+  // response never came back — the stash is simply dropped.
+  const stashFlushedRef = useRef(false);
+  useEffect(() => {
+    if (!dataReady || !currentClassId || stashFlushedRef.current) return;
+    const stashed = readStashedSub();
+    if (!stashed?.sub?.id) { stashFlushedRef.current = true; return; }
+    if (stashed.classId !== currentClassId) return;   // wait for that class to be selected
+    stashFlushedRef.current = true;
+    if (submissions.some(s => s.id === stashed.sub.id)) { clearStashedSub(); return; }
+    addSubmission(stashed.sub)
+      .then(() => clearStashedSub())
+      .catch(e => console.warn("Deferred submission save failed; the stash is kept for the next load:", e?.message || e));
+  }, [dataReady, currentClassId, submissions]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleChecked = async subId => {
     const nc = { ...checkedSubs };
@@ -1748,6 +2002,7 @@ export default function App() {
         <>
           {bugModalJsx}
           {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
+          {unseenAnns.length > 0 && studentSection !== "announcements" && <NewAnnouncementsModal announcements={unseenAnns} onDismiss={markAnnouncementsRead} />}
           <Shell
             header={header}
             sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}
@@ -2133,7 +2388,13 @@ export default function App() {
 
         {currentClassId && instructorSection === "roster" && (
           <div>
-            <ManualAddStudent roster={roster} onAdd={async student => { const updated = [...roster, student].sort((a, b) => a.lastName.localeCompare(b.lastName)); await saveRoster(updated); }} />
+            <ManualAddStudent roster={roster} onAdd={async student => {
+              // Adding genuinely rewrites the array, so base it on a fresh read rather than on
+              // whatever this tab loaded — otherwise adding one student can drop another.
+              let live; try { live = await fbGet(classPath(currentClassId, 'roster')); } catch { live = null; }
+              const base = Array.isArray(live) ? live : roster;
+              await saveRoster([...base, student].sort((a, b) => a.lastName.localeCompare(b.lastName)));
+            }} />
             <div style={{ ...s.card, padding: 14, marginBottom: 20, fontSize: 13, color: MUTED, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
               <span style={{ ...s.muted, fontSize: 12 }}>(MyMercer roster export file)</span>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
@@ -2200,7 +2461,7 @@ export default function App() {
                         )}</td>
                         <td style={{ padding: "12px 16px" }}><span style={studentPws[stu.studentId] ? s.badge(TEAL) : s.badge(MUTED)}>{studentPws[stu.studentId] ? "Hashed password" : "Using Student ID"}</span></td>
                         <td style={{ padding: "8px 16px", textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                          <button onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; const np = { ...studentPws }; delete np[stu.studentId]; await saveStudentPws(np); }} style={{ background: isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.5)", color: isLight ? "#92640a" : "#fde047", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Reset PW</button>
+                          <button onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; await saveStudentPw(stu.studentId, null); }} style={{ background: isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.5)", color: isLight ? "#92640a" : "#fde047", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Reset PW</button>
                           <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Remove</button>
                         </td>
                       </tr>
@@ -2318,6 +2579,8 @@ export default function App() {
 
         {currentClassId && instructorSection === "announcements" && (
           <InstructorAnnouncements
+            classId={currentClassId}
+            roster={roster}
             announcements={sortedAnnouncements}
             onCompose={() => setEditingAnn({ title: "", body: "" })}
             onEdit={ann => setEditingAnn({ annId: ann.id, title: ann.title, body: ann.body, createdAt: ann.createdAt })}
@@ -2516,7 +2779,7 @@ export default function App() {
               <p style={{ ...s.muted, fontSize: 13, margin: "0 0 14px" }}>{currentClassId ? "These actions affect the currently selected class only." : "Select a class to manage its data."}</p>
               {currentClassId ? (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(220px,1fr))", gap: 8 }}>
-                  {[["Clear All Quiz Due Dates", async () => saveDueDates({})], ["Clear All Submissions", async () => saveSubs([])], ["Clear Imported Grades Only", async () => saveSubs(submissions.filter(sub => !sub.imported))], ["Clear All Gradebook Check Marks", async () => saveChecked({})], ["Reset All Student Passwords", async () => saveStudentPws({})], ["Clear Roster", async () => saveRoster([])]].map(([label, action]) => (
+                  {[["Clear All Quiz Due Dates", async () => saveDueDates({})], ["Clear All Submissions", async () => replaceAllSubmissions([])], ["Clear Imported Grades Only", async () => { for (const sub of submissions.filter(s => s.imported)) await deleteSubmissions(sub.studentId, [sub.id]); }], ["Clear All Gradebook Check Marks", async () => saveChecked({})], ["Reset All Student Passwords", async () => saveStudentPws({})], ["Clear Roster", async () => saveRoster([])]].map(([label, action]) => (
                     <button key={label} onClick={() => confirmDanger(label, action)} style={s.btnDanger}>{label}</button>
                   ))}
                 </div>
