@@ -215,6 +215,55 @@ Gradebook's `activeAssignments` filter now calls it. **`StudentGrades.jsx` still
 copy** — it was left alone to keep a grading refactor out of a feature change, and should be
 folded in next time that file is touched.
 
+## Grade scenarios (the student's what-if panel)
+
+**Not yet shown to students.** `SHOW_GRADE_SCENARIOS` at the top of
+[`StudentGrades.jsx`](../src/screens/student/StudentGrades.jsx) is `false`; flip it to `true` to
+unveil the panel. It is worth the most late in a term, when there is a real spread of marks behind
+it and the work still ahead is what a student is actually weighing. It is a flag rather than a
+deleted call site or commented-out code so the wiring below stays live and cannot rot while it
+waits, and `node src/grade-scenarios.test.mjs` still guards the projection either way.
+
+A collapsed panel on the student grades page, under the overall banner: one slider per category
+that still has work in it, and the projected overall read against the real one
+("Now 82.4% → 85.7% B"). It answers the question students otherwise ask by email, and it is the
+one place in the app that shows a number nobody has earned, so three things constrain it.
+
+**It goes through `calcGrades`, not a formula of its own.** `projectScenario`
+([`src/grade-scenarios.js`](../src/grade-scenarios.js)) does nothing but score every remaining
+assignment at its category's assumed percentage and hand the whole set — graded and projected
+together — back to the same `calcGrades` the banner above it uses. A parallel "weighted average
+of what's left" would look right and be wrong in three ways that all bite the student who is
+trying to plan:
+
+- **Drop-lowest is re-run over the projected scores.** Acing the rest is worth more than the
+  arithmetic suggests, because the projected marks push a real zero out of the category.
+- **Weights renormalize.** `calcGrades` divides by the categories that *have* work, so a student
+  whose final has not happened is currently graded out of the other categories alone. Projecting
+  the final brings its weight in, which is exactly why "70% on the midterm" moves the number so
+  much, and it is the part a hand-rolled projection always misses.
+- **It cannot drift.** Either rule changing reaches the projection for free.
+
+**A category nobody asked about is left out, never assumed to be zero.** `pctByCat` is consulted
+per remaining assignment; a category absent from it contributes only its graded work. A scenario
+never invents a grade for work it was not asked about.
+
+**Each slider starts at the student's current pace in that category** (`defaultPcts`), falling
+back to the overall for a category with no history yet — the final, usually. So opening the panel
+first answers "what if I carry on as I am", and every drag reads as a change from that rather
+than from an arbitrary 100%. The result is shown beside the real grade rather than as a bare
+delta, so a projected number is never mistaken for one that has been earned.
+
+"Remaining" is everything on the gradebook the student has no grade against yet, which
+deliberately **includes work not yet released** — that is precisely what a student planning the
+rest of the term is asking about. It is derived by `splitRemaining` from the list the grades page
+is already showing, so the two halves cannot disagree about what has been marked.
+
+`overallLetter` / `overallColor` moved into the same module, since the projected percentage is
+rendered beside the real one and the two must read identically.
+
+Covered by `node src/grade-scenarios.test.mjs`.
+
 ## Per-student deadline extensions
 
 The Gradebook's "Extend Deadline" writes `gradeOverrides[studentId][assignmentId].dueDate`. That

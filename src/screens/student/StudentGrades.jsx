@@ -4,21 +4,17 @@ import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js
 import { resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { categoryColor } from "../../category-colors.js";
+import { splitRemaining, overallColor, overallLetter } from "../../grade-scenarios.js";
+import { GradeScenario } from "./GradeScenario.jsx";
 import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
 
-function overallColor(pct) {
-  if (pct >= 90) return "#4ade80"; if (pct >= 80) return "#a3e635";
-  if (pct >= 70) return "#facc15"; if (pct >= 60) return "#fb923c";
-  return "#f87171";
-}
-
-function overallLetter(pct) {
-  if (pct >= 93) return "A";  if (pct >= 90) return "A-";
-  if (pct >= 87) return "B+"; if (pct >= 83) return "B"; if (pct >= 80) return "B-";
-  if (pct >= 77) return "C+"; if (pct >= 73) return "C"; if (pct >= 70) return "C-";
-  if (pct >= 67) return "D+"; if (pct >= 63) return "D"; if (pct >= 60) return "D-";
-  return "F";
-}
+// The what-if panel is BUILT AND TESTED but not yet shown to students: it is worth the most late
+// in a term, when there is a real spread of marks behind it and the work still ahead is the thing
+// a student is actually weighing. Flip this to true to unveil it. It is a flag rather than
+// commented-out code or a deleted call site so the wiring stays live and cannot rot in the
+// meantime — the props below are the real ones, and `node src/grade-scenarios.test.mjs` still
+// guards the projection. See src/screens/student/GradeScenario.jsx.
+const SHOW_GRADE_SCENARIOS = false;
 
 // By percentage, not raw points: exams are out of 100 and everything else out of 10, so an
 // 85 and an 8.5 have to read the same green.
@@ -86,6 +82,13 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
 
   const { overall, byCategory } = calcGrades({ assignments, categories: gradeCategories, scores, excused });
 
+  // The work still ahead: everything on the gradebook with no grade against it yet. It feeds the
+  // scenario panel only, and deliberately includes assignments not yet released, since those are
+  // exactly what a student planning the rest of the term is asking about.
+  const { remaining } = SHOW_GRADE_SCENARIOS
+    ? splitRemaining(allAssignments, new Set(assignments.map(a => a.id)))
+    : { remaining: [] };
+
   const sortedCats = Object.values(gradeCategories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const activeCatCount = sortedCats.filter(c => (byCategory[c.id]?.possible ?? 0) > 0).length;
 
@@ -132,6 +135,17 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
           <p style={{ color: muted, fontSize: 16, margin: 0 }}>No graded work yet</p>
         )}
       </div>
+
+      {/* Optional what-if panel, closed by default. Renders nothing when nothing is left. */}
+      {SHOW_GRADE_SCENARIOS && <GradeScenario
+        assignments={assignments}
+        remaining={remaining}
+        categories={gradeCategories}
+        scores={scores}
+        excused={excused}
+        byCategory={byCategory}
+        overall={overall}
+      />}
 
       {/* Category breakdown */}
       {sortedCats.map(cat => {
