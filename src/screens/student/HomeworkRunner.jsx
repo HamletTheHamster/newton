@@ -228,6 +228,16 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     if (telemetryPath) fbSet(telemetryPath, null).catch(() => {});
   };
 
+  // How far through the assignment the student is, weighted by problem rather than by item so
+  // 50% means half the assignment the same way the /10 score does; a `revealed` item counts as
+  // done, since this measures how far through they are, not how much credit they earned. One
+  // derivation feeds both the instructor-facing progress node and the top bar's progress line.
+  const doneWeight = allItems.reduce((sum, it) => {
+    const st = status[it.id];
+    return sum + (st === "correct" || st === "revealed" ? (it.weight || 1) : 0);
+  }, 0);
+  const progressPct = total > 0 ? Math.min(100, (doneWeight / total) * 100) : 0;
+
   // Instructor-facing progress summary, written beside the draft on every save path. It is a
   // tiny derived node so the Assignments hub can show how far the class has got WITHOUT
   // reading the draft itself, which carries every typed answer, every feedback string and the
@@ -235,14 +245,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // the assignment the same way the /10 score does; a `revealed` item counts as done, since
   // this measures how far through they are, not how much credit they earned.
   const progressSnapshot = () => {
-    const done = allItems.reduce((sum, it) => {
-      const st = status[it.id];
-      return sum + (st === "correct" || st === "revealed" ? (it.weight || 1) : 0);
-    }, 0);
     return {
-      done: parseFloat(done.toFixed(2)),
+      done: parseFloat(doneWeight.toFixed(2)),
       total,
-      pct: total > 0 ? Math.round((done / total) * 100) : 0,
+      pct: Math.round(progressPct),
       updatedAt: new Date().toISOString(),
     };
   };
@@ -1176,7 +1182,13 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       )}
 
       {/* Top bar */}
-      <div style={{ background: card, borderBottom: `1px solid ${border}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+      <div style={{ position: "relative", background: card, borderBottom: `1px solid ${border}`, padding: "14px 24px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        {/* Progress through the assignment, drawn ON the divider so it reads as the line itself
+            filling in rather than as another bar competing with the problem/score readout. */}
+        <div
+          aria-hidden="true"
+          style={{ position: "absolute", left: 0, bottom: -1, height: 2, width: `${progressPct}%`, background: teal, opacity: 0.85, transition: "width 400ms ease", pointerEvents: "none" }}
+        />
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <button onClick={() => setShowLeave(true)} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto" }}>← Back</button>
           <div style={{ width: 1, height: 20, background: border }} />
