@@ -13,7 +13,9 @@ import {
 } from "./utils.js";
 import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, defaultModulesForCourse } from "./courses/index.js";
 import { COURSE_META } from "./course-meta.js";
-import { HW_GRADING_DEFAULTS } from "./homework.js";
+import { HW_GRADING_DEFAULTS, rescoreSubmission } from "./homework.js";
+import { markOnTimeParts, isAutoSubmission, closesAssignment } from "./auto-submit.js";
+import { runAutoSubmitSweep } from "./auto-submit-sweep.js";
 import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
@@ -350,7 +352,10 @@ export default function App() {
   // shows the counter; yes/no, drag-drop and survey have no attempt limit.
   const showsAttempts = !isYesNoQ && !isDragDropQ && !isSurveyQ;
   const currentParts = currentQ && !isWidgetQ ? detectParts(currentQ.text) : null;
-  const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId));
+  // "Handed in", not merely "has a record": a deadline auto-submission banks a score without
+  // closing the assignment, so it must not tick the module list, drop the work off the To Do
+  // rail, or make re-opening the homework launch in practice mode. See closesAssignment.
+  const completedQuizIds = new Set(submissions.filter(s => s.studentId === loggedInStudent?.studentId && closesAssignment(s)).map(s => s.quizId));
   const sortedAnnouncements = Object.values(announcements).filter(Boolean).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   // What the unread popup shows. Empty unless the loaded receipts belong to exactly this
   // (class, student) pair, so a class switch shows nothing at all until the new class's
@@ -774,6 +779,75 @@ export default function App() {
       }); });
     return () => { cancelled = true; };
   }, [studentPortalActive, currentClassId, loggedInStudent?.studentId]);
+
+  // ── Deadline auto-submission ────────────────────────────────────────────────
+  //
+  // A student who resolved problems and never pressed "Finish & Submit" is recorded as missing,
+  // which the gradebook cannot tell from a student who did nothing. When a deadline passes over
+  // a draft holding real work, that work becomes a submission by itself — see auto-submit.js for
+  // the four rules that keep it from costing marks or bypassing the written-work step.
+  //
+  // There is no cron (no server-side Firebase credential exists in this app), so the sweep runs
+  // when a session that would care opens the class. The instructor's pass is the one that
+  // matters, because it is guaranteed to run before anyone looks at a grade; the student's own
+  // pass, over their own drafts only, is what stops their grades page showing the assignment as
+  // missing when they next log in. Both write the same deterministic key, so whichever runs
+  // second finds the submission already there and does nothing.
+  //
+  // Once per (class, viewer) per session: deadlines do not pass often enough to poll for, and a
+  // sweep that re-ran on the 60s content refresh would re-read drafts all afternoon.
+  const sweptRef = useRef(new Set());
+  const homeworksRef = useRef(homeworks); homeworksRef.current = homeworks;
+  const dueForRef = useRef(dueFor); dueForRef.current = dueFor;
+  useEffect(() => {
+    const cid = currentClassId;
+    const asStudent = studentPortalActive;
+    const asInstructor = screen === "instructor" && !!cid;
+    if (!cid || (!asStudent && !asInstructor)) return;
+    // Wait for the class to be loaded before the guard below is armed. `dueDates` and
+    // `gradeOverrides` arrive in the same `loadClassData` batch as the roster, and a sweep run
+    // against an empty roster or empty due dates would find nothing, mark itself done, and never
+    // run again once the data landed — the feature would simply not happen.
+    if (classDataLoading || !classMeta?.courseType) return;
+    const students = asStudent ? [loggedInStudent] : classStudents;
+    if (!students.length || !Object.keys(dueDates || {}).length) return;
+
+    const who = asStudent ? loggedInStudent.studentId : "class";
+    const key = `${cid}|${who}`;
+    if (sweptRef.current.has(key)) return;
+    sweptRef.current.add(key);
+
+    let cancelled = false;
+    (async () => {
+      try {
+        // The student side resolves their own extension through `dueFor`, which already folds in
+        // gradeOverrides; the instructor side has no `loggedInStudent`, so it must look the
+        // per-student extension up itself, or an extended student would be auto-submitted at the
+        // class deadline and quietly lose the extension they were given.
+        const dueLookup = asStudent
+          ? (_sid, hwId) => dueForRef.current(hwId)
+          : (sid, hwId) => effectiveDue(dueDates[hwId] || null, gradeOverrides[sid]?.[hwId]);
+        const built = await runAutoSubmitSweep({
+          classId: cid,
+          courseType: classMeta?.courseType,
+          homeworks: homeworksRef.current,
+          students,
+          submissions: submissionsRef.current,
+          dueFor: dueLookup,
+        });
+        for (const sub of built) {
+          if (cancelled) return;
+          try { await addSubmission(sub); }
+          catch (e) { console.warn("Auto-submit failed for", sub.studentId, sub.quizId, e?.message || e); }
+        }
+      } catch (e) {
+        // A sweep that cannot run must never block the portal it runs behind.
+        console.warn("Auto-submit sweep failed:", e?.message || e);
+        sweptRef.current.delete(key);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [studentPortalActive, screen, currentClassId, loggedInStudent?.studentId, classStudents, classMeta?.courseType, classDataLoading, dueDates]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Scroll / focus ──────────────────────────────────────────────────────────
   const doScroll = useCallback(() => { const el = chatRef.current; if (!el) return; el.scrollTop = el.scrollHeight - el.clientHeight; }, []);
@@ -1764,7 +1838,33 @@ export default function App() {
   const previewAssignment = (id, kind) => openAssignment(id, kind, "instructor");
   // Persist a completed-homework submission (reuses the quiz submissions array/paths).
   // Throws on failure so HomeworkRunner can show a retry affordance.
-  const saveHomeworkSub = async sub => { await addSubmission(sub); };
+  //
+  // A real submission REPLACES the deadline record for the same assignment rather than sitting
+  // beside it: every consumer resolves ONE submission per (student, assignment) — a `.find` in
+  // the gradebook and the grades list, last-wins in `buildScoreMatrix` — so two records for one
+  // homework would show different scores on different screens. Reusing the record's id lands the
+  // write on the same key, and the real submission's uploaded work is what clears `workPending`
+  // and makes the assignment count at all.
+  //
+  // `markOnTimeParts` is what the deadline record was written FOR: it carries the `onTime` stamp
+  // onto every part that was already finished at the deadline, so the late penalty spares those
+  // parts from the late penalty and the student is not halved on work they did on time. The
+  // score is then recomputed through `scoreFromPartOverrides` (via `rescoreSubmission`) so the
+  // recorded score and any later per-part regrade come out of one function.
+  //
+  // The node is re-read here rather than trusted from state: this tab may have been open since
+  // before the deadline the sweep acted on.
+  const saveHomeworkSub = async sub => {
+    const cid = requireClass();
+    let prior = null;
+    try {
+      const live = await fbGet(classPath(cid, `submissions/${sub.studentId}`));
+      prior = Object.values(live || {}).find(s => s && s.quizId === sub.quizId && isAutoSubmission(s)) || null;
+    } catch { /* fall back to saving it as a new record */ }
+    if (!prior) { await addSubmission(sub); return; }
+    const marked = markOnTimeParts(sub, prior);
+    await addSubmission({ ...marked, id: prior.id, score: rescoreSubmission(marked) });
+  };
   // Leaving the quiz lands back where it was launched from, not unconditionally on the student
   // portal (an instructor previewing from Modules has no business being dropped there).
   const runnerReturnScreen = runnerFrom === "instructor" ? "instructor" : "student-portal";

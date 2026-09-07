@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
 import { buildGradebookAssignments, calcGrades } from "../../utils.js";
 import { integrityState, resolveScore } from "../../homework.js";
+import { workPendingState } from "../../auto-submit.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
@@ -92,7 +93,7 @@ function EditCell({ score, onScoreChange, onCommit, onCancel, panelRef }) {
 // ── GradeDetailPanel ──────────────────────────────────────────────────────────
 function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissions, gradeOverrides,
     excusedMap, absentMap, onExcuse, onUnexcuse, onViewSub, onSaveDueDate, onClearSubmission,
-    onSetAttendanceWaived, setEditingCell }) {
+    onSetAttendanceWaived, onSetWorkReview, setEditingCell }) {
   const { s, muted, border, text, teal, card, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const { studentId, assignmentId } = editingCell;
@@ -103,6 +104,7 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
   const absence = absentMap?.[studentId]?.[assignmentId] || null;   // { date, base } when the lecture-absence policy applies
   const sub = (submissions || []).find(s => s.studentId === studentId && s.quizId === assignmentId);
   const ist = integrityState(sub, ov);
+  const wps = workPendingState(sub, ov);
   const [showExtendPicker, setShowExtendPicker] = useState(false);
   const [localDate, setLocalDate] = useState("");
   const [localHour, setLocalHour] = useState("");
@@ -176,6 +178,50 @@ function GradeDetailPanel({ panelRef, editingCell, roster, assignments, submissi
           </div>
           {sub?.integrity?.reason && <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>{sub.integrity.reason}</div>}
           <div style={{ fontSize: 10, color: muted }}>Open the submission to review the work and clear or uphold the flag.</div>
+        </div>
+      )}
+
+      {/* Deadline auto-submission with no written work behind it. Handing in the written work is
+          what makes a homework count, so this is worth 0 until it arrives — the student's own
+          route is to resume the assignment and submit normally, which is also what preserves
+          full credit on the parts they finished on time. "Accept without work" is the
+          instructor's release, mirroring Waive attendance policy. */}
+      {wps.pending && (
+        <div style={{ background: "rgba(251,191,36,0.1)", border: "1px solid rgba(251,191,36,0.35)",
+          borderRadius: 6, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#fbbf24" }}>
+            Auto-submitted at the deadline: no written work
+          </div>
+          <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>
+            {sub?.autoSubmitted?.resolved != null && sub?.autoSubmitted?.totalItems != null
+              ? `${sub.autoSubmitted.resolved} of ${sub.autoSubmitted.totalItems} parts were finished when the deadline passed. `
+              : ""}
+            Nothing was uploaded and the integrity check never ran, so it scores 0{sub?.score != null ? ` rather than ${sub.score}` : ""}. The assignment is still open: if the student hands their work in, the parts they finished on time keep full credit.
+          </div>
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onSetWorkReview(studentId, assignmentId, wps.review === "accepted" ? null : "accepted")}
+            style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`,
+              borderRadius: 6, color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
+          >
+            Accept without written work
+          </button>
+        </div>
+      )}
+      {/* An accepted record: the release is in effect, and says so, so it can be taken back. */}
+      {!wps.pending && ov.workReview === "accepted" && sub?.workPending && (
+        <div style={{ background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.35)",
+          borderRadius: 6, padding: "8px 10px", display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "#60a5fa" }}>Accepted without written work</div>
+          <div style={{ fontSize: 11, color: muted, lineHeight: 1.4 }}>This auto-submission counts even though no handwritten work was handed in.</div>
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => onSetWorkReview(studentId, assignmentId, null)}
+            style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`,
+              borderRadius: 6, color: text, fontSize: 12, cursor: "pointer", padding: "7px 12px" }}
+          >
+            Require written work again
+          </button>
         </div>
       )}
 
@@ -919,7 +965,7 @@ export function Gradebook({
   // `buildScoreMatrix` (analytics.js) so the gradebook grid and the Analytics tab's correlations
   // are computed from ONE derivation and cannot drift. See that file for the map shapes and the
   // rule that an integrity flag never withholds credit until the instructor upholds it.
-  const { scoreMap, excusedMap, flaggedMap, absentMap, subsByStudent } = buildScoreMatrix({
+  const { scoreMap, excusedMap, flaggedMap, absentMap, pendingMap, subsByStudent } = buildScoreMatrix({
     roster, assignments, submissions, gradeOverrides, attendance,
   });
 
@@ -1100,6 +1146,24 @@ export function Gradebook({
       else delete current[assignmentId];
     }
     await onSaveOverrideForStudent(studentId, current);
+  };
+
+  // The instructor's release of a deadline auto-submission that has no written work: "accepted"
+  // makes it count as it stands, and clearing the key puts it back to requiring the work. Same
+  // shape and same storage discipline as saveIntegrityReview — one key on the student's
+  // override. Stored at gradeOverrides[studentId][assignmentId].workReview.
+  const saveWorkReview = async (studentId, assignmentId, decision) => {
+    const current = { ...(gradeOverrides[studentId] || {}) };
+    const existing = current[assignmentId] || {};
+    if (decision) {
+      current[assignmentId] = { ...existing, workReview: decision };
+    } else {
+      const { workReview: _wr, ...rest } = existing;
+      if (Object.keys(rest).length) current[assignmentId] = rest;
+      else delete current[assignmentId];
+    }
+    await onSaveOverrideForStudent(studentId, current,
+      decision === "accepted" ? "✓ Accepted without written work" : "✓ Written work required again");
   };
 
   // Apply a whole column of scores from BulkScoreModal. `byStudent` is { studentId: number|null }
@@ -1416,6 +1480,7 @@ export function Gradebook({
                     const score = scoreMap[stu.studentId]?.[a.id];
                     const isExcused = !!excusedMap[stu.studentId]?.[a.id];
                     const isFlagged = !!flaggedMap[stu.studentId]?.[a.id];
+                    const pending = pendingMap[stu.studentId]?.[a.id] || null;
                     const absence = absentMap[stu.studentId]?.[a.id];
                     const isMissing = score == null && !isExcused;
                     const isEditing = editingCell?.studentId === stu.studentId && editingCell?.assignmentId === a.id;
@@ -1443,6 +1508,7 @@ export function Gradebook({
                     const cellTitle = absence
                         ? `Absent from lecture ${formatSessionDate(absence.date)}: 0 by course policy${absence.base != null ? ` (entered score ${absence.base})` : ""} · click to waive`
                       : isFlagged ? "Integrity flag: full credit. Click to review the submitted work."
+                      : pending ? `Auto-submitted at the deadline${pending.base != null ? ` and worth ${pending.base}` : ""}, but the written work has not been handed in, so it does not count yet. Click to review.`
                       : isExcused ? "Excused · click to edit"
                       : isMissing ? (a.type === "manual" ? "No score yet · click to enter" : "No submission · click to override")
                       : `${score}/${a.maxPts} · click to edit`;
@@ -1461,12 +1527,18 @@ export function Gradebook({
                         }}
                       >
                         {isFlagged && <span title="Integrity flag" style={{ color: "#f87171" }}>* </span>}
+                        {pending && <span title="Auto-submitted at the deadline; awaiting written work" style={{ color: "#fbbf24" }}>⌛ </span>}
                         {absence && <span title="Absent from lecture" style={{ color: "#f87171" }}>A </span>}
                         {isExcused ? "EX" : isMissing ? "–" : score}
                         {/* The entered score is kept visible, struck through: the instructor needs
                             to see that a lab WAS marked, and that policy is what zeroed it. */}
                         {absence?.base != null && absence.base !== 0 && (
                           <span style={{ marginLeft: 3, fontSize: 11, opacity: 0.55, textDecoration: "line-through" }}>{absence.base}</span>
+                        )}
+                        {/* Same treatment as an absence-zeroed lab, for the same reason: the
+                            instructor needs to see that work WAS done and what is holding it. */}
+                        {pending?.base != null && pending.base !== 0 && (
+                          <span style={{ marginLeft: 3, fontSize: 11, opacity: 0.55, textDecoration: "line-through" }}>{pending.base}</span>
                         )}
                       </td>
                     );
@@ -1514,6 +1586,7 @@ export function Gradebook({
           excusedMap={excusedMap}
           absentMap={absentMap}
           onSetAttendanceWaived={setAttendanceWaived}
+          onSetWorkReview={saveWorkReview}
           onExcuse={excuseCell}
           onUnexcuse={unexcuseCell}
           onViewSub={() => {

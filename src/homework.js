@@ -12,6 +12,7 @@
 import { courseLabelFor } from "./course-meta.js";
 import { compressImage } from "./utils.js";
 import { formatNumeric, parseJsonReply } from "./grading-core.js";
+import { workPendingState } from "./auto-submit.js";
 
 // Re-export the shared pure grading helpers so existing importers of homework.js keep working.
 // The actual numeric/text/math grading now happens server-side (netlify/functions/grade.js) so the
@@ -553,11 +554,29 @@ export function integrityAdjustedScore(baseScore, penalized) {
   return penalized ? parseFloat((baseScore * WORK_INTEGRITY_PENALTY).toFixed(2)) : baseScore;
 }
 
+// A part's earned value, with an instructor per-part override replacing the submitted one.
+export const partEarned = (row, override) => (override != null ? Number(override) : (row?.earned ?? 0));
+
+// Whether the late penalty applies to a part. A part carrying `onTime` is exempt: it was
+// finished before the deadline, which the deadline auto-submission proves (see markOnTimeParts,
+// auto-submit.js), and lateness is about when the REMAINING work was done. Without this, a
+// student with 3 of 10 problems finished on time who comes back and completes the set is halved
+// on all ten and scores 5.0 — worse than the 6.5 the same work earns part by part, and worse off
+// than if they had never started early.
+export const partIsOnTime = row => !!row?.onTime;
+
 // Recompute a homework /10 score from instructor per-part overrides
-// (partScores: { [itemId]: earnedValue }). Items without an override keep their
-// submitted `earned`. Mirrors the late penalty baked into the original score.
+// (partScores: { [itemId]: earnedValue }). Items without an override keep their submitted
+// `earned`. The late penalty is applied to the LATE half of the work only.
+//
+// The two halves are accumulated separately and the penalty stays on the total, which is not
+// merely tidy: a submission with no `onTime` parts anywhere — every ordinary one, and every one
+// that predates this feature — puts its whole value in the late bucket and comes out at exactly
+// the number the old `pct * 10 * (late ? 0.5 : 1)` produced, to the cent. Halving part by part
+// instead would have moved a handful of existing grades by a hundredth through rounding.
 export function scoreFromPartOverrides(submission, partScores) {
-  const rawScore = (submission.problems || []).reduce((total, p) => {
+  let onTimeRaw = 0, lateRaw = 0;
+  for (const p of (submission.problems || [])) {
     const items = p.parts || [p];
     // Round at the PROBLEM level (its natural 1-point unit) before aggregating:
     // each part stores `earned` rounded to 3 decimals, so a fractional part weight
@@ -565,15 +584,21 @@ export function scoreFromPartOverrides(submission, partScores) {
     // Left un-rounded those 0.001 errors compound across the whole assignment and can
     // cost (or gift) the student a 0.01 on the final /10 even on full-credit problems —
     // so collapse each problem to 2 decimals here, matching the submitted-score path.
-    const pEarned = items.reduce((sum, item) => {
-      const ov = (partScores || {})[item.id];
-      return sum + (ov != null ? Number(ov) : (item.earned ?? 0));
-    }, 0);
-    return total + parseFloat(pEarned.toFixed(2));
-  }, 0);
+    // A problem split across the deadline is rounded once per half, for the same reason.
+    let onTime = 0, rest = 0;
+    for (const item of items) {
+      const v = partEarned(item, (partScores || {})[item.id]);
+      if (partIsOnTime(item)) onTime += v; else rest += v;
+    }
+    onTimeRaw += parseFloat(onTime.toFixed(2));
+    lateRaw += parseFloat(rest.toFixed(2));
+  }
+  const rawScore = onTimeRaw + lateRaw * (submission.late ? 0.5 : 1);
   const pct = (submission.nativeTotal || 1) > 0 ? rawScore / submission.nativeTotal : 0;
-  return parseFloat((pct * 10 * (submission.late ? 0.5 : 1)).toFixed(2));
+  return parseFloat((pct * 10).toFixed(2));
 }
+
+export const rescoreSubmission = submission => scoreFromPartOverrides(submission, null);
 
 // Canonical effective-score resolver — THE single source of truth shared by the
 // instructor Gradebook, the student StudentGrades page, and the shared SubViewModal,
@@ -584,8 +609,10 @@ export function scoreFromPartOverrides(submission, partScores) {
 //   3. ov.score (whole-assignment)       → wins over everything below
 //   4. ov.partScores (homework only)     → recompute via scoreFromPartOverrides
 //   5. submission.score                  → the auto-graded score
-// then the upheld-integrity 50% penalty applies. Returns:
-//   { excused, base, penalized, flagged, absentZero, effective }
+// then the upheld-integrity 50% penalty applies, and finally a deadline auto-submission with no
+// written work behind it is worth 0 until the work arrives or the instructor accepts it without
+// (see workPendingState, auto-submit.js). Returns:
+//   { excused, base, penalized, flagged, absentZero, workPending, workWithheld, effective }
 //   base       = /10 score before the integrity penalty (null = no score yet). For an
 //                absence this is still the score the instructor entered, so the gradebook
 //                can show what was earned struck through beside the enforced 0.
@@ -606,14 +633,21 @@ export function resolveScore(submission, override, attendance) {
   const ov = override || {};
   const sub = submission || null;
   const ist = integrityState(sub, ov);
-  if (ov.excused) return { excused: true, base: null, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, effective: null };
+  const wps = workPendingState(sub, ov);
+  if (ov.excused) return { excused: true, base: null, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, workPending: wps.pending, workWithheld: false, effective: null };
   let base;
   if (ov.score != null) base = ov.score;
   else if (ov.partScores && sub && sub.type === "homework") base = scoreFromPartOverrides(sub, ov.partScores);
   else base = sub != null ? sub.score : null;
   const absentZero = !!(attendance?.absent && !ov.attendanceWaived);
-  if (absentZero) return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: true, effective: 0 };
-  return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, effective: integrityAdjustedScore(base, ist.penalized) };
+  if (absentZero) return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: true, workPending: wps.pending, workWithheld: false, effective: 0 };
+  // A deadline record with no written work behind it is worth 0 until the work arrives, since
+  // handing in the written work is what makes a homework count at all. `base` is kept, so the
+  // gradebook can show the earned score struck through beside the enforced 0 exactly as it does
+  // for a lab zeroed by the attendance policy, and so the student can be told what is waiting
+  // for them. `ov.workReview === "accepted"` is the instructor's release.
+  const effective = wps.withheld ? 0 : integrityAdjustedScore(base, ist.penalized);
+  return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, workPending: wps.pending, workWithheld: wps.withheld, effective };
 }
 
 // Turn a student-uploaded work File into a Claude content block: images are compressed and

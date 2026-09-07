@@ -1,6 +1,7 @@
 import { s } from "../../theme.js";
 import { ModuleList } from "../../components/lms/ModuleList.jsx";
 import { isMaterialItem, viewRecordOf } from "../../material-views.js";
+import { closesAssignment } from "../../auto-submit.js";
 
 // Student "Home" landing page — collapsible module list.
 // Props:
@@ -18,8 +19,11 @@ import { isMaterialItem, viewRecordOf } from "../../material-views.js";
 //     while it is still loading. It is what ticks a material off, so the same node that tells
 //     the instructor who opened a reading is what tells the student they have.
 export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, onOpenMaterial, materialViews, storageKey }) {
+  // A deadline auto-submission banks a score but leaves the assignment open (see
+  // closesAssignment, auto-submit.js), so it must not tick the item off here either — the
+  // student still has the rest of the set and their written work to hand in.
   const completedQuizIds = new Set(
-    submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId)
+    submissions.filter(s => s.studentId === loggedInStudent?.studentId && closesAssignment(s)).map(s => s.quizId)
   );
 
   const latestSub = id => [...submissions].reverse().find(s => s.studentId === loggedInStudent?.studentId && s.quizId === id) || null;

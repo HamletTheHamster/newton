@@ -97,7 +97,7 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }
 // (read-only — no edit/review callbacks, and `showIntegrity={false}` hides the AI verdict).
 // Renders the per-problem/per-part breakdown for homework (`submission.type === "homework"`)
 // or the graded chat dialogue for quizzes.
-export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true }) {
+export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true, audience = "instructor" }) {
   const { s, muted, border, text, card, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
@@ -114,6 +114,11 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
   const earnedFor = row => (partOverrides[row.id] != null ? Number(partOverrides[row.id]) : (row.earned ?? 0));
   const integrity = submission.integrity || null;
   const workFiles = submission.workFiles || [];
+  // A record the deadline sweep wrote (auto-submit.js). It has no work files and no integrity
+  // verdict by construction, so without the banner below the empty written-work section reads as
+  // a student who skipped the step rather than one who was never asked for it.
+  const auto = submission.autoSubmitted || null;
+  const toStudent = audience === "student";
   const [reviewSaving, setReviewSaving] = useState(false);
   const setReview = async decision => {
     if (!onSetIntegrityReview) return;
@@ -202,6 +207,38 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
             )}
           </div>
         )}
+        {/* Written by the deadline sweep because the student never pressed Finish & Submit. The
+            banner has to carry three facts that nothing else on this screen can: why a record
+            exists that the student did not make, that it is worth nothing until the written work
+            is handed in, and that handing it in keeps full credit on the parts already finished
+            (which is the whole reason the record was written down rather than the work being
+            lost at midnight). */}
+        {auto && (
+          <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(251,191,36,0.4)", background: isLight ? "rgba(251,191,36,0.07)" : "rgba(251,191,36,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13 }}>
+              {toStudent ? "Saved at the deadline — your written work is still needed" : "Auto-submitted at the deadline: no written work"}
+            </span>
+            <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
+              {auto.resolved != null && auto.totalItems != null ? `${auto.resolved} of ${auto.totalItems} parts were finished when the deadline passed, and ` : ""}
+              {toStudent
+                ? "this record was saved so that work would not be lost. It does not count towards your grade yet: homework counts once your handwritten work is handed in. Open the assignment again, finish anything you still want to answer, and submit your written work. The parts you finished before the deadline keep full credit."
+                : "this record was saved so the work would not be lost. Nothing was uploaded and the integrity check never ran, so it scores 0 until the written work is handed in. The assignment is still open, and the parts finished before the deadline keep full credit when it is."}
+            </span>
+            <span style={{ color: muted, fontSize: 11 }}>Recorded {new Date(auto.at || submission.timestamp).toLocaleString()}</span>
+          </div>
+        )}
+        {/* A late submission carrying on-time parts. The banner exists because the score is not
+            simply "half of what you earned" any more, and an unexplained number invites email. */}
+        {submission.onTimeCredit && (
+          <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
+            <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>
+              {submission.onTimeCredit.parts} part{submission.onTimeCredit.parts === 1 ? "" : "s"} kept full credit
+            </span>
+            <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
+              {submission.onTimeCredit.parts === 1 ? "This part was" : "These parts were"} already finished when the deadline passed, so the late penalty does not apply to {submission.onTimeCredit.parts === 1 ? "it" : "them"}. Everything answered afterwards is at half credit.
+            </span>
+          </div>
+        )}
         {/* Submitted written work + (instructor-only) integrity review (homework only) */}
         {isHomework && (
           <div style={{ ...s.card, padding: 16, display: "flex", flexDirection: "column", gap: 12, border: showIntegrity && integrity?.flagged ? "1px solid rgba(251,191,36,0.45)" : cellBorder }}>
@@ -236,7 +273,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
                   </a>
                 ))}
               </div>
-            ) : <div style={{ color: muted, fontSize: 13 }}>No work files were submitted with this homework.</div>}
+            ) : <div style={{ color: muted, fontSize: 13 }}>{auto ? "Nothing was uploaded: this record was created by the deadline, not by the student." : "No work files were submitted with this homework."}</div>}
 
             {showIntegrity && integrity?.flagged && onSetIntegrityReview && (
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", borderTop: cellBorder, paddingTop: 10 }}>

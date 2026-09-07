@@ -43,6 +43,74 @@ attempts, or attempt counts). There is **no "Start fresh"** for graded homework:
 can't be reset and resolved items are locked, so a true do-over only exists via practice retakes.
 Practice mode never touches either node.
 
+### Deadline auto-submission ✅ Done
+
+A student who resolved problems and never pressed **Finish & Submit** was recorded as *missing* —
+indistinguishable, in the gradebook, from a student who did nothing. That is the funnel's
+"Finished, not handed in" bucket (see [docs/analytics.md](analytics.md)), and it was invisible
+until the grade was already a zero. So when a deadline passes over a draft holding real work,
+that work is written down as a record of its own.
+
+**What that record is: a receipt, not a grade.** Handing in the written work is what makes a
+homework count. That rule does not bend for a late submission and it must not bend for one the
+app made on the student's behalf, since nobody uploaded anything and the integrity check never
+ran — it would simply become the way around the requirement. So the record is **worth 0 in the
+gradebook until the work arrives**. What it does instead is preserve two things that would
+otherwise be lost at midnight:
+
+1. the fact that there is finished work waiting to be claimed, told to the student in the one
+   place they look at grades (`StudentGrades` badge: *"6.4/10 saved at the deadline: hand in your
+   written work to claim it"*), and
+2. **exactly which parts were finished on time** — which is what lets those parts keep full
+   credit when the student does hand in.
+
+**Where the logic lives.** `src/auto-submit.js` is pure and covered by `src/auto-submit.test.mjs`
+(`node src/auto-submit.test.mjs`); `src/auto-submit-sweep.js` is the impure half that does the
+reads. The four rules are written out at the top of the pure module — read them there — but in
+short:
+
+1. **It is not an ending.** The draft is deliberately **not** cleared and the assignment stays
+   open; the student comes back, finishes what they like, uploads their work and submits
+   normally. That single path is also how the record is redeemed, so there is no second upload
+   UI. This is why `closesAssignment(sub)` exists and why every place that reads "has this
+   student handed in" uses it: `completedQuizIds` (App.jsx and `Home.jsx`), the Assignments hub's
+   `ProgressCell`, and `buildFunnel`. Miss one and the homework re-opens in **practice mode**,
+   where nothing can be submitted at all — the feature would look like it worked and quietly do
+   the opposite.
+2. **The parts done on time keep full credit.** Every part in the record is stamped
+   `onTime: true`; `markOnTimeParts` carries the stamps onto the real submission and
+   `scoreFromPartOverrides` applies the late penalty to the un-stamped half only. 3 of 10 on time
+   + 7 late = **6.5/10**, not the 5.0 a whole-assignment halving gives. See
+   [docs/grading-scores.md](grading-scores.md) § Deadline auto-submissions for why the penalty
+   stays on a subtotal rather than moving onto each part (existing grades must not move).
+3. **It counts for nothing until the work is in** — `workPending: true`, `effective: 0`, `base`
+   kept so the held score can be shown struck through. `workReview: "accepted"` is the
+   instructor's release.
+4. **It only ever looks forward** — `AUTO_SUBMIT_SINCE` stops the first sweep after the deploy
+   from manufacturing records for every past-due draft left over from the whole term.
+
+**Why it is a lazy sweep and not a cron.** Every RTDB write in this app is made by a signed-in
+browser: the Netlify functions never touch Firebase, and App Check is enforced with reCAPTCHA v3,
+which a server cannot mint. A scheduled function would need anonymous auth plus an App Check
+debug token in Netlify env — a credential path that does not exist today, and one that fails
+silently. So the sweep runs when a session that would care opens the class: the **student's own
+portal** over their own drafts (so their grades page tells them there is work to claim), and the
+**instructor's portal** over the whole class, which is the pass that matters because it is
+guaranteed to have run before anyone looks at a grade. Both write the same deterministic key
+(`auto_{hwId}`), so whichever runs second finds the record already there and does nothing.
+
+**Two guards worth keeping.** The instructor's pass must not read `hwDrafts` wholesale — that
+node carries every typed answer, every feedback string and the whole Claude history for every
+student × assignment, and the rest of the instructor side goes out of its way never to load it.
+Candidates come from the tiny `hwProgress` node instead, and only the surviving drafts are read.
+And the sweep is gated on `classDataLoading` being false: `dueDates` and `gradeOverrides` arrive
+in the same `loadClassData` batch as the roster, and a sweep run against empty due dates would
+find nothing, mark itself done for the session, and never run again once the data landed.
+
+**Per-student extensions are honored.** The selection resolves each student's deadline through
+`effectiveDue`, so an extended student is not auto-submitted at the class date — which would
+silently take the extension away.
+
 ### Instructor progress view (Assignments hub)
 `Assignments.jsx` reads `classes/{classId}/hwProgress` in **one** small GET and renders a
 **Progress column** between Due Date and Actions: a 44px bar plus the class `N%` average, and

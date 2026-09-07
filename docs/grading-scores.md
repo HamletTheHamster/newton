@@ -39,7 +39,13 @@ The **effective base score** for a cell is:
 5. otherwise `submission.score`
 
 …then `integrityAdjustedScore(base, integrityState(sub, ov).penalized)` applies the
-50% penalty **only if** a flag was *upheld*.
+50% penalty **only if** a flag was *upheld*, and finally a **deadline auto-submission with no
+written work behind it** scores 0 until the work arrives or the instructor accepts it without
+(`workPendingState`, `src/auto-submit.js`). That last gate is deliberately *stricter* than the
+integrity flag, which never withholds credit on its own: a flag is a suspicion about work that
+**was** handed in, and this is work that **was not**. Handing in the written work is what makes a
+homework count, and that rule cannot bend for a record the app wrote on the student's behalf
+without becoming the way around it.
 
 This order is implemented **once**, in `resolveScore` (`src/homework.js`), the single
 source of truth shared by the instructor Gradebook, the student StudentGrades page, and
@@ -55,13 +61,55 @@ keeping a no-change part override exactly equal to the submitted `submission.sco
 // homework.js (pure, no React)
 resolveScore(submission, override, attendance)
 //   attendance = { absent, date } | null   ← attendanceFor(buildAbsenceMap(node), sid, aid)
-//   → { excused, base, penalized, flagged, absentZero, effective }
+//   → { excused, base, penalized, flagged, absentZero, workPending, workWithheld, effective }
 //   base       = /10 score before the integrity penalty (null = no score). Kept even when an
 //                absence zeroes the cell, so the gradebook can show the entered score struck
 //                through beside the enforced 0.
 //   absentZero = the attendance policy produced `effective`
 //   effective  = the /10 score to display & feed calcGrades (null = none/excused)
 ```
+
+### Deadline auto-submissions (the last step)
+
+A homework draft that still holds finished work when its deadline passes is written down as a
+record by the lazy sweep in `src/auto-submit-sweep.js` — see
+[docs/homework-roadmap.md](homework-roadmap.md) § Deadline auto-submission for the whole design.
+**That record is a receipt, not a grade.** Three of its properties are score handling and belong
+here:
+
+- **It counts for nothing until the written work is in.** No files were uploaded and the
+  integrity check never ran, so the record carries `workPending: true` and `resolveScore` reports
+  `effective: 0` — with the earned score kept as `base`, so the gradebook can show it struck
+  through beside the enforced 0 exactly as it does for a lab zeroed by the attendance policy, and
+  so the student's grades row can tell them what is waiting to be claimed.
+  `gradeOverrides[sid][aid].workReview = "accepted"` is the instructor's release (mirroring
+  `attendanceWaived`), and clearing the key requires the work again. `buildScoreMatrix` surfaces
+  the state as `pendingMap[sid][aid] = { base }`.
+- **It is never late.** The work was done before the deadline, so the record is stamped at the
+  deadline and carries `late: false`, whatever hour the sweep that materialized it ran at.
+- **The parts finished on time keep full credit.** Every part in the record is stamped
+  `onTime: true`. When the student comes back, uploads their work and submits, `markOnTimeParts`
+  carries those stamps onto the real submission and `scoreFromPartOverrides` exempts them from
+  the late penalty: three of ten problems finished before the deadline and seven after is
+  3 + 7 × 0.5 = **6.5/10**, not the 5.0 a whole-assignment halving would give. The student is
+  never worse off for having started early, and never worse off for coming back.
+
+#### The late penalty is now applied to the late half, not the total
+
+`scoreFromPartOverrides` accumulates two raw subtotals — `onTimeRaw` (parts stamped `onTime`) and
+`lateRaw` (everything else) — rounding each **per problem**, and halves only `lateRaw`:
+
+```js
+rawScore = onTimeRaw + lateRaw * (submission.late ? 0.5 : 1)
+score    = rawScore / nativeTotal * 10
+```
+
+Keeping the penalty on a subtotal rather than moving it onto each part is deliberate and load
+bearing for **backward compatibility**: a submission with no `onTime` stamps anywhere — every
+ordinary one, and every one that predates this feature — puts its whole value in the late bucket
+and comes out at exactly the number the old `pct * 10 * (late ? 0.5 : 1)` produced, to the cent.
+Halving part by part instead would have shifted a handful of existing grades by a hundredth
+through rounding. `src/auto-submit.test.mjs` pins that with a fractional-weight case.
 
 ### The lecture-attendance policy (step 2)
 

@@ -65,6 +65,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
   const scores = {};
   const excused = {};
   const absentOn = {};   // { [assignmentId]: sessionDate } — labs zeroed by the attendance policy
+  const workPending = {};// { [assignmentId]: { zeroed } } — auto-submitted, written work still owed
   const absenceMap = { [myId]: myAbsences };
   for (const a of assignments) {
     const ov = myOverrides[a.id];
@@ -75,6 +76,11 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
     const r = resolveScore(sub, ov, attendanceFor(absenceMap, myId, a.id));
     if (r.excused) { excused[a.id] = true; continue; }
     if (r.absentZero) absentOn[a.id] = myAbsences[a.id];
+    // An auto-submission still owing its written work is the one row a student has to act on:
+    // the work is saved and waiting, but it scores 0 until the handwritten work is handed in.
+    // A bare 0 beside a homework they know they did would read as a bug, so the row carries the
+    // score being held and what to do to claim it — the same reasoning as the absence badge.
+    if (r.workPending) workPending[a.id] = { base: r.base };
     scores[a.id] = r.effective;
   }
 
@@ -100,6 +106,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
         assignmentTitle={viewSub.title}
         override={(gradeOverrides[myId] || {})[viewSub.id] || {}}
         showIntegrity={false}
+        audience="student"
         onClose={() => setViewSub(null)}
       />
     )}
@@ -188,6 +195,13 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                     {absentOn[item.id] && (
                       <span style={{ ...s.badge("#f87171"), fontSize: 10 }}>
                         absent for lecture {formatSessionDate(absentOn[item.id])}
+                      </span>
+                    )}
+                    {/* Same reasoning as the absence badge: a score the student did not hand in
+                        themselves prompts a question, so the row answers it and says what to do. */}
+                    {workPending[item.id] && (
+                      <span style={{ ...s.badge("#fbbf24"), fontSize: 10 }}>
+                        {workPending[item.id].base != null ? `${workPending[item.id].base}/${item.maxPts} saved at the deadline: ` : ""}hand in your written work to claim it
                       </span>
                     )}
                     {mySub && <span style={{ color: teal, fontSize: 12 }}>View ›</span>}

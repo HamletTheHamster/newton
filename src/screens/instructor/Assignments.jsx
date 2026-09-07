@@ -5,6 +5,7 @@ import { dueToDate, useIsMobile } from "../../utils.js";
 import { categoryColor } from "../../category-colors.js";
 import { fbGet, classPath } from "../../firebase.js";
 import { DueDateField } from "../../components/lms/DueDateField.jsx";
+import { closesAssignment, isAutoSubmission } from "../../auto-submit.js";
 
 // Row types are "quiz", "homework", and — for manual assignments (exams, labs) — the
 // assignment's gradebook category id, so each category filters and colors separately.
@@ -170,12 +171,12 @@ function ProgressModal({ title, rows, summary, onClose }) {
               <ProgressBar pct={r.pct} color={r.submitted ? DONE_COLOR : r.pct > 0 ? teal : muted} />
               <span
                 style={{ color: r.stalled ? STALLED_COLOR : r.pct > 0 ? text : muted, fontSize: 12, fontFamily: "monospace", textAlign: "right" }}
-                title={r.stalled ? "Every problem finished, but not submitted yet" : ""}
+                title={r.auto ? "Auto-submitted at the deadline; still open, and the written work has not been handed in" : r.stalled ? "Every problem finished, but not submitted yet" : ""}
               >
                 {r.pct}%
               </span>
               <span style={{ color: muted, fontSize: 11, textAlign: "right" }} title={fmtExact(r.at) || ""}>
-                {r.submitted ? "Submitted" : fmtSince(r.at) || "-"}
+                {r.submitted ? "Submitted" : r.auto ? "Auto-submitted" : fmtSince(r.at) || "-"}
               </span>
             </div>
           ))}
@@ -312,6 +313,10 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   // Per-student rows for one homework, merging the two sources of truth: a submitted student
   // is 100% (their draft, and its progress record, are cleared on final submit), everyone
   // else comes from hwProgress. A student with neither has not started.
+  // A deadline auto-submission is deliberately NOT treated as handed in (see closesAssignment,
+  // auto-submit.js): the draft and its progress record are both still there, and reporting that
+  // student at 100% would hide the very thing this column exists to show - three problems out of
+  // fourteen and nothing handed in.
   // Indexed once per render rather than scanned per (student, homework) pair: the lookup runs
   // roster x homework times, and a mid-term submissions list is long.
   const subByKey = {};
@@ -320,10 +325,11 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   const progressRows = hwId => (roster || []).map(r => {
     const name = r.altName || r.fullName || r.studentId;
     const sub = subByKey[`${r.studentId}|${hwId}`];
-    if (sub) return { studentId: r.studentId, name, pct: 100, submitted: true, at: sub.timestamp || null };
+    if (closesAssignment(sub)) return { studentId: r.studentId, name, pct: 100, submitted: true, at: sub.timestamp || null };
+    const auto = isAutoSubmission(sub);
     const rec = (progress || {})[r.studentId]?.[hwId];
     const pct = rec && rec.total > 0 ? (rec.pct ?? Math.round((rec.done / rec.total) * 100)) : 0;
-    return { studentId: r.studentId, name, pct, submitted: false, stalled: pct >= 100, at: rec?.updatedAt || null };
+    return { studentId: r.studentId, name, pct, submitted: false, auto, stalled: pct >= 100 && !auto, at: rec?.updatedAt || null };
   }).sort((a, b) => a.pct - b.pct || a.name.localeCompare(b.name));
 
   // "Started" counts anyone with a submission or any recorded progress. A progress record is

@@ -16,6 +16,7 @@
 import { resolveScore, itemsOf } from "./homework.js";
 import { buildAbsenceMap, attendanceFor } from "./attendance.js";
 import { dueToDate } from "./utils.js";
+import { closesAssignment } from "./auto-submit.js";
 
 // ── The score matrix ──────────────────────────────────────────────────────────
 
@@ -25,15 +26,23 @@ import { dueToDate } from "./utils.js";
 //                                          undefined when the student has nothing there
 //   excusedMap[studentId][assignmentId] → true when excused (never a score, never a zero)
 //   flaggedMap[studentId][assignmentId] → true when an integrity flag is awaiting review
+//   pendingMap[studentId][assignmentId] → { base } when the cell is a deadline auto-submission
+//                                          with no written work behind it. It scores 0 until the
+//                                          work arrives; `base` is what it WOULD earn, kept so
+//                                          the cell can show it struck through beside the
+//                                          enforced 0 — the same shape, and the same reasoning,
+//                                          as absentMap (see workPendingState, auto-submit.js)
 //   absentMap[studentId][assignmentId]  → { date, base } for a cell the lecture-absence policy
 //                                          zeroed. `base` is the score the instructor actually
 //                                          entered, kept so the cell can show it struck through
 //                                          beside the enforced 0 rather than discarding it.
 //
 // A flag never withholds credit on its own: the submission counts at full credit until the
-// instructor upholds the flag, at which point `resolveScore` applies the 50% penalty.
+// instructor upholds the flag, at which point `resolveScore` applies the 50% penalty. A deadline
+// auto-submission is the deliberate opposite — it counts for nothing until its written work is
+// handed in, because handing in the written work is what makes a homework count at all.
 export function buildScoreMatrix({ roster, assignments, submissions, gradeOverrides, attendance }) {
-  const scoreMap = {}, excusedMap = {}, flaggedMap = {}, absentMap = {};
+  const scoreMap = {}, excusedMap = {}, flaggedMap = {}, absentMap = {}, pendingMap = {};
   const absenceMap = buildAbsenceMap(attendance);
   const overrides = gradeOverrides || {};
 
@@ -46,18 +55,19 @@ export function buildScoreMatrix({ roster, assignments, submissions, gradeOverri
 
   for (const stu of (roster || [])) {
     const sid = stu.studentId;
-    scoreMap[sid] = {}; excusedMap[sid] = {}; flaggedMap[sid] = {}; absentMap[sid] = {};
+    scoreMap[sid] = {}; excusedMap[sid] = {}; flaggedMap[sid] = {}; absentMap[sid] = {}; pendingMap[sid] = {};
     for (const a of (assignments || [])) {
       const ov = (overrides[sid] || {})[a.id];
       const sub = subsByStudent[sid]?.[a.id];
       const r = resolveScore(sub, ov, attendanceFor(absenceMap, sid, a.id));
       if (r.excused) { excusedMap[sid][a.id] = true; continue; }
       if (r.flagged) flaggedMap[sid][a.id] = true;
+      if (r.workPending) pendingMap[sid][a.id] = { base: r.base };
       if (r.absentZero) absentMap[sid][a.id] = { date: absenceMap[sid][a.id], base: r.base };
       scoreMap[sid][a.id] = r.effective;
     }
   }
-  return { scoreMap, excusedMap, flaggedMap, absentMap, subsByStudent };
+  return { scoreMap, excusedMap, flaggedMap, absentMap, pendingMap, subsByStudent };
 }
 
 // Does this assignment count toward the student's grade yet?
@@ -592,8 +602,12 @@ export function buildActivityByDay({ submissions = [], telemetryAll = {}, days =
 // -> submitted. The third bucket is the one worth acting on, and it is invisible in the
 // gradebook, which simply reads as missing.
 export function buildFunnel({ assignment, roster = [], submissions = [], progress = {} }) {
+  // `closesAssignment` rather than "has a record": a deadline auto-submission banks a score but
+  // leaves the assignment open and its written work outstanding, so that student stays in the
+  // bucket their draft puts them in. This bar exists to name the students worth an email, and
+  // they still are - counting them as handed in would hide exactly the people it is for.
   const submitted = new Set(
-    submissions.filter(s => s.quizId === assignment?.id).map(s => s.studentId)
+    submissions.filter(s => s.quizId === assignment?.id && closesAssignment(s)).map(s => s.studentId)
   );
   // Names per bucket, not just counts. "1 stalled" prompts the only useful follow-up question,
   // which is WHICH one, and the answer belongs on the bar rather than in a separate lookup.
