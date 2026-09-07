@@ -9,6 +9,28 @@ All three phases are shipped. The tab has four views, switched by tabs across th
 from the most immediate question to the most reflective: **Pulse**, **Students**, **Items**,
 **Correlation**. The first tab is also the landing view.
 
+## The panels explain themselves, or they are not finished
+
+**No explainer chrome anywhere on this tab: no `subtitle` under a panel heading, no blurb under
+the Analytics heading, and no circled-i popovers on Pulse.** An element that needs a sentence of
+prose to say what it shows is not designed well enough yet, and the sentence hides the fact that
+it isn't.
+
+What a reader genuinely needs in order to read a chart goes into the chart's own furniture, where
+it is met without knowing to look for it: the panel **title** (which is why it reads "When the
+class works (last 90 days, your local time)", "Quiet students (over a week with no activity)",
+"Per student, fewest opened first"), the **axis and legend labels**, and the **unit named in the
+tooltip**. `Panel` in `analytics-ui.jsx` therefore has no `subtitle` prop at all - re-adding it is
+how the prose creeps back one panel at a time.
+
+The distinction that keeps this from deleting things that matter: **a description of the panel is
+chrome, a finding about the data is content.** Findings stay, in the panel body, as body text:
+AnalyticsItems' "with few submissions that is usually the sample rather than the problems" (the
+one thing standing between that list and an instructor rewriting six good problems), and
+AnalyticsMaterials' tracking-start note and "worth a question, not a conclusion" note. What only
+a maintainer needs - that the heatmap is built from discrete events rather than session spans,
+say - lives in this file and in code comments, not on screen.
+
 ## Why a separate tab
 
 Two reasons, both structural rather than aesthetic:
@@ -375,35 +397,49 @@ a set, and it is a click from the row it belongs to rather than three modals dee
 
 ## Pulse (phase 3)
 
-Who is working right now, students active per day (single-series area, from telemetry sessions and
-submission times, one count per student per day however long they worked), a day-by-hour grid of
-when the class works, a completion funnel per recently-due or upcoming assignment, and a list of
-students nobody has seen in over a week.
+How many students are working right now (a header tile), students active per day (single-series
+area, from telemetry sessions and submission times, one count per student per day however long they
+worked), a day-by-hour grid of when the class works, a completion funnel per recently-due or
+upcoming assignment, and a list of students nobody has seen in over a week.
 
-### Working right now
+This view carries no popovers and no panel subtitles; see
+[The panels explain themselves](#the-panels-explain-themselves-or-they-are-not-finished). Three
+popovers were removed from here (what counts as "right now", what a heatmap cell counts, what the
+third funnel bucket means) and so were four subtitles. The unit that mattered most, the
+**student-hour**, is named in the heatmap's scale and in every cell tooltip, and the funnel's
+third bucket is named by its own legend label, "Finished, not handed in", which is why that label
+has to state the bucket rather than abbreviate it.
+
+### Working now (header tile)
 
 `activeNow` (analytics.js): every student whose telemetry carries a write in the last
 `WORKING_WINDOW_MS` (15 minutes), grouped by the assignment they are on. It works only because
 telemetry is written continuously - `persistDraft()` snapshots on every graded attempt and on a
 1.2s typing debounce - so a recent `updatedAt` means the student was doing something then.
 
-Three things keep it from overclaiming, and all three are load-bearing:
+It is **a count and its window, and nothing more**: the "Working now" tile shows how many students
+and how many assignments they are spread across, with the window named in the hint. There used to
+be a panel below listing them by name with a paragraph of caveats; the count is what gets acted on
+during a homework night, and the panel spent most of its height explaining itself.
+
+Two things about the figure still constrain how it may be read, and one is enforced in code:
 
 - **It is "recorded active", never "online".** There is no presence node and no heartbeat. A
-  student reading the problem on paper writes nothing, so an empty panel is not evidence that
-  nobody is working, and the panel says so in those words.
+  student reading the problem on paper writes nothing, so a `0` is not evidence that nobody is
+  working. Do not reintroduce wording anywhere that treats it as a presence count.
 - **A student who has submitted is excluded**, however recent their stamp. `mergeTelemetry` copies
   the telemetry carried on a submission over the live node, so the moment someone hands in, their
   last write looks exactly like fresh activity - which would report the one student who just
   finished as the class still working.
-- **The reading is only as fresh as the last node read**, so the view prints when that was and
-  re-reads while it is on screen. `AnalyticsPulse` polls `onRefresh` (the shell's `readEngagement`)
-  every 60s, matching App.jsx's `refreshClassContent` cadence, gated on `document.visibilityState`
-  so a tab left open all evening does not re-read the largest node in the class for nobody. The
-  poll is deliberately **quiet**: it neither clears `engagement` nor raises the loading flag once
-  there is data, or every view would blank or flash once a minute.
 
-This replaced "Finished, not handed in" in the header tiles. That number is still on the funnel,
+**The reading is only as fresh as the last node read**, so the view re-reads while it is on screen:
+`AnalyticsPulse` polls `onRefresh` (the shell's `readEngagement`) every 60s, matching App.jsx's
+`refreshClassContent` cadence, gated on `document.visibilityState` so a tab left open all evening
+does not re-read the largest node in the class for nobody. The poll is deliberately **quiet**: it
+neither clears `engagement` nor raises the loading flag once there is data, or every view would
+blank or flash once a minute.
+
+This tile replaced "Finished, not handed in" in the header. That number is still on the funnel,
 where the bar names the students in it; as a headline it was the least immediate of the three.
 
 ### When the class works

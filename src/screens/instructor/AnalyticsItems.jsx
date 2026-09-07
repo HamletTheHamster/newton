@@ -118,12 +118,21 @@ export function AnalyticsItems({ assignments, quizzes, submissions, telemetryAll
         <>
           {flagged.length > 0 && (
             <Panel
-              title={wholeSetWeak ? "Weak discrimination across most of this set" : "Problems worth a second look"}
-              subtitle={wholeSetWeak
-                ? `${weak.length} of ${rows.length} problems barely separate strong students from weak ones. With few submissions, or a set that was uniformly easy or uniformly hard, that is usually the sample rather than the problems. The three weakest are below.`
-                : "Strong students are missing these about as often as weak ones, which usually points at the question rather than the class."}
+              title={wholeSetWeak
+                ? `Weak discrimination on ${weak.length} of ${rows.length} problems`
+                : "Problems worth a second look"}
             >
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {/* Not a description of the panel: a finding about the sample, and the one thing
+                    standing between this list and an instructor rewriting six good problems. When
+                    most of a set looks undiscriminating it usually means few submissions or a
+                    uniformly easy set, so it stays on screen with the three it names. */}
+                {wholeSetWeak && (
+                  <p style={{ color: muted, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+                    With few submissions, or a set that was uniformly easy or uniformly hard, that is
+                    usually the sample rather than the problems. The three weakest:
+                  </p>
+                )}
                 {flagged.map(r => (
                   <div key={r.id} style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                     <span style={{ ...s.badge(r.discrimination < 0 ? corrNeg(isLight) : muted), flexShrink: 0, marginTop: 1 }}>

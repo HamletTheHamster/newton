@@ -1,7 +1,6 @@
 import { useMemo, useState, useId, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { useIsMobile, dueToDate } from "../../utils.js";
-import { InfoDot } from "../../components/InfoDot.jsx";
 import {
   buildActivityByDay, buildActivityByHour, buildFunnel, lastActiveMap, activeNow, WORKING_WINDOW_MS,
 } from "../../analytics.js";
@@ -258,11 +257,6 @@ export function AnalyticsPulse({
     // poll even if a future caller reuses the telemetry object rather than rebuilding it.
     [telemetryAll, submissions, refreshedAt]
   );
-  const nameOf = sid => {
-    const stu = (roster || []).find(r => r.studentId === sid);
-    return stu ? (stu.altName || stu.fullName || sid) : sid;
-  };
-  const titleOf = id => (assignments || []).find(a => a.id === id)?.title || id;
   // Grouped by assignment, because "4 working" is a different situation from "4 working, all on
   // the set due tonight".
   const workingByAssignment = useMemo(() => {
@@ -319,75 +313,12 @@ export function AnalyticsPulse({
           color={working.length ? CORR_POS : undefined}
           hint={working.length
             ? `on ${workingByAssignment.length} assignment${workingByAssignment.length === 1 ? "" : "s"}`
-            : "in the last 15 min"}
+            : `in the last ${Math.round(WORKING_WINDOW_MS / 60000)} min`}
         />
       </StatRow>
 
-      {/* Who is mid-assignment. First, because on a homework night it is the only question this
-          view is asked, and because it is the one figure whose value decays: the panel says how
-          fresh it is rather than leaving the reader to assume it is live. */}
-      <Panel
-        title="Working right now"
-        right={
-          <InfoDot title="What counts as right now" align="right">
-            A student appears here when the app recorded them doing something on a homework in the
-            last 15 minutes: a graded attempt, or typing into an answer box. There is no presence
-            signal and no heartbeat.
-            <br /><br />
-            So an empty panel does not mean nobody is working. A student reading the problem on
-            paper, or working it out before typing anything, writes nothing for the app to see.
-            <br /><br />
-            Anyone who has handed the assignment in is excluded, however recent their last write.
-          </InfoDot>
-        }
-        subtitle={`Recorded working in the last ${Math.round(WORKING_WINDOW_MS / 60000)} minutes. ${
-          refreshedAt ? `Updated ${fmtSince(new Date(refreshedAt).toISOString()) || "just now"}` : "Updated when this tab opened"
-        }, and again every minute while this view is open.`}
-      >
-        {telemetryLoading && !working.length ? (
-          <p style={{ ...s.muted, margin: 0 }}>Loading…</p>
-        ) : !working.length ? (
-          <p style={{ ...s.muted, margin: 0, lineHeight: 1.6 }}>
-            Nobody is working in the app at the moment. That is not the same as nobody working:
-            only typing and submitting leave a trace.
-          </p>
-        ) : (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {workingByAssignment.map(g => (
-              <div key={g.id}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                  <span style={{ color: text, fontSize: 13, fontWeight: 600 }}>{titleOf(g.id)}</span>
-                  <span style={{ color: muted, fontSize: 11.5 }}>
-                    {g.students.length} student{g.students.length === 1 ? "" : "s"}
-                  </span>
-                </div>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                  {g.students.map(w => (
-                    <span
-                      key={`${w.studentId}|${w.hwId}`}
-                      title={`Last recorded activity ${fmtSince(w.lastAt) || "just now"}`}
-                      style={{
-                        display: "inline-flex", alignItems: "center", gap: 6,
-                        border: `1px solid ${border}`, borderRadius: 999, padding: "4px 11px",
-                        color: text, fontSize: 12.5,
-                        background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)",
-                      }}
-                    >
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: CORR_POS, flexShrink: 0 }} />
-                      {nameOf(w.studentId)}
-                      <span style={{ color: muted, fontSize: 11 }}>{fmtSince(w.lastAt) || "just now"}</span>
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Panel>
-
       <Panel
         title={`Students active per day (last ${days})`}
-        subtitle="Counted from homework working sessions and submission times, so a student is counted once per day however long they worked."
       >
         {maxStudents === 0 ? (
           <p style={{ ...s.muted, margin: 0 }}>
@@ -398,22 +329,11 @@ export function AnalyticsPulse({
         )}
       </Panel>
 
+      {/* The unit is the whole chart - "student-hour" is what stops a cell reading as a headcount,
+          and why no one student can shape the grid - so the scale and the cell tooltips name it,
+          and the title carries the window. Neither belongs in prose above the grid. */}
       <Panel
-        title="When the class works"
-        right={
-          <InfoDot title="What a cell counts" align="right">
-            One count per student per hour, so a student who submits twenty answers between 9 and
-            10pm adds 1, exactly like a student who worked quietly through the same hour. No single
-            student can shape the grid.
-            <br /><br />
-            The marks are moments the app recorded something happening: a sitting opening or being
-            saved, a graded attempt, a submission. Sittings are deliberately NOT drawn as spans,
-            because a tab left open overnight would paint eight hours of work nobody did.
-            <br /><br />
-            Hours are the instructor's own local time, and only homework leaves a trace here.
-          </InfoDot>
-        }
-        subtitle={`Hours in which some student was recorded working, over the last ${HOURLY_DAYS} days. Useful for choosing when a deadline should fall.`}
+        title={`When the class works (last ${HOURLY_DAYS} days, your local time)`}
       >
         {hourly.total === 0 ? (
           <p style={{ ...s.muted, margin: 0 }}>
@@ -424,18 +344,10 @@ export function AnalyticsPulse({
         )}
       </Panel>
 
+      {/* "Finished, not handed in" is the bucket this panel is read for, and the legend label is
+          where it is named: it has to say what the bucket IS without a sentence explaining it. */}
       <Panel
         title="Where each assignment stands"
-        right={
-          <InfoDot title="The third bucket" align="right">
-            "Finished, not handed in" means the student completed every problem and never pressed Finish and
-            Submit. The gradebook shows that as missing, exactly like a student who did nothing, so it is
-            invisible until the grade is already a zero.
-            <br /><br />
-            It is the one bucket here that is usually worth an email, because the work is done.
-          </InfoDot>
-        }
-        subtitle="Work students can open right now, most recently due first. Late work still counts at half credit, so a past due assignment stays here. Hover any segment for the students in it."
       >
         {funnels.length === 0 ? (
           <p style={{ ...s.muted, margin: 0 }}>Nothing is open to students yet. Assignments appear here once their module is released.</p>
@@ -457,7 +369,7 @@ export function AnalyticsPulse({
         )}
       </Panel>
 
-      <Panel title="Quiet students" subtitle="Nobody has been active here in over a week.">
+      <Panel title="Quiet students (over a week with no activity)">
         {(() => {
           const quiet = (roster || [])
             .map(stu => ({ stu, last: lastActive[stu.studentId] || null }))

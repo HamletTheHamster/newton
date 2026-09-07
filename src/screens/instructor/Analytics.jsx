@@ -800,24 +800,11 @@ export function Analytics({
     );
   }
 
-  const blurb = {
-    correlation: feature === "score"
-      ? "Which assignments predict performance on an exam, measured across the students who have both scores."
-      : feature === "materials"
-        ? "Whether opening the posted readings and lecture notes goes with performance on an exam. Opening is not reading, so a relationship here describes the students, never a cause."
-        : `Whether ${PREDICTORS[feature]?.short} on homework predicts exam performance. Unlike scores, these are not capped by the attempt schedule, so they often carry signal a score cannot.`,
-    items: "Per-problem difficulty for one homework, and which problems are separating strong students from weak ones.",
-    materials: "Which students have clicked to open the readings, lecture notes and links posted in each module. An open is not a read.",
-    students: "Where each student stands across the term, and how they worked.",
-    pulse: "Who is working right now, and where each open assignment has got to.",
-  }[view];
-
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      <div>
-        <h2 style={{ color: text, fontSize: 20, fontWeight: 700, margin: "0 0 4px" }}>Analytics</h2>
-        <p style={{ ...s.muted, margin: 0 }}>{blurb}</p>
-      </div>
+      {/* The tab strip below names the view; a paragraph restating it in longer words is the same
+          thing said twice. Each view's panels have to carry their own meaning. */}
+      <h2 style={{ color: text, fontSize: 20, fontWeight: 700, margin: 0 }}>Analytics</h2>
 
       <ViewTabs views={VIEWS} active={view} onSelect={setView} />
 

@@ -201,17 +201,22 @@ export function EmptyCard({ title, children }) {
   );
 }
 
-export function Panel({ title, subtitle, right, children, style }) {
+// Deliberately has NO `subtitle` slot. A panel that needs a line of prose under its heading to
+// say what it shows is not designed well enough yet: the title, the axis and legend labels, and
+// the unit named in the tooltip have to carry it, where a reader meets them without being told to
+// look. Anything that is a FINDING rather than a description belongs in the body as content (see
+// AnalyticsItems' whole-set-weak note, AnalyticsMaterials' tracking-start and "worth a question"
+// notes). Re-adding the prop is how the prose creeps back one panel at a time.
+export function Panel({ title, right, children, style }) {
   const { s, text } = useTheme();
   return (
     <div style={{ ...s.card, padding: 16, minWidth: 0, ...style }}>
       {(title || right) && (
-        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: subtitle ? 3 : 12 }}>
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
           <h3 style={{ color: text, fontSize: 14, fontWeight: 700, margin: 0 }}>{title}</h3>
           {right}
         </div>
       )}
-      {subtitle && <p style={{ ...s.muted, fontSize: 11.5, margin: "0 0 12px" }}>{subtitle}</p>}
       {children}
     </div>
   );

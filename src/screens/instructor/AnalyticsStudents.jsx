@@ -188,7 +188,7 @@ export function AnalyticsStudents({
     const name = student.altName || student.fullName || student.studentId;
     if (openWork) {
       return (
-        <Panel title={name} subtitle={`${openWorkAssignment?.title || openWork.title || openWorkId} · how they worked through it`}>
+        <Panel title={`${name} · ${openWorkAssignment?.title || openWork.title || openWorkId}`}>
           <StudentWorkDetail
             student={student} homework={openWork}
             telemetry={telemetryAll?.[student.studentId]?.[openWorkId] || null}
@@ -198,7 +198,7 @@ export function AnalyticsStudents({
       );
     }
     return (
-      <Panel title={name} subtitle="Every assignment this term">
+      <Panel title={`${name} · every assignment this term`}>
         <StudentDetail
           student={student} assignments={assignments} matrix={matrix}
           telemetryAll={telemetryAll} absenceMap={absenceMap}
@@ -240,7 +240,7 @@ export function AnalyticsStudents({
         </div>
       </div>
 
-      <Panel title={`${rows.length} students`} subtitle="Click any student for their whole term.">
+      <Panel title={`${rows.length} students`}>
         <div style={{ overflowX: "auto" }}>
           <table style={{ borderCollapse: "collapse", width: "100%", minWidth: isMobile ? 0 : 620 }}>
             <thead>

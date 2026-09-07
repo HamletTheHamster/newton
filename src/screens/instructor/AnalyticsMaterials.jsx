@@ -176,7 +176,6 @@ export function AnalyticsMaterials({ roster, modules, views, loading }) {
             Placeholder items with no file or URL attached are left out entirely, since nobody could have opened them.
           </InfoDot>
         }
-        subtitle="In the order students see them. Click any material for who has and has not opened it."
       >
         {loading ? (
           <p style={{ ...s.muted, margin: 0 }}>Loading…</p>
@@ -201,8 +200,7 @@ export function AnalyticsMaterials({ roster, modules, views, loading }) {
       </Panel>
 
       <Panel
-        title="Per student"
-        subtitle="How much of what has been posted each student has opened, fewest first."
+        title="Per student, fewest opened first"
       >
         {loading ? (
           <p style={{ ...s.muted, margin: 0 }}>Loading…</p>
