@@ -202,6 +202,65 @@ eq("time on task sums every assignment", timeOnTaskMap({
   near("time is paired in minutes, not milliseconds", t1.points[0].x, 1, 0.001);
 }
 
+// ── Course materials opened ───────────────────────────────────────────────────
+// The predictor exists to answer "do the students who open what I post do better", so what has
+// to hold end to end is that a student who opened NOTHING reaches the correlation as a zero
+// rather than being dropped, and that the module rows and the pooled row are built from the
+// materials actually posted.
+{
+  const { buildCorrelations, PREDICTORS } = await import("./analytics.js");
+  const { materialsOf, materialModules, materialOpensByStudent } = await import("./material-views.js");
+
+  const mods = [
+    { id: "m1", title: "Lecture 1", items: [
+      { _key: "a1", type: "file", title: "Reading 1", downloadUrl: "u" },
+      { _key: "a2", type: "file", title: "Notes 1", downloadUrl: "u" },
+      { _key: "a3", type: "file", title: "Notes 1 (not posted)", downloadUrl: null },
+    ] },
+    { id: "m2", title: "Lecture 2", items: [
+      { _key: "b1", type: "link", title: "Demo", url: "https://x" },
+      { _key: "b2", type: "page", title: "Lab safety", pageId: "p1" },
+    ] },
+  ];
+  const list = materialsOf(mods);
+  eq("the unposted placeholder is not in the denominator", list.length, 4);
+
+  const rosterM = [0, 1, 2, 3, 4, 5].map(i => ({ studentId: "m" + i, fullName: "M" + i }));
+  const examM = [95, 88, 80, 70, 60, 50];
+  // Opens fall off with the exam score; the last student is absent from the node entirely.
+  const openedBy = [["a1", "a2", "b1", "b2"], ["a1", "a2", "b1", "b2"], ["a1", "a2", "b1"], ["a1", "a2"], ["a1"], []];
+  const views = {};
+  openedBy.forEach((ids, i) => {
+    if (!ids.length) return;
+    views["m" + i] = Object.fromEntries(ids.map(id => [id, { first: "2026-09-08T10:00:00.000Z", last: "2026-09-08T10:00:00.000Z", count: 1 }]));
+  });
+
+  const materials = { modules: materialModules(list), opens: materialOpensByStudent({ materials: list, roster: rosterM, views }) };
+  const matrixM = {
+    scoreMap: Object.fromEntries(rosterM.map((r, i) => [r.studentId, { mid: examM[i] }])),
+    excusedMap: Object.fromEntries(rosterM.map(r => [r.studentId, {}])),
+    subsByStudent: Object.fromEntries(rosterM.map(r => [r.studentId, {}])),
+    flaggedMap: {}, absentMap: {},
+  };
+  const assignmentsM = [{ id: "mid", title: "Midterm", type: "manual", catId: "cat_midterm", maxPts: 100 }];
+
+  const matRows = buildCorrelations({ roster: rosterM, assignments: assignmentsM, outcomeId: "mid", matrix: matrixM, feature: "materials", materials });
+  eq("rows are the modules plus the pooled row", matRows.map(r => r.assignment.id).sort(), ["__all_materials__", "mat:m1", "mat:m2"].sort());
+  eq("pooled row is pinned first", matRows[0].assignment.id, "__all_materials__");
+  const pooled = matRows[0];
+  eq("every student is paired, including the one who opened nothing", pooled.n, 6);
+  eq("the student who opened nothing is a zero, not missing", pooled.points.find(p => p.studentId === "m5").x, 0);
+  eq("x is a percentage of the materials posted", pooled.points.find(p => p.studentId === "m2").x, 75);
+  if (!(pooled.r > 0.9)) { fails++; console.log("FAIL opening more material should track a HIGHER exam score, got r=" + pooled.r); }
+  else console.log(`ok   opening more material tracks a higher exam score (r=${pooled.r.toFixed(2)})`);
+  eq("materials predictor declares its expected direction", PREDICTORS.materials.expected, "positive");
+  eq("a module row is scored against its own materials", matRows.find(r => r.assignment.id === "mat:m1").points.find(p => p.studentId === "m4").x, 50);
+
+  // No materials posted: the view must show its own empty state rather than a chart of nothing.
+  eq("no materials means no rows", buildCorrelations({ roster: rosterM, assignments: assignmentsM, outcomeId: "mid", matrix: matrixM, feature: "materials", materials: { modules: [], opens: {} } }).length, 0);
+  eq("materials feature without its data is empty, never a crash", buildCorrelations({ roster: rosterM, assignments: assignmentsM, outcomeId: "mid", matrix: matrixM, feature: "materials" }).length, 0);
+}
+
 
 
 // ── Regressions found in a real class ─────────────────────────────────────────

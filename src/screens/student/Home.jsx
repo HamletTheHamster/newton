@@ -1,5 +1,6 @@
 import { s } from "../../theme.js";
 import { ModuleList } from "../../components/lms/ModuleList.jsx";
+import { isMaterialItem } from "../../material-views.js";
 
 // Student "Home" landing page — collapsible module list.
 // Props:
@@ -10,7 +11,10 @@ import { ModuleList } from "../../components/lms/ModuleList.jsx";
 //   onStartQuiz(quiz): called when a quiz item is clicked
 //   onStartHomework(hw): called when a homework item is clicked
 //   onOpenPage(item): called when a page item is clicked
-export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, storageKey }) {
+//   onOpenMaterial(item): records that this student opened a posted material (file / reading /
+//     notes / link / page). Fire-and-forget bookkeeping the student never asked for, so it must
+//     never be able to stop the thing they clicked from opening.
+export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, onOpenMaterial, storageKey }) {
   const completedQuizIds = new Set(
     submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId)
   );
@@ -34,6 +38,12 @@ export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submis
   };
 
   const onItemClick = (item, meta) => {
+    // Record the open FIRST, and never let it throw or block: the click's job is to open the
+    // file. The call is async, so a rejected promise is swallowed too rather than surfacing as
+    // an unhandled rejection in the student's console.
+    if (onOpenMaterial && isMaterialItem(item)) {
+      try { Promise.resolve(onOpenMaterial(item)).catch(() => {}); } catch { /* bookkeeping only */ }
+    }
     if (item.type === "quiz" && meta?.quiz) { onStartQuiz(meta.quiz); return; }
     if (item.type === "homework" && meta?.homework) { onStartHomework(meta.homework, meta.completed); return; }
     if ((item.type === "reading" || item.type === "notes" || item.type === "link") && item.url) {

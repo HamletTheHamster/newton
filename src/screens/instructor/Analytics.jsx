@@ -13,6 +13,8 @@ import { CORR_POS, corrNeg, fmtR, fmtPct, Stat, StatRow, ViewTabs, EmptyCard, Pa
 import { AnalyticsItems } from "./AnalyticsItems.jsx";
 import { AnalyticsStudents } from "./AnalyticsStudents.jsx";
 import { AnalyticsPulse } from "./AnalyticsPulse.jsx";
+import { AnalyticsMaterials } from "./AnalyticsMaterials.jsx";
+import { materialsOf, materialModules, materialOpensByStudent } from "../../material-views.js";
 
 // Instructor Analytics tab (`instructorSection === "analytics"`).
 //
@@ -268,7 +270,7 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
 }
 
 // ── Correlation view ──────────────────────────────────────────────────────────
-function CorrelationView({ roster, assignments, matrix, feature, onFeature, effort, effortLoading }) {
+function CorrelationView({ roster, assignments, matrix, feature, onFeature, effort, effortLoading, materials, materialsLoading }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
   const [outcomeId, setOutcomeId] = useState(null);
@@ -276,6 +278,10 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
   const [countMissing, setCountMissing] = useState(true);
   const pred = PREDICTORS[feature] || PREDICTORS.score;
   const isScore = feature === "score";
+  const isMaterials = feature === "materials";
+  // The x axis is a percentage for scores AND for materials opened, which is what decides
+  // whether it can be pinned to 0-100. Attempts and minutes have to be fitted to the data.
+  const isPct = pred.unit === "%";
 
   // Default outcome: the midterm if there is one, then the final, then any manual assignment,
   // then simply the last assignment. Exams are what an instructor almost always wants on the y
@@ -291,8 +297,8 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
 
   const rows = useMemo(() => (outcome ? buildCorrelations({
     roster, assignments, outcomeId: activeOutcomeId, matrix, countMissingAsZero: countMissing,
-    feature, effort,
-  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort]);
+    feature, effort, materials,
+  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort, materials]);
 
   const activeSelectedId = selectedId && rows.some(r => r.assignment.id === selectedId)
     ? selectedId
@@ -310,7 +316,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
   }, [roster, outcome, matrix]);
 
   const exportCsv = () => {
-    const head = ["Assignment", "Measured by", "Type", "n", "r", "r squared", "CI low", "CI high", "Reading"];
+    const head = [isMaterials ? "Module" : "Assignment", "Measured by", "Type", "n", "r", "r squared", "CI low", "CI high", "Reading"];
     const lines = [head.join(",")];
     for (const row of rows) {
       lines.push([
@@ -342,8 +348,14 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
   // into the left edge.
   const axis = useMemo(() => {
     const xs = (selected?.points || []).map(p => p.x);
-    if (isScore || !xs.length) {
-      return { domain: [0, 100], ticks: [0, 25, 50, 75, 100], label: `${selected?.assignment.title || ""} (%)`, fmt: v => `${Math.round(v)}%` };
+    if (isPct || !xs.length) {
+      return {
+        domain: [0, 100], ticks: [0, 25, 50, 75, 100],
+        label: isMaterials
+          ? `${selected?.assignment.title || ""} - % of materials opened`
+          : `${selected?.assignment.title || ""} (%)`,
+        fmt: v => `${Math.round(v)}%`,
+      };
     }
     const lo = feature === "attempts" ? 1 : 0;
     const rawHi = Math.max(lo + 1, Math.max(...xs));
@@ -362,7 +374,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
         : `${selected?.assignment.title || ""} - minutes on task`,
       fmt: v => (feature === "attempts" ? `${v.toFixed(1)} tries` : `${Math.round(v)} min`),
     };
-  }, [selected, isScore, feature]);
+  }, [selected, isPct, isMaterials, feature]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -427,12 +439,19 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
         </button>
       </div>
 
-      {!isScore && effortLoading ? (
+      {effortLoading ? (
         <EmptyCard title="Loading engagement data">Attempts and time come from homework engagement tracking, which is read on demand.</EmptyCard>
-      ) : !isScore && effort && Object.keys(effort).length === 0 ? (
+      ) : materialsLoading ? (
+        <EmptyCard title="Loading material opens">Which materials each student has opened is read on demand.</EmptyCard>
+      ) : !isScore && !isMaterials && effort && Object.keys(effort).length === 0 ? (
         <EmptyCard title="No engagement data yet">
           Attempts and time are recorded from the point a student next opens a homework, so a class whose work
           predates that has none. Assignment score still works in the meantime.
+        </EmptyCard>
+      ) : isMaterials && !rows.length ? (
+        <EmptyCard title="No course materials posted yet">
+          Readings, lecture notes, links and pages attached to a module appear here once they have a file or a URL
+          behind them. The Materials view shows what has been posted and who has opened it.
         </EmptyCard>
       ) : outcomeScored === 0 ? (
         <div style={{ ...s.card, padding: 28, textAlign: "center" }}>
@@ -466,7 +485,9 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
               </div>
               <p style={{ ...s.muted, fontSize: 11.5, margin: "0 0 12px" }}>
                 {isScore ? "Ranked by strength. Click any row to plot it."
-                  : `Homework measured by ${pred.short}. Ranked by strength, with every problem across the term pooled at the top. Click any row to plot it.`}
+                  : isMaterials
+                    ? "One row per module, measured by the share of its materials a student opened, with every material across the term pooled at the top. Click any row to plot it."
+                    : `Homework measured by ${pred.short}. Ranked by strength, with every problem across the term pooled at the top. Click any row to plot it.`}
               </p>
               <CorrelationBars rows={rows} selectedId={activeSelectedId} onSelect={setSelectedId} />
               <p style={{ ...s.muted, fontSize: 11, margin: "12px 0 0", paddingTop: 12, lineHeight: 1.5, marginTop: "auto", borderTop: `1px solid ${border}` }}>
@@ -535,7 +556,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
 
           {/* Table view: the same numbers in text, which is also what makes the charts accessible. */}
           <div style={{ ...s.card, padding: 16 }}>
-            <h3 style={{ color: text, fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>All assignments</h3>
+            <h3 style={{ color: text, fontSize: 14, fontWeight: 700, margin: "0 0 12px" }}>{isMaterials ? "All modules" : "All assignments"}</h3>
             {/* On a phone the six-column table cannot fit, and letting it scroll sideways leaves a
                 truncated "R SQUARED" header reading as a second "R". So mobile drops to the three
                 columns that carry the ranking and folds the plain-language reading under the title,
@@ -545,8 +566,8 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
                 <thead>
                   <tr>
                     {(isMobile
-                      ? [["Assignment", "left"], ["n", "right"], ["r", "right"]]
-                      : [["Assignment", "left"], ["n", "right"], ["r", "right"], ["r squared", "right"], ["95% interval", "right"], ["Reading", "left"]]
+                      ? [[isMaterials ? "Module" : "Assignment", "left"], ["n", "right"], ["r", "right"]]
+                      : [[isMaterials ? "Module" : "Assignment", "left"], ["n", "right"], ["r", "right"], ["r squared", "right"], ["95% interval", "right"], ["Reading", "left"]]
                     ).map(([h, align]) => (
                       <th key={h} style={{
                         textAlign: align,
@@ -622,12 +643,16 @@ const VIEWS = [
   { id: "pulse", label: "Pulse" },
   { id: "students", label: "Students" },
   { id: "items", label: "Items" },
+  { id: "materials", label: "Materials" },
   { id: "correlation", label: "Correlation" },
 ];
 
 // Views that always need hwProgress / hwTelemetry. The correlation view needs them only once an
 // effort predictor is chosen, so a visit that just wants the exam scatter never pays for the read.
 const NEEDS_ENGAGEMENT = new Set(["items", "students", "pulse"]);
+// The correlation predictors that come from homework engagement. Materials is deliberately NOT
+// one: it reads its own node, so picking it must not drag in the far larger telemetry read.
+const EFFORT_FEATURES = new Set(["attempts", "time"]);
 
 export function Analytics({
   classId, roster, modules, quizzes, submissions, gradeOverrides, assignmentCategories,
@@ -643,6 +668,10 @@ export function Analytics({
   // shows "nothing recorded" rather than a spinner that never resolves).
   const [engagement, setEngagement] = useState(null);
   const [loadingEngagement, setLoadingEngagement] = useState(false);
+  // Same null-vs-{} contract as `engagement`: null while unloaded, {} once a load has finished,
+  // so a class where nobody has clicked anything reads as "nothing opened" and not as a spinner.
+  const [materialViews, setMaterialViews] = useState(null);
+  const [loadingMaterials, setLoadingMaterials] = useState(false);
 
   // Submissions from students who are no longer on the roster must be ignored everywhere in this
   // tab. App.jsx flattens the whole `submissions` node without checking the roster, so a removed
@@ -667,7 +696,7 @@ export function Analytics({
   // Two whole-node reads, once per visit, the first time an engagement view is opened.
   // `hwProgress` is tiny; `hwTelemetry` is the larger one and is deliberately not fetched for
   // the correlation view, which is derived entirely from data App.jsx already holds.
-  const wantsEngagement = NEEDS_ENGAGEMENT.has(view) || (view === "correlation" && feature !== "score");
+  const wantsEngagement = NEEDS_ENGAGEMENT.has(view) || (view === "correlation" && EFFORT_FEATURES.has(feature));
 
   useEffect(() => {
     if (!classId || engagement || loadingEngagement || !wantsEngagement) return;
@@ -681,8 +710,22 @@ export function Analytics({
       .finally(() => setLoadingEngagement(false));
   }, [classId, wantsEngagement, engagement, loadingEngagement]);
 
+  // Course-material opens: a second on-demand whole-node read, kept separate from the engagement
+  // one so a visit to Pulse never pays for it and a visit to Materials never pays for telemetry.
+  // Needed by the Materials view and by the correlation view's materials predictor.
+  const wantsMaterials = view === "materials" || (view === "correlation" && feature === "materials");
+
+  useEffect(() => {
+    if (!classId || materialViews || loadingMaterials || !wantsMaterials) return;
+    setLoadingMaterials(true);
+    fbGet(classPath(classId, "materialViews"))
+      .then(d => setMaterialViews(d || {}))
+      .catch(() => setMaterialViews({}))
+      .finally(() => setLoadingMaterials(false));
+  }, [classId, wantsMaterials, materialViews, loadingMaterials]);
+
   // Reset when the class changes, or one class's telemetry would be shown under another's name.
-  useEffect(() => { setEngagement(null); }, [classId]);
+  useEffect(() => { setEngagement(null); setMaterialViews(null); }, [classId]);
 
   const progress = engagement?.progress || {};
   // Merged once here so no view can accidentally read only the live node and report every
@@ -701,6 +744,17 @@ export function Analytics({
     return effortByStudent({ homeworkIds, submissions: rosterSubmissions, telemetryAll });
   }, [engagement, assignments, rosterSubmissions, telemetryAll]);
 
+  // The materials predictor's input: the openable materials, the modules holding them, and each
+  // student's share opened. Null while the read is outstanding, for the same reason `effort` is.
+  const materials = useMemo(() => {
+    if (!materialViews) return null;
+    const list = materialsOf(modules);
+    return {
+      modules: materialModules(list),
+      opens: materialOpensByStudent({ materials: list, roster, views: materialViews }),
+    };
+  }, [materialViews, modules, roster]);
+
   if (!assignments.length) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -715,8 +769,11 @@ export function Analytics({
   const blurb = {
     correlation: feature === "score"
       ? "Which assignments predict performance on an exam, measured across the students who have both scores."
-      : `Whether ${PREDICTORS[feature]?.short} on homework predicts exam performance. Unlike scores, these are not capped by the attempt schedule, so they often carry signal a score cannot.`,
+      : feature === "materials"
+        ? "Whether opening the posted readings and lecture notes goes with performance on an exam. Opening is not reading, so a relationship here describes the students, never a cause."
+        : `Whether ${PREDICTORS[feature]?.short} on homework predicts exam performance. Unlike scores, these are not capped by the attempt schedule, so they often carry signal a score cannot.`,
     items: "Per-problem difficulty for one homework, and which problems are separating strong students from weak ones.",
+    materials: "Which students have clicked to open the readings, lecture notes and links posted in each module. An open is not a read.",
     students: "Where each student stands across the term, and how they worked.",
     pulse: "Who is working right now, and where each open assignment has got to.",
   }[view];
@@ -734,7 +791,13 @@ export function Analytics({
         <CorrelationView
           roster={roster} assignments={assignments} matrix={matrix}
           feature={feature} onFeature={setFeature}
-          effort={effort} effortLoading={feature !== "score" && !engagement}
+          effort={effort} effortLoading={EFFORT_FEATURES.has(feature) && !engagement}
+          materials={materials} materialsLoading={feature === "materials" && !materialViews}
+        />
+      )}
+      {view === "materials" && (
+        <AnalyticsMaterials
+          roster={roster} modules={modules} views={materialViews || {}} loading={loadingMaterials}
         />
       )}
       {view === "items" && (

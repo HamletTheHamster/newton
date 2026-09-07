@@ -241,6 +241,11 @@ export const PREDICTORS = {
     expected: "either",
     blurb: "Minutes actually spent, excluding time the tab was hidden or idle. The direction is genuinely informative here rather than assumed: positive suggests effort paying off, negative suggests the students taking longest are the ones struggling. Both are real findings.",
   },
+  materials: {
+    id: "materials", label: "Course materials opened", short: "materials opened", unit: "%",
+    expected: "positive",
+    blurb: "The share of the readings, lecture notes and links posted in a module that the student clicked to open. It measures OPENING, not reading: a student can open a PDF and never scroll it, or read the same chapter on paper and never click anything here. So a relationship found here says the students who engage with the posted material do better, which is worth knowing, and never that opening the file caused it.",
+  },
 };
 
 // Minimum items a student must have resolved before a mean-attempts figure means anything. Below
@@ -322,12 +327,33 @@ export function effortByStudent({ homeworkIds = [], submissions = [], telemetryA
 // powerful row available at class-sized n, and is usually the one worth reading first.
 export function buildCorrelations({
   roster, assignments, outcomeId, matrix, countMissingAsZero = true, now = new Date(),
-  feature = "score", effort = null,
+  feature = "score", effort = null, materials = null,
 }) {
   const outcome = (assignments || []).find(a => a.id === outcomeId);
   if (!outcome) return [];
   const opts = { ...matrix, countMissingAsZero, now };
   const yOf = sid => pctFor(outcome, sid, opts);
+
+  // Course-material opens rank MODULES rather than assignments: a single file is one click, far
+  // too coarse to correlate on its own, while a module's share opened is a per-student number
+  // with real spread. The pooled row over every posted material is the headline, and is the most
+  // statistically powerful row available at class-sized n.
+  if (feature === "materials") {
+    if (!materials?.modules?.length) return [];
+    const pctOf = (sid, key) => materials.opens?.[sid]?.[key]?.pct ?? null;
+    const rows = materials.modules.map(m => ({
+      assignment: { id: `mat:${m.id}`, title: m.title, type: "material", catId: "cat_material", maxPts: 100 },
+      ...statsFor(pairBy({ roster, xOf: sid => pctOf(sid, m.id), yOf })),
+    }));
+    if (materials.modules.length > 1) {
+      rows.push({
+        assignment: { id: "__all_materials__", title: "All course materials", type: "material", catId: "cat_material", maxPts: 100 },
+        pooled: true,
+        ...statsFor(pairBy({ roster, xOf: sid => pctOf(sid, "all"), yOf })),
+      });
+    }
+    return pinPooled(rows);
+  }
 
   if (feature === "score" || !effort) {
     return (assignments || [])
@@ -360,6 +386,13 @@ export function buildCorrelations({
     });
   }
 
+  return pinPooled(rows);
+}
+
+// Strongest first, with any pooled row pinned to the top rather than left to sort among the
+// individual ones — it answers a different question (the whole term at once) and is the row to
+// read first.
+function pinPooled(rows) {
   const sorted = rows.filter(x => !x.pooled).sort(byStrength);
   const pooled = rows.find(x => x.pooled);
   return pooled ? [pooled, ...sorted] : sorted;

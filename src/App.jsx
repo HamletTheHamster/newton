@@ -18,6 +18,7 @@ import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
 import { unseenAnnouncements } from "./announcements.js";
+import { viewRecordOf } from "./material-views.js";
 
 import { SyncBadge } from "./components/SyncBadge.jsx";
 import { CustomSelect } from "./components/CustomSelect.jsx";
@@ -164,6 +165,13 @@ export default function App() {
   // after a class switch is what made the pre-6.9 version of this feature misfire. Per-student
   // data, so like hwDrafts it is read on demand and never enters the class cache.
   const [annReads, setAnnReads] = useState(null);
+  // Course-material opens for the SIGNED-IN student only:
+  // { classId, studentId, map: { [itemId]: { first, last, count } } }, or null while unloaded.
+  // Keyed by class and student for the same reason `annReads` is: the count written on the next
+  // click is derived from this map, and a map left over from another class would restart every
+  // count at 1. Per-student data, so like hwDrafts it is read on demand and never enters the
+  // class cache; the instructor reads the whole node lazily in the Analytics tab.
+  const [materialViews, setMaterialViews] = useState(null);
   const [gradeCategories, setGradeCategories] = useState({});
   const [gradeOverrides, setGradeOverrides] = useState({});     // { [studentId]: { [assignmentId]: { score?, excused? } } }
   const [assignmentCategories, setAssignmentCategories] = useState({});  // { [assignmentId]: catId }
@@ -729,6 +737,19 @@ export default function App() {
     return () => { cancelled = true; };
   }, [studentPortalActive, currentClassId, loggedInStudent?.studentId]);
 
+  // The signed-in student's own course-material opens, fetched once per (class, student) for the
+  // same reason and with the same cancel guard. Only this student's subtree is read: the whole
+  // node is the instructor's to load, in the Analytics tab.
+  useEffect(() => {
+    if (!studentPortalActive) return;
+    const cid = currentClassId, sid = loggedInStudent.studentId;
+    let cancelled = false;
+    fbGet(classPath(cid, `materialViews/${sid}`))
+      .catch(() => null)
+      .then(d => { if (!cancelled) setMaterialViews({ classId: cid, studentId: sid, map: (d && typeof d === 'object') ? d : {} }); });
+    return () => { cancelled = true; };
+  }, [studentPortalActive, currentClassId, loggedInStudent?.studentId]);
+
   // ── Scroll / focus ──────────────────────────────────────────────────────────
   const doScroll = useCallback(() => { const el = chatRef.current; if (!el) return; el.scrollTop = el.scrollHeight - el.clientHeight; }, []);
   useLayoutEffect(() => { doScroll(); }, [messages]);
@@ -1014,6 +1035,36 @@ export default function App() {
       : prev);
     await Promise.all(ids.map(id => fbSet(classPath(cid, `announcementReads/${sid}/${id}`), at).catch(() => {})));
   };
+  // Record that the signed-in student clicked a posted course material (a file, reading, lecture
+  // notes, link or page). Addresses ONE item's record — `materialViews/{sid}/{itemId}` — with a
+  // PATCH, so a second tab's click on a different item cannot be erased by this one.
+  //
+  // `count` is read-modify-write from the local map, so two tabs opening the SAME file in the
+  // same moment can lose one increment. That is the accepted worst case: what the instructor
+  // reads is whether a student opened the material at all, and the existence of the record
+  // (plus `first`/`last`) carries that whatever happens to the tally.
+  //
+  // Written with fbUpdate, not fbSave: like a read receipt, this is background bookkeeping the
+  // student never asked for, and a sync badge (or worse a red error badge) for it would be
+  // noise. A failed write means one uncounted click, which is self-healing on the next one.
+  const recordMaterialView = async itemOrId => {
+    const itemId = typeof itemOrId === "string" ? itemOrId : itemOrId?._key || itemOrId?.id;
+    if (!loggedInStudent || !currentClassId || !itemId) return;
+    const cid = currentClassId, sid = loggedInStudent.studentId, at = new Date().toISOString();
+    const loaded = (materialViews && materialViews.classId === cid && materialViews.studentId === sid)
+      ? materialViews.map : null;
+    // A click can land before the student's own map has arrived (they expanded a module the
+    // moment the portal opened). Writing from an unloaded map would reset `first` to now and the
+    // count to 1, so the one leaf is read instead — one small GET, only on that race.
+    const prev = loaded
+      ? viewRecordOf(loaded[itemId])
+      : viewRecordOf(await fbGet(classPath(cid, `materialViews/${sid}/${itemId}`)).catch(() => null));
+    const next = { first: prev?.first || at, last: at, count: (prev?.count || 0) + 1 };
+    setMaterialViews(cur => (cur && cur.classId === cid && cur.studentId === sid)
+      ? { ...cur, map: { ...cur.map, [itemId]: next } }
+      : cur);
+    await fbUpdate(classPath(cid, `materialViews/${sid}/${itemId}`), next).catch(() => {});
+  };
   // Sitting on the Announcements page IS reading them, so the popup stays out of the way there
   // and the page itself records the view. Without this the modal would cover the very list the
   // student navigated to, and closing it would be the only way to read what is underneath.
@@ -1258,6 +1309,7 @@ export default function App() {
     await fbSave(classPath(cid, `hwAttempts/${studentId}`), null);
     await fbSave(classPath(cid, `hwProgress/${studentId}`), null);
     await fbSave(classPath(cid, `announcementReads/${studentId}`), null);
+    await fbSave(classPath(cid, `materialViews/${studentId}`), null);
     for (const id of attendanceSessionIds) await fbSave(classPath(cid, `attendance/${id}/marks/${studentId}`), null);
     if (checkedChanged) await fbSave(classPath(cid, 'checkedSubs'), newChecked);
 
@@ -1982,7 +2034,7 @@ export default function App() {
 
     let mainContent;
     if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} onOpenMaterial={recordMaterialView} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {

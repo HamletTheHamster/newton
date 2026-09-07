@@ -96,6 +96,7 @@ score has almost no variance left to correlate with.
 | **Assignment score** | percentage earned. Every assignment, the phase 1 behaviour. | positive |
 | **Attempts to correct** | mean tries on the problems the student eventually got right. Homework only. | **negative** — fewer tries should go with a higher exam score |
 | **Time on task** | minutes actually spent, excluding hidden and idle time. Homework only. | **either** — and which way it points is the finding |
+| **Course materials opened** | share of a module's posted readings, notes and links the student clicked. Modules, not assignments. | positive |
 
 Details that matter:
 
@@ -114,8 +115,17 @@ Details that matter:
   every bar points right would hide exactly the surprises worth seeing.
 - **The missing-work toggle is hidden for the effort measures.** It is a question about scores;
   there is no "zero attempts" for a student who never opened the assignment.
-- The x axis is a percentage only for scores. Attempts and minutes get a domain fitted to the
-  data and rounded outward to a nice step, so ticks read 0/100/200 rather than 0/111.3/222.5.
+- **Course materials rank MODULES, not assignments.** A single file is one click — far too
+  coarse to correlate on its own — while a module's *share* opened is a per-student number with
+  real spread, and the pooled "All course materials" row over the whole term is the headline.
+- **A student with no records at all is a zero, not missing data.** This is the one place the
+  predictors differ in kind: absence of an attempts or time figure means "not measured", but a
+  material was posted to everyone, so a student with no record genuinely opened none of it. Drop
+  them and the chart is built only from the students who clicked, which is the population the
+  question is about.
+- The x axis is a percentage for scores **and for materials opened**. Attempts and minutes get a
+  domain fitted to the data and rounded outward to a nice step, so ticks read 0/100/200 rather
+  than 0/111.3/222.5.
 
 ### Two rules the tab must not break
 
@@ -312,6 +322,52 @@ completed every problem and never pressed Finish and Submit reads as *missing* i
 exactly like a student who did nothing, so without this they are invisible until the grade is
 already a zero. It is the one bucket usually worth an email, because the work is done.
 
+## Materials (phase 4)
+
+Which students have clicked to open the readings, lecture notes, links and pages posted in the
+modules. Two panels: open rate per material, grouped by module in the order students see them
+(click a row for the names on both sides of it), and a per-student list ordered fewest opened
+first. Derivations are in `src/material-views.js`, covered by `node src/material-views.test.mjs`.
+
+**An open is not a read, and the view must never let anyone believe otherwise.** A record means
+the browser was handed the file; it says nothing about whether a word of it was read, and a
+student working from the paper textbook or a classmate's printout can learn the material without
+generating a record at all. So every figure is worded as an *open*, the caveat sits under the
+panel rather than behind a tooltip, and there is deliberately **no "engagement score"** collapsing
+these counts into a number that looks like a judgment. The per-student panel says outright that
+the top of the list is worth a question, not a conclusion.
+
+What the data can honestly support:
+
+- **An unopened handout is a fact.** "Nobody in the class opened the week 6 notes" is usually
+  about the posting — wrong file, buried in a module, never mentioned in lecture — rather than
+  about the students, and it is invisible without this.
+- **Whether opening tracks with performance at all**, via the correlation predictor. That is a
+  statement about the students, never about cause: the plausible mechanism runs both ways, since
+  students who are keeping up are also the ones clicking.
+
+Three rules keep the counts meaningful:
+
+- **A placeholder is not material.** A seeded item with no file or URL behind it (`{ type:
+  "file", uploadId: null }`) renders with no click target, so counting it would report the whole
+  class as having ignored a file that was never posted, and every unfinished module would drag
+  the class average down. `isMaterialItem` requires an actual target.
+- **A hidden item is not material either** — a student cannot open what they cannot see. Records
+  it collected before being hidden simply stop being listed.
+- **Tracking has a start date.** `MATERIAL_TRACKING_SINCE` is stated in the panel, because
+  material posted before it shows as never opened, and the reason is that nothing was watching,
+  not that nobody looked. It stops mattering once every posted material postdates it.
+
+Storage is `classes/{classId}/materialViews/{studentId}/{itemId} = { first, last, count }`, keyed
+by the module item's stable `id`, so a record survives a rename, a reorder and a file replacement.
+The student's own portal writes one leaf per item (a PATCH addressing that one item, so a second
+tab's click on a different item cannot be erased); the instructor's tab reads the whole node
+lazily, in its own GET separate from the telemetry one, so a visit to Materials never pays for
+telemetry and a visit to Pulse never pays for this. `count` is read-modify-write from local
+state, so two tabs opening the *same* file in the same moment can lose one increment — accepted,
+because what is read here is *whether* a student opened the material, and the record's existence
+carries that whatever happens to the tally.
+
 ## Implementation notes
 
 - **`mergeTelemetry` is not optional.** Telemetry lives in two places: the live `hwTelemetry`
@@ -338,7 +394,9 @@ already a zero. It is the one bucket usually worth an email, because the work is
   tooltips, and the numbers in text beside or below the bar.
 - **Tests:** `node src/analytics.test.mjs` covers the item statistics, the discrimination
   direction (checked against hand arithmetic, not pinned to whatever the code returned), the
-  wrong-answer guards, the funnel and the activity window.
+  wrong-answer guards, the funnel, the activity window, and the materials predictor end to end
+  (including that a student who opened nothing reaches the correlation as a zero).
+  `node src/material-views.test.mjs` covers the material derivations themselves.
 
 ## Possible next steps
 

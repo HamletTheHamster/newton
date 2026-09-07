@@ -20,9 +20,13 @@ export const CATEGORY_COLORS = {
   quiz:     "#34d399",
   midterm:  "#fbbf24",
   final:    "#f87171",
-  // Not gradebook categories — To Do rail item kinds that need a dot color.
+  // Not gradebook categories — To Do rail item kinds, and the analytics row for posted course
+  // material, which need a dot color. Material shares the readings' slate deliberately: it is
+  // the readings, notes and links, and giving it a hue of its own would imply a sixth grading
+  // category that does not exist.
   reading:  "#94a3b8",
   notes:    "#94a3b8",
+  material: "#94a3b8",
 };
 
 const ALIASES = {
@@ -32,6 +36,7 @@ const ALIASES = {
   cat_quiz:    "quiz",
   cat_midterm: "midterm",
   cat_final:   "final",
+  cat_material: "material",
 };
 
 // Color for a category key — a `kind` ("quiz"), a gradebook category id ("cat_quiz"), or "hw".
