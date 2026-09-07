@@ -9,7 +9,7 @@ import {
 // ── Instructor attendance ─────────────────────────────────────────────────────
 // Two panels over one `attendance` node (see src/attendance.js for the storage shape):
 //
-//   Take roll  one session at a time. Every student must be marked explicitly, so there is
+//   Take roll  TODAY's session, and nothing else. Every student must be marked explicitly, so there is
 //              deliberately no "mark all present" shortcut: that is the same one-click
 //              all-present default in a different coat, and it is what would let a
 //              distracted day be recorded as full attendance. Marks auto-save as they are
@@ -17,9 +17,16 @@ import {
 //              session stays UNTAKEN, and therefore zeroes nobody, until "Save roll call"
 //              stamps takenAt.
 //
-//   History    the same sessions as an editable grid. Clicking a cell cycles P/A/E and
-//              writes immediately, which is the correction path for a past record; a whole
-//              past session can also be reopened in Take roll to change its date or its lab.
+//   History    the same sessions as an editable grid. Clicking a cell opens a small menu of
+//              the statuses and writes the pick immediately, which is the correction path for
+//              a past record; a whole past session can also be reopened in Take roll to change
+//              its date or its lab.
+//
+// Take roll deliberately has NO day picker. It used to carry one pill per recorded session,
+// which is ~30 by the end of a term, and it opened on the LAST recorded session — so days
+// after a class it still showed that day's marks as though they were the roll in progress.
+// It now always opens on today, and a past day is reached the one way that already scales:
+// clicking its column header in History.
 
 const AUTOSAVE_MS = 700;
 
@@ -144,7 +151,7 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
   const labTitle = id => labs.find(l => l.id === id)?.title || (id ? "Deleted lab" : null);
 
   const [view, setView] = useState("take");
-  const [activeId, setActiveId] = useState(() => sessions.length ? sessions[sessions.length - 1].id : todayKey());
+  const [activeId, setActiveId] = useState(todayKey);
   const [draft, setDraft] = useState(null);
   const [err, setErr] = useState("");
   const [showUnmarkedOnly, setShowUnmarkedOnly] = useState(false);
@@ -199,6 +206,7 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
 
   if (!draft) return null;
 
+  const today = todayKey();
   const unmarked = unmarkedCount(draft, roster);
   const counts = sessionCounts(draft, roster);
   const dateChanged = draft.date && draft.date !== draft.id;
@@ -232,25 +240,28 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
     try {
       await onDeleteSession(draft.id);
       setConfirmDelete(false);
-      const remaining = sessions.filter(x => x.id !== draft.id);
-      setActiveId(remaining.length ? remaining[remaining.length - 1].id : todayKey());
+      // Back to today, never to some other old session: with no day picker, an older session
+      // left on screen would be one the instructor has no visible way to have chosen.
+      setActiveId(todayKey());
     } catch (e) { setErr(`Delete failed: ${e?.message || e}`); }
   };
 
-  // History-grid edit: cycle one cell and write straight through. Editing a past record is a
-  // single correction, so it commits on the click rather than waiting for a Save press.
-  const cycleCell = (session, studentId) => {
-    const cur = session.marks?.[studentId];
-    const nextStatus = cur ? ATT_CYCLE[(ATT_CYCLE.indexOf(cur) + 1) % ATT_CYCLE.length] : ATT_PRESENT;
-    const next = { ...session, marks: { ...(session.marks || {}), [studentId]: nextStatus } };
+  // History-grid edit: set one cell to the status picked from its menu and write straight
+  // through. Editing a past record is a single correction, so it commits on the pick rather
+  // than waiting for a Save press. A null status clears the mark back to unmarked (the
+  // session is written as a whole node, so dropping the key removes it).
+  const setCellMark = (session, studentId, status) => {
+    const marks = { ...(session.marks || {}) };
+    if (status) marks[studentId] = status; else delete marks[studentId];
+    const next = { ...session, marks };
     onSaveSession(next);
-    if (session.id === draft.id) setDraft(d => ({ ...d, marks: next.marks }));
+    if (session.id === draft.id) setDraft(d => ({ ...d, marks }));
   };
 
   const tabBtn = (id, label) => (
     <button
       key={id}
-      onClick={() => { flush(); setView(id); }}
+      onClick={() => { flush(); if (id === "take") setActiveId(todayKey()); setView(id); }}
       style={{
         background: view === id ? teal + (isLight ? "20" : "1a") : "transparent",
         border: `1px solid ${view === id ? teal + "66" : border}`,
@@ -289,34 +300,20 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
 
       {view === "take" ? (
         <>
-          {/* Session picker */}
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <button
-              onClick={() => { flush(); setActiveId(todayKey()); }}
-              style={{ background: isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.07)", border: `1px solid ${border}`, borderRadius: 8, color: text, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "7px 12px" }}
-            >
-              + Today
-            </button>
-            {sessions.map(sess => {
-              const active = sess.id === activeId;
-              return (
-                <button
-                  key={sess.id}
-                  onClick={() => { flush(); setActiveId(sess.id); }}
-                  title={`${formatSessionDate(sess.date, { weekday: true, withYear: true })}${sess.labId ? ` · ${labTitle(sess.labId)}` : ""}`}
-                  style={{
-                    background: active ? teal + (isLight ? "20" : "1a") : "transparent",
-                    border: `1px solid ${active ? teal + "66" : border}`,
-                    color: active ? teal : sess.takenAt ? text : muted,
-                    borderRadius: 999, padding: "6px 12px", fontSize: 12,
-                    fontWeight: active ? 700 : 500, cursor: "pointer", whiteSpace: "nowrap",
-                  }}
-                >
-                  {formatSessionDate(sess.date)}{!sess.takenAt && " (open)"}
-                </button>
-              );
-            })}
-          </div>
+          {/* Opened from History: say which day this is, and offer the way back to today. */}
+          {draft.id !== today && (
+            <div style={{ background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.35)", borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <span style={{ color: "#60a5fa", fontSize: 13 }}>
+                Editing the roll from {formatSessionDate(draft.id, { weekday: true })}.
+              </span>
+              <button
+                onClick={() => { flush(); setActiveId(today); }}
+                style={{ background: "transparent", border: "1px solid rgba(96,165,250,0.45)", borderRadius: 8, color: "#60a5fa", fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "6px 12px" }}
+              >
+                Take today's roll
+              </button>
+            </div>
+          )}
 
           <SessionBar
             draft={draft} setDraft={updateDraft} savedSession={attendance[draft.id]}
@@ -338,7 +335,9 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
 
           {dateChanged && (
             <div style={{ background: "rgba(96,165,250,0.1)", border: "1px solid rgba(96,165,250,0.35)", borderRadius: 8, padding: "10px 14px", color: "#60a5fa", fontSize: 12 }}>
-              This session will move from {formatSessionDate(draft.id)} to {formatSessionDate(draft.date)} when you save.
+              {attendance[draft.id]
+                ? `This session will move from ${formatSessionDate(draft.id)} to ${formatSessionDate(draft.date)} when you save.`
+                : `This roll will be recorded for ${formatSessionDate(draft.date)}.`}
             </div>
           )}
 
@@ -399,7 +398,7 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
       ) : (
         <HistoryGrid
           sessions={sessions} roster={roster} labTitle={labTitle}
-          onCycle={cycleCell}
+          onSetMark={setCellMark}
           onOpen={id => { flush(); setActiveId(id); setView("take"); }}
         />
       )}
@@ -407,13 +406,78 @@ export function Attendance({ roster = [], attendance = {}, manualAssignments = {
   );
 }
 
+// ── The status menu one History cell opens ───────────────────────────────────
+// Fixed-positioned rather than absolute inside the cell: the grid scrolls horizontally, and
+// a popover inside that container would be clipped by it. Anchored to the cell's rect, it is
+// closed by a pick, a click anywhere else, Escape, or any scroll (which would detach it).
+function MarkMenu({ anchor, current, onPick, onClose }) {
+  const { muted, border, isLight } = useTheme();
+  const solidBg = isLight ? "#fff" : "#252627";
+
+  useEffect(() => {
+    const onKey = e => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [onClose]);
+
+  const W = 158;
+  const rows = ATT_CYCLE.length + (current ? 1 : 0);
+  const H = 10 + rows * 34;
+  const left = Math.min(Math.max(8, anchor.x - W / 2), Math.max(8, window.innerWidth - W - 8));
+  const top = anchor.bottom + H + 8 > window.innerHeight
+    ? Math.max(8, anchor.top - H - 6)
+    : anchor.bottom + 6;
+
+  const row = (label, color, onClick, active) => (
+    <button
+      key={label}
+      onClick={onClick}
+      style={{
+        display: "flex", alignItems: "center", gap: 8, width: "100%",
+        background: active ? color + (isLight ? "22" : "1e") : "transparent",
+        border: "none", borderRadius: 6, cursor: "pointer",
+        padding: "7px 10px", fontSize: 13, textAlign: "left",
+        color: color, fontWeight: active ? 700 : 500,
+      }}
+    >
+      <span style={{ width: 8, height: 8, borderRadius: 999, background: color, flexShrink: 0 }} />
+      {label}
+      {active && <span style={{ marginLeft: "auto", fontSize: 12 }}>✓</span>}
+    </button>
+  );
+
+  return (
+    <>
+      <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 60 }} />
+      <div style={{
+        position: "fixed", top, left, width: W, zIndex: 61,
+        background: solidBg, border: `1px solid ${border}`, borderRadius: 10,
+        boxShadow: "0 10px 28px rgba(0,0,0,0.28)", padding: 5,
+        display: "flex", flexDirection: "column", gap: 2,
+      }}>
+        {ATT_CYCLE.map(st => row(ATT_LABEL[st], ATT_COLOR[st], () => onPick(st), current === st))}
+        {current && row("Clear mark", muted, () => onPick(null), false)}
+      </div>
+    </>
+  );
+}
+
 // ── History grid ──────────────────────────────────────────────────────────────
 // Students down, sessions across. Every cell is editable in place: this is the correction
-// path for a past record, so it commits on the click. Untaken sessions are dimmed and
+// path for a past record, so it commits on the pick. A cell opens a menu of the statuses
+// rather than cycling through them, since a correction usually knows which status it wants
+// and cycling makes reaching it a guess at how many clicks. Untaken sessions are dimmed and
 // labelled, since they are exactly the ones NOT applying their zeros yet.
-function HistoryGrid({ sessions, roster, labTitle, onCycle, onOpen }) {
+function HistoryGrid({ sessions, roster, labTitle, onSetMark, onOpen }) {
   const { s, text, muted, border, teal, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
+  // { sessionId, studentId, anchor } — the cell whose menu is open.
+  const [menu, setMenu] = useState(null);
+  const closeMenu = useCallback(() => setMenu(null), []);
 
   if (sessions.length === 0) {
     return (
@@ -446,7 +510,7 @@ function HistoryGrid({ sessions, roster, labTitle, onCycle, onOpen }) {
     <div style={{ ...s.card, overflow: "hidden" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, padding: "12px 16px", borderBottom: cellBorder, flexWrap: "wrap" }}>
         <span style={{ color: muted, fontSize: 12 }}>
-          Click any cell to change it: present, absent, excused. Changes save immediately.
+          Click any cell to pick present, absent or excused. Changes save immediately.
         </span>
         <button
           onClick={exportCsv}
@@ -496,10 +560,17 @@ function HistoryGrid({ sessions, roster, labTitle, onCycle, onOpen }) {
                   {sessions.map(sess => {
                     const mark = sess.marks?.[stu.studentId];
                     const c = mark ? ATT_COLOR[mark] : muted;
+                    const open = menu && menu.sessionId === sess.id && menu.studentId === stu.studentId;
                     return (
                       <td
                         key={sess.id}
-                        onClick={() => onCycle(sess, stu.studentId)}
+                        onClick={e => {
+                          const r = e.currentTarget.getBoundingClientRect();
+                          setMenu(open ? null : {
+                            sessionId: sess.id, studentId: stu.studentId,
+                            anchor: { x: r.left + r.width / 2, top: r.top, bottom: r.bottom },
+                          });
+                        }}
                         title={mark
                           ? `${ATT_LABEL[mark]} on ${formatSessionDate(sess.date)}${!sess.takenAt ? " (session not taken)" : ""} · click to change`
                           : "Unmarked (counts as present, no lab penalty) · click to set"}
@@ -508,7 +579,9 @@ function HistoryGrid({ sessions, roster, labTitle, onCycle, onOpen }) {
                           borderRight: cellBorder, borderBottom: cellBorder,
                           fontFamily: "monospace", fontWeight: 700, fontSize: 13,
                           color: c, opacity: sess.takenAt ? 1 : 0.45,
-                          background: mark === ATT_ABSENT ? "rgba(248,113,113,0.08)" : "transparent",
+                          background: open
+                            ? teal + (isLight ? "22" : "1e")
+                            : mark === ATT_ABSENT ? "rgba(248,113,113,0.08)" : "transparent",
                         }}
                       >
                         {mark ? ATT_SHORT[mark] : "-"}
@@ -524,6 +597,19 @@ function HistoryGrid({ sessions, roster, labTitle, onCycle, onOpen }) {
           </tbody>
         </table>
       </div>
+
+      {menu && (
+        <MarkMenu
+          anchor={menu.anchor}
+          current={sessions.find(x => x.id === menu.sessionId)?.marks?.[menu.studentId]}
+          onPick={status => {
+            const sess = sessions.find(x => x.id === menu.sessionId);
+            if (sess) onSetMark(sess, menu.studentId, status);
+            setMenu(null);
+          }}
+          onClose={closeMenu}
+        />
+      )}
     </div>
   );
 }

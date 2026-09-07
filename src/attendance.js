@@ -17,7 +17,9 @@ export const ATT_PRESENT = "present";
 export const ATT_ABSENT  = "absent";
 export const ATT_EXCUSED = "excused";
 
-// Cycle order for click-to-edit cells in the History grid.
+// The statuses, in the order they are offered: the roll-call row's buttons and the History
+// grid's per-cell menu. (Historically a click-cycle order, hence the name; a History cell now
+// opens a menu of these rather than stepping through them.)
 export const ATT_CYCLE = [ATT_PRESENT, ATT_ABSENT, ATT_EXCUSED];
 
 export const ATT_LABEL = {
