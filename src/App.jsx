@@ -47,6 +47,7 @@ import { Assignments } from "./screens/instructor/Assignments.jsx";
 import { Attendance } from "./screens/instructor/Attendance.jsx";
 import { StudentGrades } from "./screens/student/StudentGrades.jsx";
 import { CourseEvals } from "./screens/student/CourseEvals.jsx";
+import { StudentSettings } from "./screens/student/StudentSettings.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
 import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
@@ -2067,68 +2068,6 @@ export default function App() {
   if (screen === "student-portal" && loggedInStudent) {
     const th = buildTheme(lightMode);
 
-    if (showStudentSettings) return (
-      <ThemeContext.Provider value={th}>
-        <div style={{ ...th.s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
-          {bugModalJsx}
-          <Footer onBugClick={() => setBugReportOpen(true)} />
-          <div style={{ maxWidth: 420, width: "100%", ...th.s.card, padding: 36 }}>
-            <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); setStuNickDraft(""); setStuNickMsg(""); }} style={{ ...th.s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
-            <h2 style={{ fontSize: 20, fontWeight: 700, color: th.text, margin: "0 0 4px" }}>Account Settings</h2>
-            <p style={{ ...th.s.muted, marginBottom: 28 }}>{loggedInStudent.fullName}</p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              {/* Preferred first name. Writes the same altName the instructor edits, so the app has
-                  one display name. `nicknameAllowed` is the instructor's per-student off switch;
-                  the real enforcement is the guard inside saveStudentNickname, which re-reads the
-                  roster, since this snapshot dates from login. */}
-              <div>
-                <label style={th.s.label}>Preferred first name</label>
-                {nicknameAllowed(loggedInStudent) ? (
-                  <>
-                    <input
-                      style={th.s.input}
-                      maxLength={NICKNAME_MAX}
-                      placeholder={loggedInStudent.firstName || "First name"}
-                      value={stuNickDraft}
-                      onChange={e => setStuNickDraft(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && !stuNickBusy) saveStudentNickname(); }}
-                      disabled={stuNickBusy}
-                    />
-                    <p style={{ ...th.s.muted, fontSize: 12, margin: "6px 0 0" }}>
-                      This is the name your instructor sees, and the name on the student list you pick from when you log in. Your last name and your record stay the same. Leave it blank to go back to {loggedInStudent.fullName}.
-                    </p>
-                  </>
-                ) : (
-                  <p style={{ ...th.s.muted, fontSize: 13, margin: "4px 0 0" }}>
-                    Your instructor sets your display name for this course.
-                  </p>
-                )}
-              </div>
-              {stuNickMsg && <p style={{ color: stuNickMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{stuNickMsg}</p>}
-              {nicknameAllowed(loggedInStudent) && (
-                <button onClick={saveStudentNickname} disabled={stuNickBusy} style={{ ...th.s.btnPri, opacity: stuNickBusy ? 0.6 : 1, cursor: stuNickBusy ? "default" : "pointer" }}>
-                  {stuNickBusy ? "Checking…" : "Update Name"}
-                </button>
-              )}
-              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}><label style={th.s.label}>Email</label><input type="email" style={th.s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
-              {stuEmailMsg && <p style={{ color: stuEmailMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
-              <button onClick={saveStudentEmail} style={th.s.btnPri}>Update Email</button>
-              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div><label style={th.s.label}>New Password</label><input type="password" style={th.s.input} placeholder="New password" value={newPw1} onChange={e => setNewPw1(e.target.value)} /></div>
-                  <div><label style={th.s.label}>Confirm New Password</label><input type="password" style={th.s.input} placeholder="Confirm password" value={newPw2} onChange={e => setNewPw2(e.target.value)} /></div>
-                  {pwChangeMsg && <p style={{ color: pwChangeMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{pwChangeMsg}</p>}
-                  <button onClick={handleChangePassword} style={th.s.btnPri}>Update Password</button>
-                </div>
-              </div>
-              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
-                <button onClick={handleStudentLogout} style={{ ...th.s.btnDanger, width: "100%" }}>Log Out</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </ThemeContext.Provider>
-    );
 
     const STUB_COPY = {
       syllabus: "A clean visual rendering of the course syllabus plus a PDF download.",
@@ -2137,7 +2076,17 @@ export default function App() {
       syllabus: "Syllabus",
     };
 
+    // Settings is a page in the same Shell, not a sidebar section, so picking any nav item
+    // has to leave it - otherwise the sidebar highlights a section the student can't see.
+    const closeStudentSettings = () => {
+      setShowStudentSettings(false);
+      setNewPw1(""); setNewPw2(""); setPwChangeMsg("");
+      setStuEmailDraft(""); setStuEmailMsg("");
+      setStuNickDraft(""); setStuNickMsg("");
+    };
+
     const handleStudentSectionSelect = id => {
+      if (showStudentSettings) closeStudentSettings();
       setStudentSection(id);
     };
 
@@ -2183,7 +2132,18 @@ export default function App() {
     );
 
     let mainContent;
-    if (studentSection === "home") {
+    if (showStudentSettings) {
+      mainContent = (
+        <StudentSettings
+          loggedInStudent={loggedInStudent}
+          onBack={closeStudentSettings}
+          nickDraft={stuNickDraft} setNickDraft={setStuNickDraft} nickMsg={stuNickMsg} nickBusy={stuNickBusy} onSaveNickname={saveStudentNickname}
+          emailDraft={stuEmailDraft} setEmailDraft={setStuEmailDraft} emailMsg={stuEmailMsg} onSaveEmail={saveStudentEmail}
+          newPw1={newPw1} setNewPw1={setNewPw1} newPw2={newPw2} setNewPw2={setNewPw2} pwChangeMsg={pwChangeMsg} onChangePassword={handleChangePassword}
+          onLogout={handleStudentLogout}
+        />
+      );
+    } else if (studentSection === "home") {
       mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} onOpenMaterial={recordMaterialView} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
@@ -2204,10 +2164,10 @@ export default function App() {
         <>
           {bugModalJsx}
           {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
-          {unseenAnns.length > 0 && studentSection !== "announcements" && <NewAnnouncementsModal announcements={unseenAnns} onDismiss={markAnnouncementsRead} />}
+          {unseenAnns.length > 0 && studentSection !== "announcements" && !showStudentSettings && <NewAnnouncementsModal announcements={unseenAnns} onDismiss={markAnnouncementsRead} />}
           <Shell
             header={header}
-            sidebar={<Sidebar items={studentSidebarItems} activeId={studentSection} onSelect={handleStudentSectionSelect} />}
+            sidebar={<Sidebar items={studentSidebarItems} activeId={showStudentSettings ? "account-settings" : studentSection} onSelect={handleStudentSectionSelect} />}
             rightRail={<TodoRail items={todoItems} overdue={todoOverdue} />}
             footer={<Footer inline onBugClick={() => setBugReportOpen(true)} />}
           >
