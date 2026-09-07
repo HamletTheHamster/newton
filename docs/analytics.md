@@ -132,11 +132,12 @@ Details that matter:
 Both were real bugs found against a live class, and both are the kind that produce a confident
 wrong answer rather than an error.
 
-**Submissions are scoped to the roster.** App.jsx flattens the whole `submissions` node without
-checking the roster, so a removed or never-enrolled student's work survives in it. The Gradebook
-never sees them because it iterates the roster; the analytics did, and reported a homework
-submission the gradebook said did not exist. The Analytics shell filters once
-(`rosterSubmissions`) and every view below it reads that.
+**Every input is scoped to the analytics roster.** App.jsx flattens the whole `submissions` node
+without checking the roster, so a removed or never-enrolled student's work survives in it. The
+Gradebook never sees them because it iterates the roster; the analytics did, and reported a
+homework submission the gradebook said did not exist. The Analytics shell scopes once, at the top,
+and every view below it reads the scoped values. See [Who counts](#who-counts) for the second
+entry that scoping drops.
 
 **Coincident scatter points are drawn as one marker with its count on it.** Course grades are
 heavily discretized: a quiz where the whole class scored 10/10 puts every student on a single
@@ -150,6 +151,55 @@ from **"no variation to measure"** (plenty of students, all with the same result
 second one missing data is wrong, and with mastery-style grading it is the common case: an
 assignment everyone aces genuinely cannot predict anything, and that is a finding about the
 assignment rather than a gap in the data.
+
+## Who counts
+
+An instructor normally sits on their own roster. It is the only way to walk an assignment the way
+a student walks it: the homework runner reads `loggedInStudent` for drafts, attempt counts, the
+work upload and the submission, so there is no way to exercise those paths from the instructor
+side. That entry then behaves like a student in every respect. It submits, it accumulates
+telemetry, it opens materials, it can be marked absent, and none of that is coursework. In a class
+of two dozen it is not noise either: one extra entry moves an r, a class average, an open rate and
+a grade distribution, and it adds a row to the gradebook, a name to the attendance roll and a line
+to the Blackboard export that no registrar has heard of.
+
+So exactly one roster entry per class may carry **`instructorAccount: true`**. It is one more
+optional roster field beside `altName` and `nicknameLocked`, so there is no new RTDB node, no
+rules change, and it survives backup and restore. `src/roster-scope.js` holds the rule and the
+scoping helpers; `src/roster-scope.test.mjs` covers them.
+
+**One picker, not a switch per row.** The fact being recorded is "which of these entries is me" —
+one answer per roster — and not a property each student has. It is a single "My own account"
+select above the roster table; the marked row then shows a read-only "your account" badge, since
+the difference is invisible from that table and shows up two tabs away. Setting it clears the
+previous holder first, so the at-most-one invariant lives at the only place that can write it.
+
+**Where it applies.** App.jsx derives `classStudents` once and passes it as the `roster` prop to
+the four views where the roster means "the students I am assessing": the Gradebook (so no row, and
+nothing in the CSV or Blackboard export), this tab, the Assignments hub's progress column, and the
+attendance roll. It deliberately does **not** apply where the roster means something else: the
+student login picker still lists the account, and an announcement broadcast still emails it.
+
+Three decisions are worth keeping:
+
+**Absent means student.** An explicit `false` means student too, and only picking a name can mark
+an entry. Both directions of failure are silent, but they are not symmetric: an uncounted test
+account is a mildly wrong number, while an accidentally uncounted *student* disappears from the
+class the instructor is reading about, with no error and no empty row to notice.
+
+**It is read-side only.** The marked account still writes telemetry, drafts, submissions and views
+exactly like a student, because exercising those write paths is the entire point of having it.
+Nothing is deleted and nothing is hidden from the account itself: it still sits its own homework
+and still sees its own grades.
+
+**It is not a grading policy in disguise.** The account is left out of the gradebook because it is
+not a student, not because its work is being discounted. A real student's marks never depend on
+this field, and the flag cannot be set on one by any path except naming them in the picker.
+
+The per-student nodes are scoped by the same id set, not just by the roster: `buildActivityByDay`,
+`lastActiveMap` and `timeOnTaskMap` walk `hwTelemetry`'s own keys rather than iterating the roster,
+so filtering the roster alone would leave the account in the activity chart and the time-on-task
+figures.
 
 ## The shared score matrix
 

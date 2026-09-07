@@ -15,6 +15,7 @@ import { AnalyticsStudents } from "./AnalyticsStudents.jsx";
 import { AnalyticsPulse } from "./AnalyticsPulse.jsx";
 import { AnalyticsMaterials } from "./AnalyticsMaterials.jsx";
 import { materialsOf, materialModules, materialOpensByStudent } from "../../material-views.js";
+import { studentIds, scopeSubmissions, scopeByStudent } from "../../roster-scope.js";
 
 // Instructor Analytics tab (`instructorSection === "analytics"`).
 //
@@ -673,14 +674,21 @@ export function Analytics({
   const [materialViews, setMaterialViews] = useState(null);
   const [loadingMaterials, setLoadingMaterials] = useState(false);
 
-  // Submissions from students who are no longer on the roster must be ignored everywhere in this
-  // tab. App.jsx flattens the whole `submissions` node without checking the roster, so a removed
-  // or never-enrolled student's work survives in it; the Gradebook never sees them because it
-  // iterates the roster, and every count here has to agree with the Gradebook. Without this, a
-  // deleted test student shows up as a phantom submission the gradebook says does not exist.
-  const rosterIds = useMemo(() => new Set((roster || []).map(r => r.studentId)), [roster]);
+  // Every per-student node this tab reads is scoped to the roster it was handed, which App.jsx
+  // has already reduced to the actual students (`studentRoster`, so the instructor's own entry is
+  // not among them). Two things make that necessary rather than tidy:
+  //
+  //   • App.jsx flattens the whole `submissions` node without consulting the roster, so a removed
+  //     or never-enrolled student's work survives in it. The Gradebook never sees them because it
+  //     iterates the roster, and every count here has to agree with the Gradebook; without this
+  //     the analytics reported a homework submission the gradebook said did not exist.
+  //   • `hwTelemetry` / `hwProgress` / `materialViews` are read WHOLE and are not iterated over
+  //     the roster at all — `buildActivityByDay`, `lastActiveMap` and `timeOnTaskMap` walk the
+  //     node's own keys — so an entry absent from the roster would still reach the activity
+  //     chart and the time-on-task figures.
+  const rosterIds = useMemo(() => studentIds(roster), [roster]);
   const rosterSubmissions = useMemo(
-    () => (submissions || []).filter(sub => rosterIds.has(sub.studentId)),
+    () => scopeSubmissions(submissions, rosterIds),
     [submissions, rosterIds]
   );
 
@@ -727,12 +735,15 @@ export function Analytics({
   // Reset when the class changes, or one class's telemetry would be shown under another's name.
   useEffect(() => { setEngagement(null); setMaterialViews(null); }, [classId]);
 
-  const progress = engagement?.progress || {};
+  const progress = useMemo(() => scopeByStudent(engagement?.progress, rosterIds), [engagement, rosterIds]);
   // Merged once here so no view can accidentally read only the live node and report every
   // student who has handed in as having spent no time. See mergeTelemetry.
   const telemetryAll = useMemo(
-    () => mergeTelemetry({ telemetryAll: engagement?.telemetryAll || {}, submissions: rosterSubmissions }),
-    [engagement, rosterSubmissions]
+    () => mergeTelemetry({
+      telemetryAll: scopeByStudent(engagement?.telemetryAll, rosterIds),
+      submissions: rosterSubmissions,
+    }),
+    [engagement, rosterIds, rosterSubmissions]
   );
 
   // Per-student attempts and time, for the correlation view's effort predictors. Only computed
@@ -746,14 +757,16 @@ export function Analytics({
 
   // The materials predictor's input: the openable materials, the modules holding them, and each
   // student's share opened. Null while the read is outstanding, for the same reason `effort` is.
+  const scopedViews = useMemo(() => scopeByStudent(materialViews, rosterIds), [materialViews, rosterIds]);
+
   const materials = useMemo(() => {
     if (!materialViews) return null;
     const list = materialsOf(modules);
     return {
       modules: materialModules(list),
-      opens: materialOpensByStudent({ materials: list, roster, views: materialViews }),
+      opens: materialOpensByStudent({ materials: list, roster, views: scopedViews }),
     };
-  }, [materialViews, modules, roster]);
+  }, [materialViews, scopedViews, modules, roster]);
 
   if (!assignments.length) {
     return (
@@ -797,7 +810,7 @@ export function Analytics({
       )}
       {view === "materials" && (
         <AnalyticsMaterials
-          roster={roster} modules={modules} views={materialViews || {}} loading={loadingMaterials}
+          roster={roster} modules={modules} views={scopedViews} loading={loadingMaterials}
         />
       )}
       {view === "items" && (

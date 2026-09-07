@@ -154,6 +154,13 @@ Analytics tab. It returns `scoreMap`, `excusedMap`, `flaggedMap`, `absentMap` an
 `resolveScore` — so the priority chain documented above applies identically wherever a score is
 shown, and a new consumer cannot reintroduce a private copy of it.
 
+The grid is built over the roster the Gradebook is handed, which App.jsx has already reduced to
+the actual students: an entry marked `instructorAccount` (the instructor's own, sat on the roster
+to walk assignments as a student) has no row in the gradebook, no cell in the CSV and no line in
+the Blackboard export. That is a statement about who is a student, never about whose work counts —
+a real student's marks cannot be affected by it. See
+[analytics.md § Who counts](analytics.md#who-counts) and `src/roster-scope.js`.
+
 `countsTowardGrade(assignment, { hasScore, isExcused, hasSubmission, now })` lives beside it and
 is the "No score ≠ zero" rule from the previous section, extracted for the same reason. The
 Gradebook's `activeAssignments` filter now calls it. **`StudentGrades.jsx` still carries its own
@@ -291,6 +298,9 @@ re-importing quietly returns that assignment to raw marks.
   carries only identity (`Last Name`, `First Name`, `Username`, `Student ID`) plus grades.
 - **Students with no username** — they cannot be matched, so a row for them would be a silent
   no-op at best. They are dropped and named in the modal instead.
+- **The instructor's own roster entry** (`instructorAccount`). It never reaches the export,
+  because it never reaches the score matrix: the Gradebook is handed the student roster. A row for
+  it would be a student the registrar has never heard of, in the official record of the class.
 
 ### Values
 

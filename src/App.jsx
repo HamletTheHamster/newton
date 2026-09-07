@@ -1,4 +1,4 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import QRCode from "qrcode";
 
 import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext } from "./theme.js";
@@ -52,6 +52,7 @@ import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
 import { LockIcon } from "./components/lms/itemIcons.jsx";
 import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
+import { isInstructorAccount, instructorAccountOf, studentRoster } from "./roster-scope.js";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
 // Manual assignment ordering: module items occupy order = modIdx*100 + itemIdx.
@@ -374,6 +375,12 @@ export default function App() {
     for (const stu of r) allActiveStudents.push({ ...stu, classId: cid, className });
   }
   const seenStudentIds = new Set();
+  // The roster as "the students I am assessing": the instructor's own entry, if they have one, is
+  // not one of them. Deliberately derived here and passed to the four class views rather than
+  // filtered into `roster` itself, which is the enrollment record and still has to carry that
+  // entry (it logs in, it does the homework, it keeps its own grades).
+  const classStudents = useMemo(() => studentRoster(roster), [roster]);
+
   const filteredRoster = nameQuery.trim().length === 0 ? [] : allActiveStudents.filter(st => {
     const q = nameQuery.toLowerCase();
     const matches = (st.altName && st.altName.toLowerCase().includes(q)) || st.fullName.toLowerCase().includes(q) || st.lastName.toLowerCase().includes(q) || st.firstName.toLowerCase().includes(q);
@@ -891,6 +898,19 @@ export default function App() {
       : `Let ${stu.fullName} set their own preferred name again?`;
     if (!window.confirm(msg)) return;
     await saveRosterFields(stu.studentId, { nicknameLocked: locking ? true : null });
+  };
+
+  // Which roster entry is the instructor's own. It is ONE fact about the class, not a property
+  // each student has, so it is set by naming an entry rather than by a switch on every row; the
+  // named entry is then left out of the gradebook, the analytics, the assignments hub's progress
+  // column and the attendance roll. See `src/roster-scope.js` for what it deliberately does not
+  // touch. Setting it clears the previous holder first, so the "at most one per class" invariant
+  // is enforced at the only place that can write it.
+  const setInstructorAccount = async studentId => {
+    const current = instructorAccountOf(roster);
+    if (current && current.studentId === studentId) return;
+    if (current) await saveRosterFields(current.studentId, { instructorAccount: null });
+    if (studentId) await saveRosterFields(studentId, { instructorAccount: true });
   };
 
   // ── The student's own preferred first name ────────────────────────────────
@@ -2482,7 +2502,7 @@ export default function App() {
 
         {currentClassId && instructorSection === "gradebook" && (
           <Gradebook
-            roster={roster}
+            roster={classStudents}
             modules={mergedModules}
             quizzes={[...quizzes, ...homeworks]}
             submissions={submissions}
@@ -2517,7 +2537,7 @@ export default function App() {
         {currentClassId && instructorSection === "analytics" && (
           <Analytics
             classId={currentClassId}
-            roster={roster}
+            roster={classStudents}
             modules={mergedModules}
             quizzes={[...quizzes, ...homeworks]}
             submissions={submissions}
@@ -2536,7 +2556,7 @@ export default function App() {
         {currentClassId && instructorSection === "assignments" && (
           <Assignments
             classId={currentClassId}
-            roster={roster}
+            roster={classStudents}
             submissions={submissions}
             quizzes={quizzes}
             homeworks={homeworks}
@@ -2559,7 +2579,7 @@ export default function App() {
 
         {currentClassId && instructorSection === "attendance" && (
           <Attendance
-            roster={roster}
+            roster={classStudents}
             attendance={attendance}
             manualAssignments={manualAssignments}
             dueDates={dueDates}
@@ -2577,8 +2597,21 @@ export default function App() {
               const base = Array.isArray(live) ? live : roster;
               await saveRoster([...base, student].sort((a, b) => a.lastName.localeCompare(b.lastName)));
             }} />
-            <div style={{ ...s.card, padding: 14, marginBottom: 20, fontSize: 13, color: MUTED, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 12 }}>
-              <span style={{ ...s.muted, fontSize: 12 }}>(MyMercer roster export file)</span>
+            <div style={{ ...s.card, padding: 14, marginBottom: 20, fontSize: 13, color: MUTED, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+              {/* One picker for the whole class, because the fact it records is "which of these
+                  entries is me" — one answer per roster, not a setting each student carries. The
+                  named entry is left out of the gradebook, the analytics, the assignments hub's
+                  progress column and the attendance roll; see `src/roster-scope.js`. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: MUTED }}>
+                <span>My own account:</span>
+                <select value={instructorAccountOf(roster)?.studentId || ""} onChange={e => setInstructorAccount(e.target.value || null)}
+                        title="Pick your own roster entry to keep it out of the gradebook, the analytics and the attendance roll. It still logs in and does the homework as usual."
+                        style={{ background: isLight ? "#fff" : "#252627", border: `1px solid ${BORDER}`, color: text, borderRadius: 6, padding: "5px 10px", fontSize: 13, outline: "none", colorScheme: isLight ? "light" : "dark", maxWidth: 260 }}>
+                  <option value="">None (everyone is a student)</option>
+                  {roster.map(stu => <option key={stu.studentId} value={stu.studentId}>{stu.altName || stu.fullName} ({stu.studentId})</option>)}
+                </select>
+              </label>
+              <span style={{ ...s.muted, fontSize: 12, marginLeft: "auto" }}>(MyMercer roster export file)</span>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
                 <label style={{ ...s.btnGhost, cursor: "pointer", display: "inline-block", padding: "8px 16px", fontSize: 13 }}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{ display: "none" }} /></label>
                 {rosterMsg && <p style={{ margin: 0, fontSize: 13, color: rosterMsg.startsWith("✅") ? "#4ade80" : "#f87171" }}>{rosterMsg}</p>}
@@ -2612,7 +2645,7 @@ export default function App() {
                 )}
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
-                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["#", "Name", "Student ID", "Email", "Password Status", ""].map(h => <th key={h} style={{ textAlign: "left", color: MUTED, fontWeight: 500, padding: "12px 16px", fontSize: 13 }}>{h}</th>)}</tr></thead>
+                    <thead><tr style={{ borderBottom: `1px solid ${BORDER}` }}>{["#", "Name", "Student ID", "Email", ""].map(h => <th key={h} style={{ textAlign: "left", color: MUTED, fontWeight: 500, padding: "12px 16px", fontSize: 13 }}>{h}</th>)}</tr></thead>
                     <tbody>{roster.map((stu, i) => (
                       <tr key={stu.studentId} style={{ borderBottom: i < roster.length - 1 ? `1px solid ${BORDER}` : "none" }}>
                         <td style={{ padding: "12px 16px", color: MUTED, fontSize: 13, fontVariantNumeric: "tabular-nums" }}>{i + 1}</td>
@@ -2633,6 +2666,12 @@ export default function App() {
                             )}
                             {!nicknameAllowed(stu) && (
                               <span title="This student cannot set their own name" style={{ color: isLight ? "#92640a" : "#fde047", background: isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.5)", borderRadius: 5, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>name locked</span>
+                            )}
+                            {/* Read-only: the picker above the table is what sets this. The row
+                                still has to say which entry it is, since the difference is
+                                invisible from here and shows up two tabs away. */}
+                            {isInstructorAccount(stu) && (
+                              <span title="Your own account. Left out of the gradebook, the analytics and the attendance roll." style={{ color: TEAL, background: "rgba(0,130,140,0.14)", border: `1px solid ${TEAL}`, borderRadius: 5, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>your account</span>
                             )}
                             <button onClick={() => { setEditingAltName(stu.studentId); setAltNameInput(stu.altName || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Set preferred name">✎</button>
                             {stu.altName && (
@@ -2657,10 +2696,14 @@ export default function App() {
                             <button onClick={() => { setEditingEmail(stu.studentId); setEmailInput(stu.email || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Edit email">✎</button>
                           </div>
                         )}</td>
-                        <td style={{ padding: "12px 16px" }}><span style={studentPws[stu.studentId] ? s.badge(TEAL) : s.badge(MUTED)}>{studentPws[stu.studentId] ? "Hashed password" : "Using Student ID"}</span></td>
                         <td style={{ padding: "8px 16px", textAlign: "right", display: "flex", gap: 6, justifyContent: "flex-end", alignItems: "center" }}>
-                          <button onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; await saveStudentPw(stu.studentId, null); }} style={{ background: isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.5)", color: isLight ? "#92640a" : "#fde047", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Reset PW</button>
-                          <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500 }}>Remove</button>
+                          {/* This button carries what the "Password Status" column used to say. That
+                              column spent ~140px of every row restating one bit whose only use is
+                              deciding whether to press this: a student still on their Student ID has
+                              nothing to reset, so the button is simply dead for them, and a dead
+                              button is the same fact at the point of action. */}
+                          <button disabled={!studentPws[stu.studentId]} onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; await saveStudentPw(stu.studentId, null); }} title={studentPws[stu.studentId] ? `Reset ${stu.fullName}'s password back to their Student ID` : `${stu.fullName} has not set a password, so there is nothing to reset. They log in with their Student ID.`} style={{ background: studentPws[stu.studentId] ? (isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)") : "none", border: `1px solid ${studentPws[stu.studentId] ? "rgba(202,138,4,0.5)" : BORDER}`, color: studentPws[stu.studentId] ? (isLight ? "#92640a" : "#fde047") : MUTED, opacity: studentPws[stu.studentId] ? 1 : 0.5, borderRadius: 6, padding: "4px 12px", cursor: studentPws[stu.studentId] ? "pointer" : "default", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>Reset PW</button>
+                          <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>Remove</button>
                         </td>
                       </tr>
                     ))}</tbody>
