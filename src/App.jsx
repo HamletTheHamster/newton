@@ -28,6 +28,7 @@ import { ChoiceQuestion } from "./components/ChoiceQuestion.jsx";
 import { ManualAddStudent } from "./components/ManualAddStudent.jsx";
 import { BugReportModal } from "./components/BugReportModal.jsx";
 import { Footer } from "./components/Footer.jsx";
+import { Wordmark } from "./components/Wordmark.jsx";
 import { Shell } from "./components/lms/Shell.jsx";
 import { Sidebar } from "./components/lms/Sidebar.jsx";
 import { TodoRail } from "./components/lms/TodoRail.jsx";
@@ -1991,7 +1992,7 @@ export default function App() {
       <Footer onBugClick={() => setBugReportOpen(true)} />
       <div style={{ maxWidth: 420, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <h1 style={{ fontSize: 72, fontWeight: 700, color: TEAL, margin: 0 }}>Newton</h1>
+          <Wordmark size={72} />
         </div>
         {showNoClasses && allActiveStudents.length === 0 && <div style={{ background: "rgba(202,138,4,0.1)", border: "1px solid rgba(202,138,4,0.3)", borderRadius: 8, padding: "10px 14px", color: "#fde047", fontSize: 13, marginBottom: 16 }}>No classes are currently available. Please contact your instructor.</div>}
         <div style={{ position: "relative" }}>
@@ -2037,7 +2038,7 @@ export default function App() {
       {bugModalJsx}
       <Footer onBugClick={() => setBugReportOpen(true)} />
       <div style={{ padding: "12px 20px" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: TEAL, margin: 0 }}>Newton</h1>
+        <Wordmark onClick={() => { setSelectedStudent(null); setScreen("student-search"); }} />
       </div>
       <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
         <div style={{ maxWidth: 420, width: "100%" }}>
@@ -2108,7 +2109,7 @@ export default function App() {
     const header = (
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-          <h1 style={{ color: TEAL, fontWeight: 700, fontSize: 22, margin: 0 }}>Newton</h1>
+          <Wordmark onClick={() => handleStudentSectionSelect("home")} />
           {studentAvailableClasses.length > 1 ? (
             <CustomSelect
               value={currentClassId || ""}
@@ -2334,7 +2335,7 @@ export default function App() {
       <Footer />
       <div style={{ maxWidth: 400, width: "100%" }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
-          <h1 style={{ fontSize: 72, fontWeight: 700, color: TEAL, margin: 0 }}>Newton</h1>
+          <Wordmark size={72} />
         </div>
         {instLoginStep === "password" ? (
           <>
@@ -2374,7 +2375,7 @@ export default function App() {
     const header = (
       <>
         <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap" }}>
-          <h1 style={{ color: TEAL, fontWeight: 700, fontSize: 22, margin: 0 }}>Newton</h1>
+          <Wordmark onClick={() => setInstructorSection("modules")} />
           {Object.keys(classes).length > 0 ? (
             <CustomSelect
               value={currentClassId || ""}
