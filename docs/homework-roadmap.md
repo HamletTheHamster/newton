@@ -51,6 +51,11 @@ started count and last-worked time live on the cell's `title` tooltip and in tha
 printing them in the cell cost three lines of row height and the column width the title needs
 more.
 
+That breakdown is a list, and stops there. Watching how ONE student worked the set, problem by
+problem, is `StudentWorkDetail.jsx` on the **Analytics** page (Students → a student → a homework
+row); it used to be a second modal opened from this one, which is three clicks deep and 560px
+wide for what is a reading view. See [docs/analytics.md](analytics.md) § Where it surfaces.
+
 Fitting the column inside the Shell's 960px content width meant right-sizing everything else
 to its widest real content, **measured in-browser rather than estimated** — `GRID_COLS` =
 `"1fr 104px 56px 312px 88px 124px"` with a shared `GRID_GAP = 6` (header and rows read the same

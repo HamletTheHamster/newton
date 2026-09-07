@@ -285,10 +285,25 @@ MathLive's `math-field` is a web component and is not covered.
 
 ### Where it surfaces
 
-The Assignments hub's progress modal: click the Progress cell for a homework, then click any
-student. The panel shows time on task, sittings, problems opened and paste count, then a
-per-problem table of time, time-to-first-attempt, tries and trips away. Reading it back is
-`totalActiveMs` / `formatDuration` / `timeToFirstAttemptMs` from the same module.
+**Analytics → Students → a student → any homework row** (`src/screens/instructor/StudentWorkDetail.jsx`).
+The panel shows time on task, sittings, problems opened and paste count, then a per-problem table
+of time, time-to-first-attempt, tries and trips away; clicking a problem opens the attempts behind
+it, with what the student actually typed each time. Reading it back is `totalActiveMs` /
+`formatDuration` / `timeToFirstAttemptMs` from the same module.
+
+It used to live in the Assignments hub, three clicks deep and inside a modal opened from another
+modal, at ~560px wide. It is a reading view, not a control, so it now sits on the Analytics page
+at full width; the Assignments hub keeps its class-progress list and points here. Only a homework
+row with something recorded is clickable, so the click never opens an empty panel.
+
+The attempt trail is the part the small window could not carry, and it is the teaching payoff of
+the whole node: "4.9, then 9.81" is a dropped factor of two that the student found on their own,
+and it is invisible in a score. It reads `attemptLog`, which is capped at the last few attempts
+per item, and it is behind a click so the table above stays a table.
+
+The component takes its telemetry as a **prop** and does no reading of its own: the Analytics tab
+already holds the merged whole-class map, so a per-student read here would re-fetch a node the
+caller has and would go out again on every back-and-forth.
 
 ### Limits, and what follows from them
 
@@ -353,11 +368,71 @@ never an inference about why.
 Overall goes through the same `calcGrades` the Gradebook uses, on the same `countsTowardGrade`
 filter, so this column can never disagree with the gradebook's Overall.
 
+The drill-down has a third level: a homework row with recorded engagement opens
+`StudentWorkDetail`, the per-problem "how they worked through it" panel described under
+[Where it surfaces](#where-it-surfaces). That is the one place in the app to watch a student work
+a set, and it is a click from the row it belongs to rather than three modals deep.
+
 ## Pulse (phase 3)
 
-Students active per day (single-series area, from telemetry sessions and submission times, one
-count per student per day however long they worked), a completion funnel per recently-due or
-upcoming assignment, and a list of students nobody has seen in over a week.
+Who is working right now, students active per day (single-series area, from telemetry sessions and
+submission times, one count per student per day however long they worked), a day-by-hour grid of
+when the class works, a completion funnel per recently-due or upcoming assignment, and a list of
+students nobody has seen in over a week.
+
+### Working right now
+
+`activeNow` (analytics.js): every student whose telemetry carries a write in the last
+`WORKING_WINDOW_MS` (15 minutes), grouped by the assignment they are on. It works only because
+telemetry is written continuously - `persistDraft()` snapshots on every graded attempt and on a
+1.2s typing debounce - so a recent `updatedAt` means the student was doing something then.
+
+Three things keep it from overclaiming, and all three are load-bearing:
+
+- **It is "recorded active", never "online".** There is no presence node and no heartbeat. A
+  student reading the problem on paper writes nothing, so an empty panel is not evidence that
+  nobody is working, and the panel says so in those words.
+- **A student who has submitted is excluded**, however recent their stamp. `mergeTelemetry` copies
+  the telemetry carried on a submission over the live node, so the moment someone hands in, their
+  last write looks exactly like fresh activity - which would report the one student who just
+  finished as the class still working.
+- **The reading is only as fresh as the last node read**, so the view prints when that was and
+  re-reads while it is on screen. `AnalyticsPulse` polls `onRefresh` (the shell's `readEngagement`)
+  every 60s, matching App.jsx's `refreshClassContent` cadence, gated on `document.visibilityState`
+  so a tab left open all evening does not re-read the largest node in the class for nobody. The
+  poll is deliberately **quiet**: it neither clears `engagement` nor raises the loading flag once
+  there is data, or every view would blank or flash once a minute.
+
+This replaced "Finished, not handed in" in the header tiles. That number is still on the funnel,
+where the bar names the students in it; as a headline it was the least immediate of the three.
+
+### When the class works
+
+`buildActivityByHour` (analytics.js): a day-of-week × hour-of-day grid over the last 90 days,
+answering the scheduling question no other view can - whether a deadline lands on the night the
+class is actually free, whether anyone starts before the day it is due, whether the work happens
+at 2am.
+
+It is built from **discrete events, never from session spans**, and that is the whole design. A
+session is a sitting from open to last write, so a tab left open overnight would smear eight hours
+of "activity" across the small hours - exactly the fiction hw-telemetry.js's first accounting rule
+exists to prevent. Each mark is instead a moment the app recorded something: a sitting opening or
+being saved, a graded attempt, a submission.
+
+A cell counts **distinct (student, date, hour) buckets**, so a student who fires twenty answers
+between 9 and 10pm adds 1, the same as one who worked quietly through the hour. No single student
+can shape the grid, and the number reads as "student-hours in which someone was working".
+
+Chart rules: this is a **magnitude**, so it takes the one-hue sequential `ramp` in analytics-ui.jsx
+(generated in OKLCH along `CORR_POS`'s own hue and validated as an ordinal ramp in both modes),
+never a categorical set. A cell with no activity takes the neutral `rampEmpty` rather than the
+ramp's bottom step, so "nothing happened here" never reads as "a little happened here". All 24
+hours are drawn even though most are empty for most classes: the empty half is the finding as
+often as the busy half, and cropping would quietly rescale the picture every time one student
+worked at 3am. Hover changes the cell's **outline**, never its fill, since the fill is the
+encoding. The scale is always present with the counts each band stands for, and row totals are
+printed beside the grid because the day-of-week answer is the one that gets acted on and reading
+it off shaded cells is guesswork.
 
 Only work students can **actually open** is listed. "Open" means released, not un-expired: late
 work is always accepted at half credit (`isLate` in utils.js, and the `late` handling in

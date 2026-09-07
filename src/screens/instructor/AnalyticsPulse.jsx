@@ -1,9 +1,14 @@
-import { useMemo, useState, useId } from "react";
+import { useMemo, useState, useId, useEffect } from "react";
 import { useTheme } from "../../theme.js";
 import { useIsMobile, dueToDate } from "../../utils.js";
 import { InfoDot } from "../../components/InfoDot.jsx";
-import { buildActivityByDay, buildFunnel, lastActiveMap } from "../../analytics.js";
-import { CORR_POS, series, Stat, StatRow, StackedBar, Legend, Panel, EmptyCard, fmtSince } from "./analytics-ui.jsx";
+import {
+  buildActivityByDay, buildActivityByHour, buildFunnel, lastActiveMap, activeNow, WORKING_WINDOW_MS,
+} from "../../analytics.js";
+import {
+  CORR_POS, series, ramp, rampEmpty, rampStep,
+  Stat, StatRow, StackedBar, Legend, Panel, EmptyCard, fmtSince,
+} from "./analytics-ui.jsx";
 
 // Analytics -> Pulse. The "is anything wrong right now" view: who is working, and where each
 // open assignment has got to.
@@ -17,6 +22,16 @@ const ACT = { w: 640, h: 170, padL: 30, padT: 10, padR: 8, padB: 22 };
 const QUIET_LIMIT = 10;
 // Longest funnel list before the panel stops being a summary.
 const MAX_FUNNELS = 8;
+// How often the engagement node is re-read while this view is on screen. "Who is working right
+// now" is the one figure here that is worthless from a snapshot taken when the tab was opened,
+// and there is no realtime listener to lean on (RTDB's REST stream cannot carry the App Check
+// header), so the view polls - matching App.jsx's own refreshClassContent cadence. It is
+// deliberately gated on document visibility: an instructor's tab left open all evening must not
+// re-read the largest node in the class every minute for nobody.
+const LIVE_POLL_MS = 60_000;
+// Days of history behind the day-by-hour grid. A term's worth, so a Tuesday pattern is a
+// pattern and not one week's accident.
+const HOURLY_DAYS = 90;
 
 // Distinct students active per day. One series over time, so an area with a 2px cap line and no
 // legend - the panel title names it.
@@ -90,6 +105,108 @@ function ActivityChart({ data, maxStudents }) {
   );
 }
 
+// ── When the class works ──────────────────────────────────────────────────────
+// A day-of-week x hour-of-day grid. Magnitude, not identity, so it takes the one-hue sequential
+// `ramp` rather than a categorical set, with an explicitly neutral cell for "nothing here" so a
+// dead hour never reads as a quiet one.
+//
+// All 24 hours are drawn even though most of them are empty for most classes: the empty half is
+// the finding as often as the busy half is, and cropping to the hours with data would quietly
+// rescale the picture every time one student worked at 3am. Cells are laid out with CSS grid
+// rather than SVG so the whole thing reflows on a phone without a viewBox to fight.
+const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+// Every third hour, which is as many labels as fit at this cell width without colliding.
+const HOUR_LABEL = h => (h === 0 ? "12a" : h === 12 ? "12p" : h < 12 ? `${h}a` : `${h - 12}p`);
+const hourRange = h => `${HOUR_LABEL(h)} to ${HOUR_LABEL((h + 1) % 24)}`;
+
+function HourHeatmap({ grid, max }) {
+  const { text, muted, border, isLight } = useTheme();
+  const isMobile = useIsMobile();
+  const steps = ramp(isLight);
+  const empty = rampEmpty(isLight);
+  const [hover, setHover] = useState(null);
+
+  // Row totals sit beside the grid: the day-of-week answer is the one an instructor acts on
+  // (which night to set a deadline), and reading it off shaded cells is guesswork.
+  const rowTotals = grid.map(row => row.reduce((n, v) => n + v, 0));
+  const busiestDay = rowTotals.indexOf(Math.max(...rowTotals));
+  // The band each ramp step tops out at, so the scale states the numbers it stands for rather
+  // than asking the reader to trust a gradient. Mirrors rampStep's four equal bands of `max`.
+  const bandTop = i => Math.max(i + 1, Math.round(((i + 1) * max) / 4));
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ overflowX: "auto" }}>
+        {/* Capped rather than full-bleed: at panel width the 24 columns stretch into flat bars,
+            and a heatmap cell has to read as a cell. */}
+        <div style={{ minWidth: isMobile ? 470 : 0, maxWidth: 760 }}>
+          {/* Hour ruler. The label sits at the LEFT edge of its cell, which is what the hour means. */}
+          <div style={{ display: "grid", gridTemplateColumns: `36px repeat(24, minmax(0, 1fr)) 52px`, gap: 2, marginBottom: 3 }}>
+            <span />
+            {Array.from({ length: 24 }, (_, h) => (
+              <span key={h} style={{ color: muted, fontSize: 9, textAlign: "left", overflow: "visible", whiteSpace: "nowrap" }}>
+                {h % 3 === 0 ? HOUR_LABEL(h) : ""}
+              </span>
+            ))}
+            <span />
+          </div>
+
+          {grid.map((row, d) => (
+            <div key={d} style={{ display: "grid", gridTemplateColumns: `36px repeat(24, minmax(0, 1fr)) 52px`, gap: 2, marginBottom: 2, alignItems: "center" }}>
+              <span style={{ color: muted, fontSize: 10.5, fontWeight: 600 }}>{DOW[d]}</span>
+              {row.map((v, h) => {
+                const step = rampStep(v, max);
+                const on = hover && hover.d === d && hover.h === h;
+                return (
+                  <span
+                    key={h}
+                    onMouseEnter={() => setHover({ d, h, v })}
+                    onMouseLeave={() => setHover(null)}
+                    title={`${DOW[d]} ${hourRange(h)}: ${v || "no"} student-hour${v === 1 ? "" : "s"} of work`}
+                    style={{
+                      height: 18, borderRadius: 3, background: step < 0 ? empty : steps[step],
+                      cursor: "default",
+                      // A 2px surface ring on the hovered cell, never a color change: the fill is
+                      // carrying the value and must not be repainted to say "you are pointing here".
+                      outline: on ? `2px solid ${text}` : "none", outlineOffset: -1,
+                    }}
+                  />
+                );
+              })}
+              <span style={{ color: rowTotals[d] ? text : muted, fontSize: 10.5, fontFamily: "monospace", textAlign: "right" }}>
+                {rowTotals[d] || "-"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Scale, always present: the cell fill is the only encoding, so it is never color alone. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: muted, fontSize: 11 }}>
+          Quieter
+          <span style={{ display: "inline-flex", gap: 2 }}>
+            <span style={{ width: 15, height: 10, borderRadius: 2, background: empty, border: `1px solid ${border}` }} title="No recorded work" />
+            {steps.map((c, i) => (
+              <span key={c} style={{ width: 15, height: 10, borderRadius: 2, background: c }}
+                    title={`Up to ${bandTop(i)} student-hour${bandTop(i) === 1 ? "" : "s"}`} />
+            ))}
+          </span>
+          Busier, up to {max}
+        </span>
+        <span style={{ color: muted, fontSize: 11 }}>
+          Busiest day: {DOW[busiestDay]}, {rowTotals[busiestDay]} student-hour{rowTotals[busiestDay] === 1 ? "" : "s"}.
+        </span>
+        {hover && (
+          <span style={{ color: text, fontSize: 11.5, fontWeight: 600 }}>
+            {DOW[hover.d]} {hourRange(hover.h)}: {hover.v || "none"}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // "Sep 8" from a local "YYYY-MM-DD" key. Parsed by hand rather than through `new Date(str)`,
 // which reads a bare date as UTC midnight and lands on the previous day west of Greenwich.
 function shortDate(key) {
@@ -100,11 +217,26 @@ function shortDate(key) {
 
 export function AnalyticsPulse({
   roster, assignments, submissions, progress, telemetryAll, telemetryLoading, dueDates,
-  assignmentLocks = {},
+  assignmentLocks = {}, onRefresh, refreshedAt,
 }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
   const days = isMobile ? 14 : 30;
+  // Re-tick every 30s so "3 min ago" and the 15-minute working window stay honest between polls
+  // rather than freezing at whatever they said when the data landed.
+  const [, setTick] = useState(0);
+
+  // Keep the engagement node fresh while this view is on screen and the browser tab is visible.
+  // Without it "working right now" is really "working when you opened Analytics", which is a
+  // worse answer than none.
+  useEffect(() => {
+    if (!onRefresh) return;
+    const clock = setInterval(() => setTick(n => n + 1), 30_000);
+    const poll = setInterval(() => { if (document.visibilityState === "visible") onRefresh(); }, LIVE_POLL_MS);
+    const onVis = () => { if (document.visibilityState === "visible") onRefresh(); };
+    document.addEventListener("visibilitychange", onVis);
+    return () => { clearInterval(clock); clearInterval(poll); document.removeEventListener("visibilitychange", onVis); };
+  }, [onRefresh]);
 
   const activity = useMemo(
     () => buildActivityByDay({ submissions, telemetryAll, days }),
@@ -112,6 +244,36 @@ export function AnalyticsPulse({
   );
   const maxStudents = Math.max(0, ...activity.map(d => d.students));
   const lastActive = useMemo(() => lastActiveMap({ submissions, telemetryAll }), [submissions, telemetryAll]);
+
+  const hourly = useMemo(
+    () => buildActivityByHour({ submissions, telemetryAll, days: HOURLY_DAYS }),
+    [submissions, telemetryAll]
+  );
+
+  // Who is mid-assignment right now. Recomputed on every refresh AND on the 30s tick, since the
+  // window is a moving one: a student whose last write was 14 minutes ago drops off by himself.
+  const working = useMemo(
+    () => activeNow({ telemetryAll, submissions }),
+    // `refreshedAt` is not read in the body: it is here so the list is recomputed on every
+    // poll even if a future caller reuses the telemetry object rather than rebuilding it.
+    [telemetryAll, submissions, refreshedAt]
+  );
+  const nameOf = sid => {
+    const stu = (roster || []).find(r => r.studentId === sid);
+    return stu ? (stu.altName || stu.fullName || sid) : sid;
+  };
+  const titleOf = id => (assignments || []).find(a => a.id === id)?.title || id;
+  // Grouped by assignment, because "4 working" is a different situation from "4 working, all on
+  // the set due tonight".
+  const workingByAssignment = useMemo(() => {
+    const by = new Map();
+    for (const w of working) {
+      const g = by.get(w.hwId) || { id: w.hwId, students: [] };
+      g.students.push(w);
+      by.set(w.hwId, g);
+    }
+    return [...by.values()].sort((a, b) => b.students.length - a.students.length);
+  }, [working]);
 
   const activeThisWeek = useMemo(() => {
     const cutoff = Date.now() - 7 * 86400000;
@@ -145,7 +307,6 @@ export function AnalyticsPulse({
   if (!roster?.length) return <EmptyCard title="No students enrolled">Add students in the Roster tab and this view fills in.</EmptyCard>;
 
   const funnels = funnelTargets.map(a => ({ a, f: buildFunnel({ assignment: a, roster, submissions, progress }) }));
-  const totalStalled = funnels.reduce((n, x) => n + x.f.stalled, 0);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -153,12 +314,76 @@ export function AnalyticsPulse({
         <Stat label="Active this week" value={`${activeThisWeek}`} hint={`of ${roster.length} students`} />
         <Stat label="Busiest day" value={maxStudents || "-"} hint={maxStudents ? "students at once" : "no activity yet"} />
         <Stat
-          label="Finished, not handed in"
-          value={totalStalled || "0"}
-          color={totalStalled ? "#fbbf24" : undefined}
-          hint="across open assignments"
+          label="Working now"
+          value={working.length || "0"}
+          color={working.length ? CORR_POS : undefined}
+          hint={working.length
+            ? `on ${workingByAssignment.length} assignment${workingByAssignment.length === 1 ? "" : "s"}`
+            : "in the last 15 min"}
         />
       </StatRow>
+
+      {/* Who is mid-assignment. First, because on a homework night it is the only question this
+          view is asked, and because it is the one figure whose value decays: the panel says how
+          fresh it is rather than leaving the reader to assume it is live. */}
+      <Panel
+        title="Working right now"
+        right={
+          <InfoDot title="What counts as right now" align="right">
+            A student appears here when the app recorded them doing something on a homework in the
+            last 15 minutes: a graded attempt, or typing into an answer box. There is no presence
+            signal and no heartbeat.
+            <br /><br />
+            So an empty panel does not mean nobody is working. A student reading the problem on
+            paper, or working it out before typing anything, writes nothing for the app to see.
+            <br /><br />
+            Anyone who has handed the assignment in is excluded, however recent their last write.
+          </InfoDot>
+        }
+        subtitle={`Recorded working in the last ${Math.round(WORKING_WINDOW_MS / 60000)} minutes. ${
+          refreshedAt ? `Updated ${fmtSince(new Date(refreshedAt).toISOString()) || "just now"}` : "Updated when this tab opened"
+        }, and again every minute while this view is open.`}
+      >
+        {telemetryLoading && !working.length ? (
+          <p style={{ ...s.muted, margin: 0 }}>Loading…</p>
+        ) : !working.length ? (
+          <p style={{ ...s.muted, margin: 0, lineHeight: 1.6 }}>
+            Nobody is working in the app at the moment. That is not the same as nobody working:
+            only typing and submitting leave a trace.
+          </p>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {workingByAssignment.map(g => (
+              <div key={g.id}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
+                  <span style={{ color: text, fontSize: 13, fontWeight: 600 }}>{titleOf(g.id)}</span>
+                  <span style={{ color: muted, fontSize: 11.5 }}>
+                    {g.students.length} student{g.students.length === 1 ? "" : "s"}
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {g.students.map(w => (
+                    <span
+                      key={`${w.studentId}|${w.hwId}`}
+                      title={`Last recorded activity ${fmtSince(w.lastAt) || "just now"}`}
+                      style={{
+                        display: "inline-flex", alignItems: "center", gap: 6,
+                        border: `1px solid ${border}`, borderRadius: 999, padding: "4px 11px",
+                        color: text, fontSize: 12.5,
+                        background: isLight ? "rgba(0,0,0,0.02)" : "rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: CORR_POS, flexShrink: 0 }} />
+                      {nameOf(w.studentId)}
+                      <span style={{ color: muted, fontSize: 11 }}>{fmtSince(w.lastAt) || "just now"}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
 
       <Panel
         title={`Students active per day (last ${days})`}
@@ -170,6 +395,32 @@ export function AnalyticsPulse({
           </p>
         ) : (
           <ActivityChart data={activity} maxStudents={maxStudents} />
+        )}
+      </Panel>
+
+      <Panel
+        title="When the class works"
+        right={
+          <InfoDot title="What a cell counts" align="right">
+            One count per student per hour, so a student who submits twenty answers between 9 and
+            10pm adds 1, exactly like a student who worked quietly through the same hour. No single
+            student can shape the grid.
+            <br /><br />
+            The marks are moments the app recorded something happening: a sitting opening or being
+            saved, a graded attempt, a submission. Sittings are deliberately NOT drawn as spans,
+            because a tab left open overnight would paint eight hours of work nobody did.
+            <br /><br />
+            Hours are the instructor's own local time, and only homework leaves a trace here.
+          </InfoDot>
+        }
+        subtitle={`Hours in which some student was recorded working, over the last ${HOURLY_DAYS} days. Useful for choosing when a deadline should fall.`}
+      >
+        {hourly.total === 0 ? (
+          <p style={{ ...s.muted, margin: 0 }}>
+            {telemetryLoading ? "Loading…" : "No recorded activity yet. Working sessions are tracked from the point a student next opens a homework."}
+          </p>
+        ) : (
+          <HourHeatmap grid={hourly.grid} max={hourly.max} />
         )}
       </Panel>
 

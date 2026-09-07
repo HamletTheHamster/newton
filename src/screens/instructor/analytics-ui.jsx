@@ -35,6 +35,29 @@ const SERIES_LIGHT = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100"];
 const SERIES_DARK  = ["#3987e5", "#d95926", "#199e70", "#c98500"];
 export const series = isLight => (isLight ? SERIES_LIGHT : SERIES_DARK);
 
+// Sequential ramp, for a continuous MAGNITUDE rather than an identity: currently the
+// day-by-hour activity heatmap. One hue, four monotone lightness steps, anchored on the same
+// teal the Pulse view's activity area uses, so the fine-grained chart is visibly the same
+// measure as the coarse one. Generated in OKLCH along CORR_POS's own hue (183.8 deg) rather
+// than eyeballed, then validated as an ordinal ramp in both modes:
+//   node scripts/validate_palette.js "#3bc1b1,#00a495,#008579,#00685e" --mode light --surface "#faf8f6" --ordinal
+//   node scripts/validate_palette.js "#006259,#007f73,#009d8f,#32baab" --mode dark  --surface "#1e1e1f" --ordinal
+// Both pass all four ordinal checks, including the light end clearing 2:1 against the card
+// (2.10:1 light, 2.29:1 dark) - which is why the ramp does not start lighter than it does.
+// A cell with NO activity is not the ramp's bottom step: it takes RAMP_EMPTY, a neutral, so
+// "nothing happened here" never reads as "a little happened here".
+const RAMP_LIGHT = ["#3bc1b1", "#00a495", "#008579", "#00685e"];
+const RAMP_DARK  = ["#006259", "#007f73", "#009d8f", "#32baab"];
+export const ramp = isLight => (isLight ? RAMP_LIGHT : RAMP_DARK);
+export const rampEmpty = isLight => (isLight ? "rgba(0,0,0,0.05)" : "rgba(255,255,255,0.06)");
+
+// Which ramp step a value lands on: 4 equal bands of the observed maximum, so the darkest step
+// always means "the busiest cell in this grid" and the scale is legible from the legend alone.
+export const rampStep = (value, max) => {
+  if (!value || !max) return -1;
+  return Math.min(3, Math.floor(((value - 1) / max) * 4));
+};
+
 // Rounds to 2dp, and normalizes negative zero: a discrimination of -0.001 must print "0.00",
 // not "-0.00", which reads as a real negative and is the difference between "no relationship"
 // and "the strong students are getting it wrong".

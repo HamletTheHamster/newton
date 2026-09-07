@@ -663,3 +663,98 @@ export function timeOnTaskMap(telemetryAll = {}) {
   }
   return out;
 }
+
+// ── Who is working right now ──────────────────────────────────────────────────
+//
+// The instructor's most immediate question on a homework night: is anyone actually out there?
+// Telemetry gives an honest answer only because it is written continuously — `persistDraft()`
+// snapshots on every graded attempt and on a 1.2s typing debounce — so a stored `updatedAt`
+// within the last few minutes means the student was doing something in the app then.
+//
+// Three things keep this from overclaiming:
+//
+//   • It is "recorded active in the last N minutes", never "online". There is no heartbeat and
+//     no presence node: a student reading a problem on paper for ten minutes writes nothing, so
+//     an absence here is not evidence of absence. Every caller words it as recorded activity.
+//   • A student who has SUBMITTED is excluded, however recent their stamp. `mergeTelemetry`
+//     copies the telemetry carried on a submission over the live node, so the moment someone
+//     hands in, their last write looks like fresh activity — which would report the one student
+//     who just finished as the class still working.
+//   • The reading is only as fresh as the last node read, so the caller must say when that was
+//     and re-read while it is on screen. A stale snapshot presented as "now" is worse than no
+//     panel at all.
+export const WORKING_WINDOW_MS = 15 * 60_000;
+
+export function activeNow({ telemetryAll = {}, submissions = [], windowMs = WORKING_WINDOW_MS, now = Date.now() }) {
+  const handedIn = new Set(submissions.map(s => `${s.studentId}|${s.quizId}`));
+  const out = [];
+  for (const [studentId, byHw] of Object.entries(telemetryAll)) {
+    for (const [hwId, tele] of Object.entries(byHw || {})) {
+      if (handedIn.has(`${studentId}|${hwId}`)) continue;
+      // The newest stamp the node carries: the snapshot's own `updatedAt`, or the end of the
+      // sitting it was written in. Both are moments the app actually wrote for this student.
+      let last = 0;
+      const bump = iso => { const t = new Date(iso).getTime(); if (Number.isFinite(t) && t > last) last = t; };
+      bump(tele?.updatedAt);
+      for (const sess of (tele?.sessions || [])) bump(sess?.end);
+      if (!last || now - last > windowMs || last > now + 60_000) continue;
+      out.push({ studentId, hwId, lastAt: new Date(last).toISOString() });
+    }
+  }
+  return out.sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt));
+}
+
+// ── When the class works ──────────────────────────────────────────────────────
+//
+// A day-of-week × hour-of-day grid: which evenings and which hours the homework actually gets
+// done. It answers a scheduling question no other view can — whether a Tuesday deadline lands
+// on the night the class is free, whether anyone is starting before the day it is due, and
+// whether the work is happening at 2am.
+//
+// It is built from DISCRETE EVENTS, never from session spans, and that is the whole design.
+// A session is a sitting from open to last write, so a tab left open overnight would smear
+// eight hours of "activity" across the small hours — exactly the fiction hw-telemetry.js's
+// first accounting rule exists to prevent. Each mark here is instead a moment the app recorded
+// the student doing something: a sitting opening or being written, a graded attempt, a
+// submission.
+//
+// A cell counts DISTINCT (student, date, hour) buckets, so one student hammering submit for an
+// hour contributes 1, the same as a student who worked quietly through it. The number therefore
+// reads as "student-hours in which someone was working", and no single student can shape the
+// grid.
+export function buildActivityByHour({ submissions = [], telemetryAll = {}, days = 90, now = new Date() }) {
+  const cutoff = new Date(now).getTime() - days * 86400000;
+  // Deduped per student per local hour, so a burst of attempts is one mark and not twenty.
+  const seen = new Set();
+  const grid = Array.from({ length: 7 }, () => new Array(24).fill(0));
+  let total = 0;
+  let earliest = null;
+
+  const mark = (studentId, iso) => {
+    if (!studentId || !iso) return;
+    const t = new Date(iso);
+    const ms = t.getTime();
+    if (!Number.isFinite(ms) || ms < cutoff || ms > Date.now() + 86400000) return;
+    if (earliest == null || ms < earliest) earliest = ms;
+    const key = `${studentId}|${dayKey(t)}|${t.getHours()}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    grid[t.getDay()][t.getHours()] += 1;
+    total += 1;
+  };
+
+  for (const s of submissions) mark(s.studentId, s.timestamp);
+  for (const [studentId, byHw] of Object.entries(telemetryAll)) {
+    for (const tele of Object.values(byHw || {})) {
+      for (const sess of (tele?.sessions || [])) { mark(studentId, sess?.start); mark(studentId, sess?.end); }
+      for (const it of Object.values(tele?.items || {})) {
+        mark(studentId, it?.firstSeenAt);
+        for (const at of (it?.attemptLog || [])) mark(studentId, at?.at);
+      }
+    }
+  }
+
+  let max = 0;
+  for (const row of grid) for (const v of row) if (v > max) max = v;
+  return { grid, max, total, since: earliest == null ? null : new Date(earliest).toISOString() };
+}

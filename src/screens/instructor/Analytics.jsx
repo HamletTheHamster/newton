@@ -1,4 +1,4 @@
-import { useState, useMemo, useId, useEffect } from "react";
+import { useState, useMemo, useId, useEffect, useCallback, useRef } from "react";
 import { useTheme } from "../../theme.js";
 import { useIsMobile } from "../../utils.js";
 import { buildGradebookAssignments } from "../../utils.js";
@@ -669,6 +669,9 @@ export function Analytics({
   // shows "nothing recorded" rather than a spinner that never resolves).
   const [engagement, setEngagement] = useState(null);
   const [loadingEngagement, setLoadingEngagement] = useState(false);
+  // When the engagement node was last read. The Pulse view's "working right now" panel is only
+  // as true as this timestamp, so it prints it rather than implying the numbers are live.
+  const [engagementAt, setEngagementAt] = useState(null);
   // Same null-vs-{} contract as `engagement`: null while unloaded, {} once a load has finished,
   // so a class where nobody has clicked anything reads as "nothing opened" and not as a spinner.
   const [materialViews, setMaterialViews] = useState(null);
@@ -706,17 +709,35 @@ export function Analytics({
   // the correlation view, which is derived entirely from data App.jsx already holds.
   const wantsEngagement = NEEDS_ENGAGEMENT.has(view) || (view === "correlation" && EFFORT_FEATURES.has(feature));
 
-  useEffect(() => {
-    if (!classId || engagement || loadingEngagement || !wantsEngagement) return;
-    setLoadingEngagement(true);
-    Promise.all([
+  // The read itself, separate from the effect below so the Pulse view can ask for a fresh one.
+  // Two things a re-read must not do, both of which a naive version does:
+  //   • It must not clear `engagement` first. A poll refreshes the numbers in place; blanking
+  //     them would wipe the panel the instructor is reading, once a minute, forever.
+  //   • It must not raise the loading flag once there IS data. Every view reads that flag to
+  //     show "Loading…" or "…", so a background poll would flash all of them on each tick.
+  // `loadedRef` is what tells the two apart without adding the flag to the callback's deps,
+  // which would give it a new identity on every load and restart the Pulse view's poll timer.
+  const loadedRef = useRef(false);
+  useEffect(() => { loadedRef.current = !!engagement; }, [engagement]);
+
+  const readEngagement = useCallback(() => {
+    if (!classId) return Promise.resolve();
+    if (!loadedRef.current) setLoadingEngagement(true);
+    return Promise.all([
       fbGet(classPath(classId, "hwProgress")).catch(() => null),
       fbGet(classPath(classId, "hwTelemetry")).catch(() => null),
     ])
       .then(([p, t]) => setEngagement({ progress: p || {}, telemetryAll: t || {} }))
-      .catch(() => setEngagement({ progress: {}, telemetryAll: {} }))
-      .finally(() => setLoadingEngagement(false));
-  }, [classId, wantsEngagement, engagement, loadingEngagement]);
+      // A failed poll keeps whatever was already on screen; only a failed FIRST read resolves to
+      // an empty object, so a broken node reads as "nothing recorded" and not as a stuck spinner.
+      .catch(() => setEngagement(prev => prev || { progress: {}, telemetryAll: {} }))
+      .finally(() => { setEngagementAt(Date.now()); setLoadingEngagement(false); });
+  }, [classId]);
+
+  useEffect(() => {
+    if (!classId || engagement || loadingEngagement || !wantsEngagement) return;
+    readEngagement();
+  }, [classId, wantsEngagement, engagement, loadingEngagement, readEngagement]);
 
   // Course-material opens: a second on-demand whole-node read, kept separate from the engagement
   // one so a visit to Pulse never pays for it and a visit to Materials never pays for telemetry.
@@ -733,7 +754,7 @@ export function Analytics({
   }, [classId, wantsMaterials, materialViews, loadingMaterials]);
 
   // Reset when the class changes, or one class's telemetry would be shown under another's name.
-  useEffect(() => { setEngagement(null); setMaterialViews(null); }, [classId]);
+  useEffect(() => { setEngagement(null); setMaterialViews(null); setEngagementAt(null); loadedRef.current = false; }, [classId]);
 
   const progress = useMemo(() => scopeByStudent(engagement?.progress, rosterIds), [engagement, rosterIds]);
   // Merged once here so no view can accidentally read only the live node and report every
@@ -821,7 +842,8 @@ export function Analytics({
       )}
       {view === "students" && (
         <AnalyticsStudents
-          roster={roster} assignments={assignments} matrix={matrix} submissions={rosterSubmissions}
+          roster={roster} assignments={assignments} quizzes={quizzes}
+          matrix={matrix} submissions={rosterSubmissions}
           gradeCategories={gradeCategories} attendance={attendance}
           telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
         />
@@ -831,6 +853,7 @@ export function Analytics({
           roster={roster} assignments={assignments} submissions={rosterSubmissions}
           progress={progress} telemetryAll={telemetryAll} telemetryLoading={loadingEngagement}
           dueDates={dueDates} assignmentLocks={assignmentLocks}
+          onRefresh={readEngagement} refreshedAt={engagementAt}
         />
       )}
     </div>

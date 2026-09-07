@@ -291,5 +291,63 @@ eq("time on task sums every assignment", timeOnTaskMap({
   eq("the orphan is not indexed", m.subsByStudent.ghost, undefined);
 }
 
+// ── Who is working right now, and when the class works ────────────────────────
+{
+  const { activeNow, buildActivityByHour, WORKING_WINDOW_MS } = await import("./analytics.js");
+  const now = new Date("2026-09-07T21:00:00").getTime();
+  const iso = minsAgo => new Date(now - minsAgo * 60000).toISOString();
+
+  const tele = {
+    working:   { hw1: { updatedAt: iso(3), sessions: [{ start: iso(40), end: iso(3) }] } },
+    justDone:  { hw1: { updatedAt: iso(2), sessions: [{ start: iso(60), end: iso(2) }] } },
+    lastNight: { hw1: { updatedAt: iso(600), sessions: [{ start: iso(700), end: iso(600) }] } },
+    // No updatedAt at all: the session end is the only stamp, and it must still count.
+    sessionOnly: { hw2: { sessions: [{ start: iso(30), end: iso(6) }] } },
+  };
+  const subs = [{ studentId: "justDone", quizId: "hw1", timestamp: iso(2) }];
+  const live = activeNow({ telemetryAll: tele, submissions: subs, now });
+
+  eq("working right now lists only the unsubmitted recent students",
+     live.map(x => x.studentId).sort(), ["sessionOnly", "working"]);
+  // mergeTelemetry copies a submission's telemetry over the live node, so a student who handed
+  // in two minutes ago carries a stamp that looks exactly like fresh work. Reporting them as
+  // "working now" would turn every finished student into a false positive.
+  eq("a student who just submitted is not still working", live.some(x => x.studentId === "justDone"), false);
+  eq("last night is outside the window", live.some(x => x.studentId === "lastNight"), false);
+  eq("newest first", live[0].studentId, "working");
+  eq("the assignment comes back with the student", live[0].hwId, "hw1");
+  eq("window default is 15 minutes", WORKING_WINDOW_MS, 900000);
+
+  // Day/hour grid. Local-time buckets, deduped per student per hour.
+  const at = (day, hour, min = 0) =>
+    new Date(2026, 8, day, hour, min).toISOString(); // Sep 2026; Sep 7 2026 is a Monday.
+  const hourly = buildActivityByHour({
+    submissions: [{ studentId: "s1", timestamp: at(7, 22) }],
+    telemetryAll: {
+      s1: { hw1: {
+        sessions: [{ start: at(7, 20, 0), end: at(7, 20, 55) }],
+        // Four attempts inside the same hour: one mark, not four.
+        items: { p1: { firstSeenAt: at(7, 20, 5), attemptLog: [{ at: at(7, 20, 10) }, { at: at(7, 20, 20) }, { at: at(7, 20, 30) }] } },
+      } },
+      s2: { hw1: { sessions: [{ start: at(7, 20, 30), end: at(7, 20, 40) }] } },
+    },
+    now: new Date(2026, 8, 8),
+  });
+  const MON = 1;
+  eq("one student hammering an hour counts once", hourly.grid[MON][20], 2);
+  eq("a submission marks its own hour", hourly.grid[MON][22], 1);
+  eq("an hour nobody worked stays empty", hourly.grid[MON][3], 0);
+  eq("the grid is 7 days by 24 hours", [hourly.grid.length, hourly.grid[0].length], [7, 24]);
+  eq("total is the number of student-hours", hourly.total, 3);
+  eq("max is the busiest cell", hourly.max, 2);
+
+  // Anything older than the window is dropped, so a term-long node cannot claim the whole year.
+  const old = buildActivityByHour({
+    submissions: [{ studentId: "s1", timestamp: new Date(2025, 0, 1, 12).toISOString() }],
+    telemetryAll: {}, days: 30, now: new Date(2026, 8, 8),
+  });
+  eq("stale events fall outside the window", old.total, 0);
+}
+
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall passed");
 process.exit(fails ? 1 : 0);

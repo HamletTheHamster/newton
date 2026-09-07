@@ -8,6 +8,7 @@ import { countsTowardGrade, lastActiveMap, timeOnTaskMap } from "../../analytics
 import { buildAbsenceMap } from "../../attendance.js";
 import { formatDuration } from "../../hw-telemetry.js";
 import { CORR_POS, fmtPct, fmtSince, daysSince, Stat, StatRow, Meter, Panel, EmptyCard } from "./analytics-ui.jsx";
+import { StudentWorkDetail } from "./StudentWorkDetail.jsx";
 
 // Analytics -> Students. A whole-term view of the class, and a per-student drill-down.
 //
@@ -27,7 +28,7 @@ const overallColor = pct => {
 
 const STALE_DAYS = 14;
 
-function StudentDetail({ student, assignments, matrix, submissions, telemetryAll, absenceMap, onBack }) {
+function StudentDetail({ student, assignments, matrix, telemetryAll, absenceMap, onOpenWork, onBack }) {
   const { s, text, muted, border, isLight } = useTheme();
   const sid = student.studentId;
 
@@ -40,7 +41,7 @@ function StudentDetail({ student, assignments, matrix, submissions, telemetryAll
     const tele = sub?.telemetry || telemetryAll?.[sid]?.[a.id] || null;
     const ms = tele ? Object.values(tele.items || {}).reduce((n, it) => n + (it.activeMs || 0), 0) : 0;
     return {
-      a, pct, excused, counted, submitted: !!sub, ms,
+      a, pct, excused, counted, submitted: !!sub, ms, tele,
       missing: counted && !excused && !sub && a.type !== "manual",
       absent: !!matrix.absentMap[sid]?.[a.id],
       flagged: !!matrix.flaggedMap[sid]?.[a.id],
@@ -73,11 +74,22 @@ function StudentDetail({ student, assignments, matrix, submissions, telemetryAll
             </tr>
           </thead>
           <tbody>
-            {rows.map(r => (
-              <tr key={r.a.id} style={{ borderTop: `1px solid ${border}` }}>
+            {rows.map(r => {
+              // Only a homework carries per-problem engagement, and only if something was
+              // recorded: a row with nothing behind it stays plain text rather than offering a
+              // click that opens an empty panel.
+              const canOpen = r.a.type === "homework" && !!r.tele && !!onOpenWork;
+              return (
+              <tr
+                key={r.a.id}
+                onClick={canOpen ? () => onOpenWork(r.a) : undefined}
+                title={canOpen ? "See how this student worked this set" : ""}
+                style={{ borderTop: `1px solid ${border}`, cursor: canOpen ? "pointer" : "default" }}
+              >
                 <td style={{ padding: "9px 10px", color: text, fontSize: 13 }}>
                   <span style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: categoryColor(r.a.catId, muted), marginRight: 8 }} />
                   {r.a.title}
+                  {canOpen && <span style={{ color: muted, fontSize: 12, marginLeft: 8 }}>›</span>}
                 </td>
                 <td style={{ padding: "9px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
                   {r.pct == null ? (
@@ -99,20 +111,28 @@ function StudentDetail({ student, assignments, matrix, submissions, telemetryAll
                   {!r.excused && !r.missing && !r.absent && !r.flagged && !r.submitted && <span style={{ color: muted }}>{r.counted ? "-" : "Not due yet"}</span>}
                 </td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </table>
       </div>
+      <p style={{ ...s.muted, fontSize: 11, margin: 0, lineHeight: 1.5 }}>
+        Click a homework row to watch how this student worked through it, problem by problem.
+      </p>
     </div>
   );
 }
 
 export function AnalyticsStudents({
-  roster, assignments, matrix, submissions, gradeCategories, attendance, telemetryAll, telemetryLoading,
+  roster, assignments, quizzes, matrix, submissions, gradeCategories, attendance,
+  telemetryAll, telemetryLoading,
 }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
   const [openId, setOpenId] = useState(null);
+  // Which homework's engagement detail is open beneath the student, if any. Cleared whenever
+  // the student changes, so a back-out always lands on that student's term rather than on
+  // someone else's problem list.
+  const [openWorkId, setOpenWorkId] = useState(null);
   const [sort, setSort] = useState("overall");
 
   const absenceMap = useMemo(() => buildAbsenceMap(attendance), [attendance]);
@@ -157,15 +177,33 @@ export function AnalyticsStudents({
   }, [rows, sort]);
 
   const student = openId ? (roster || []).find(r => r.studentId === openId) : null;
+  // The full homework definition, which carries the problems the item ids are labelled from.
+  // `assignments` is the gradebook row and has titles and points but no problems.
+  const openWork = openWorkId ? (quizzes || []).find(q => q.id === openWorkId) : null;
+  const openWorkAssignment = openWorkId ? (assignments || []).find(a => a.id === openWorkId) : null;
 
   if (!roster?.length) return <EmptyCard title="No students enrolled">Add students in the Roster tab and this view fills in.</EmptyCard>;
 
   if (student) {
+    const name = student.altName || student.fullName || student.studentId;
+    if (openWork) {
+      return (
+        <Panel title={name} subtitle={`${openWorkAssignment?.title || openWork.title || openWorkId} · how they worked through it`}>
+          <StudentWorkDetail
+            student={student} homework={openWork}
+            telemetry={telemetryAll?.[student.studentId]?.[openWorkId] || null}
+            onBack={() => setOpenWorkId(null)} backLabel="‹ All assignments"
+          />
+        </Panel>
+      );
+    }
     return (
-      <Panel title={student.altName || student.fullName || student.studentId} subtitle="Every assignment this term">
+      <Panel title={name} subtitle="Every assignment this term">
         <StudentDetail
-          student={student} assignments={assignments} matrix={matrix} submissions={submissions}
-          telemetryAll={telemetryAll} absenceMap={absenceMap} onBack={() => setOpenId(null)}
+          student={student} assignments={assignments} matrix={matrix}
+          telemetryAll={telemetryAll} absenceMap={absenceMap}
+          onOpenWork={a => setOpenWorkId(a.id)}
+          onBack={() => { setOpenWorkId(null); setOpenId(null); }}
         />
       </Panel>
     );
@@ -221,7 +259,7 @@ export function AnalyticsStudents({
                 return (
                   <tr
                     key={r.studentId}
-                    onClick={() => setOpenId(r.studentId)}
+                    onClick={() => { setOpenWorkId(null); setOpenId(r.studentId); }}
                     style={{ borderTop: `1px solid ${border}`, cursor: "pointer" }}
                   >
                     <td style={{ padding: "9px 10px", color: text, fontSize: 13 }}>
