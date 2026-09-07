@@ -80,6 +80,36 @@ Auth helpers live in `src/auth.js` (`hashPw`, `makeHash`, `verifyPw`, TOTP helpe
 
 Enable in Settings tab → generates TOTP secret in browser → shows QR code (via `qrcode` npm package) → user confirms with a 6-digit code → secret saved to `settings.totpSecret` in Firebase. "Remember this device" writes the token hash to `settings.trustedDevices` and the raw token to `localStorage['newton_device_token']`. Disable/clear actions use the existing `confirmDanger` modal (requires password re-entry).
 
+## Student display names (preferred first names)
+
+A student can set their own preferred first name from the student portal's top-right **Settings** button; the instructor's controls sit on the **Roster** tab. Both write the SAME `altName` field on the roster entry, so the app has one display name rather than two that can disagree, and every existing `stu.altName || stu.fullName` reader is unchanged.
+
+Four optional fields on the roster entry carry the whole feature. There is no new RTDB node and no rules change:
+
+| Field | Meaning |
+|---|---|
+| `altName` | the display name (shared with the instructor's own edit) |
+| `altNameBy` | `"student"` when the student set it; cleared whenever the instructor edits or resets |
+| `altNameAt` | ISO stamp of the student's set |
+| `nicknameLocked` | `true` = this student may no longer set their own name |
+
+**The student supplies a first name only.** `altNameFor` (`src/nickname.js`) pairs it with their real surname before storing, so "Kunj" on Kunjkumar Patel is written as `"Kunj Patel"` and the gradebook, analytics, Blackboard export and roster all keep reading as a roster. `nicknameFromAltName` is the inverse, used to pre-fill the student's own field.
+
+**Why it is screened at all: the name is not private.** It replaces their name for the instructor across the gradebook and analytics, and it is rendered on the **pre-login student picker**, where the whole class can read it without signing in. An unscreened field there is a slur on the front door of the app.
+
+**Screening is server-side and fails closed** (`netlify/functions/screen-name.js`, POST `{ name, firstName?, fullName? }` → `{ ok: true }` | `{ ok: false, reason }`). Same reasoning as the answer key: the client bundle must not be a map of what to type around, so only the structural rules (length, letters-plus-hyphen-apostrophe-period, at most two words, no digits, no triple-repeats) live in the shared pure `src/nickname.js`, and the client re-runs those purely for instant feedback. The function re-runs them as the gate, then applies two layers:
+
+1. **A wordlist**, matched over three normalizations of the name (plain, leet-substituted, and repeat-collapsed). Deterministic, instant, free, and only a floor.
+2. **Claude** (`claude-opus-5`, `effort: "low"`, raw fetch like `grade.js`), which is the actual filter. It gets the student's real name as context and judges slurs in any language, insults, impersonation of staff, drug and violence references, and strings that are not names.
+
+If Claude is unreachable or replies unparseably, the name is **refused** with "try again in a few minutes". The cost of failing closed is a student briefly unable to rename themselves; the cost of failing open is an unscreened name on the login screen with nobody watching.
+
+Two rules keep the wordlist from becoming the bigger problem. **Repeat-collapsing is used only for the substring list** (it folds "boob" onto "bob" and would refuse a student named Bob), and **a term is matched against the folded form only if folding leaves at least 4 characters** (`collapse("kkk")` is `"k"`, which refused every name containing a K until it was caught). Words that are both profanity and real names, or mild enough that context decides (`dick`, `cock`, `hoe`, `crap`, `damn`, `weed`), are deliberately on **neither** list: Claude judges them correctly in context, and a wordlist can only be wrong about them in the direction that tells a student their own name is inappropriate. `src/nickname.test.mjs` guards both directions.
+
+**The instructor keeps three controls, all on the Roster tab's Name cell.** A student-set name carries a teal "set by student" badge, because it is the only name in the roster nobody has looked at. `✎` edits it (and clears the student-set provenance, since from then on the name is the instructor's). `↺` resets it to the name on file. The padlock is the abuse switch and sets `nicknameLocked`; a locked student shows an amber "name locked" badge and sees "Your instructor sets your display name for this course" in place of the field. Locking deliberately does **not** rename anybody: revoking the privilege and deciding what someone should now be called are separate acts, and the usual case (an honest mistake) wants a reset without a revoke.
+
+**The lock is enforced against a fresh read, not the session snapshot.** `saveRosterFields(studentId, patch, guard)` (App.jsx) re-reads the roster to resolve the positional path anyway, and now runs an optional `guard` against that freshly-read entry. Without it the lock would be advisory: `refreshClassContent` deliberately never re-polls the roster, so a student's tab can sit open for hours holding an entry that still says they are allowed.
+
 ## Claude API
 
 Calls proxied through `netlify/functions/claude.js` (which forwards to `api.anthropic.com/v1/messages` with the server-side API key):

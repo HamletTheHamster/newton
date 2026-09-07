@@ -50,6 +50,8 @@ import { CourseEvals } from "./screens/student/CourseEvals.jsx";
 import { AnnouncementEditor } from "./components/lms/AnnouncementEditor.jsx";
 import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
+import { LockIcon } from "./components/lms/itemIcons.jsx";
+import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
 // Manual assignment ordering: module items occupy order = modIdx*100 + itemIdx.
@@ -208,6 +210,7 @@ export default function App() {
   const [pwInput, setPwInput] = useState(""); const [pwError, setPwError] = useState("");
   const [loggedInStudent, setLoggedInStudent] = useState(null);
   const [showStudentSettings, setShowStudentSettings] = useState(false);
+  const [stuNickDraft, setStuNickDraft] = useState(""); const [stuNickMsg, setStuNickMsg] = useState(""); const [stuNickBusy, setStuNickBusy] = useState(false);
   const [editingAltName, setEditingAltName] = useState(null); const [altNameInput, setAltNameInput] = useState("");
   const [editingEmail, setEditingEmail] = useState(null); const [emailInput, setEmailInput] = useState("");
   const [newPw1, setNewPw1] = useState(""); const [newPw2, setNewPw2] = useState(""); const [pwChangeMsg, setPwChangeMsg] = useState("");
@@ -765,7 +768,7 @@ export default function App() {
       const runnerBack = runnerFrom === "instructor" ? "instructor" : "student-portal";
       if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go(runnerBack) : setShowLeaveConfirm(true); }
       else if (screen === "homework") { go(runnerBack); }
-      else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }
+      else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); setStuNickDraft(""); setStuNickMsg(""); }
       else if (screen === "student-pw") { history.pushState({ newton: "student-pw" }, "", ""); setSelectedStudent(null); go("student-search"); }
       else if (screen === "inst-login") { history.pushState({ newton: "inst-login" }, "", ""); go("student-search"); }
     };
@@ -838,7 +841,12 @@ export default function App() {
   // meaningful against the CURRENT array), so the index is resolved from a fresh read taken
   // immediately before the write. That closes the window from hours to milliseconds, and the
   // worst a residual race could do is mistype one field, never drop a student.
-  const saveRosterField = async (studentId, field, value) => {
+  //
+  // `guard` runs against the FRESHLY READ entry, not the session's snapshot, and throws to abort.
+  // That is what makes the instructor's nickname lock mean something: a student's tab can sit open
+  // for hours, `refreshClassContent` deliberately never re-polls the roster, and so a student whose
+  // name was locked five minutes ago still holds an entry that says otherwise.
+  const saveRosterFields = async (studentId, patch, guard) => {
     const cid = requireClass();
     let live;
     try { live = await fbGet(classPath(cid, 'roster')); }
@@ -846,16 +854,105 @@ export default function App() {
     const arr = Array.isArray(live) ? live : roster;
     const i = arr.findIndex(r => r?.studentId === studentId);
     if (i < 0) throw new Error("That student is no longer on the roster, so the change was not saved.");
-    await fbSave(classPath(cid, `roster/${i}/${field}`), value ?? null);
+    if (guard) { const stop = guard(arr[i]); if (stop) throw new Error(stop); }
+    // PATCH the entry, so the keys this call does not name are left exactly as they are. A `null`
+    // here prunes one named field on purpose (clearing an email, resetting a name); it is never a
+    // whole-object rewrite built from local state.
+    await fbSave(classPath(cid, `roster/${i}`), patch, '', { merge: true });
     const next = arr.map(r => {
       if (r?.studentId !== studentId) return r;
-      const { [field]: _drop, ...rest } = r;
-      return value ? { ...rest, [field]: value } : rest;
+      const out = { ...r };
+      for (const [k, v] of Object.entries(patch)) { if (v === null || v === undefined) delete out[k]; else out[k] = v; }
+      return out;
     });
     setRoster(next);
     updateClassCache(cid, 'roster', next);
+    return next[i];
   };
-  const saveAltName = async stu => { const val = altNameInput.trim(); await saveRosterField(stu.studentId, 'altName', val || null); setEditingAltName(null); };
+  const saveRosterField = (studentId, field, value) => saveRosterFields(studentId, { [field]: value ?? null });
+  // An instructor edit clears the student-set provenance: whatever it was, from now on this name is
+  // the instructor's, and the roster should stop flagging it for review.
+  const saveAltName = async stu => {
+    const val = altNameInput.trim();
+    await saveRosterFields(stu.studentId, { altName: val || null, altNameBy: null, altNameAt: null });
+    setEditingAltName(null);
+  };
+  const resetAltName = async stu => {
+    if (!window.confirm(`Reset this student's display name back to ${stu.fullName}?`)) return;
+    await saveRosterFields(stu.studentId, { altName: null, altNameBy: null, altNameAt: null });
+  };
+  // The abuse switch. Locking does NOT rename anybody: the two are separate acts, so an instructor
+  // can revoke the privilege without also deciding what the student should now be called (and can
+  // reset without revoking, which is the usual case for an honest mistake).
+  const toggleNicknameLock = async stu => {
+    const locking = nicknameAllowed(stu);
+    const msg = locking
+      ? `Stop ${stu.fullName} from setting their own preferred name? You can still change it for them.`
+      : `Let ${stu.fullName} set their own preferred name again?`;
+    if (!window.confirm(msg)) return;
+    await saveRosterFields(stu.studentId, { nicknameLocked: locking ? true : null });
+  };
+
+  // ── The student's own preferred first name ────────────────────────────────
+  // Writes the SAME `altName` the instructor edits, so there is one display name in the app rather
+  // than two that can disagree. The student supplies a first name only and `altNameFor` pairs it
+  // with their real surname, which is what keeps the gradebook and analytics reading as a roster.
+  //
+  // Every name is approved by netlify/functions/screen-name.js before it is written. That check is
+  // server-side and fails closed, because the name is public: it is shown to the instructor
+  // everywhere and to everyone on the pre-login student picker.
+  const saveStudentNickname = async () => {
+    const stu = loggedInStudent;
+    if (!stu) return;
+    const raw = normalizeNickname(stuNickDraft);
+    const current = nicknameFromAltName(stu);
+    const guard = live => (nicknameAllowed(live) ? null : "Your instructor manages your display name for this course.");
+
+    const apply = async (patch, note) => {
+      let saved;
+      try { saved = await saveRosterFields(stu.studentId, patch, guard); }
+      catch (e) { setStuNickMsg(e?.message || "Could not save your name. Please try again."); return false; }
+      setLoggedInStudent(saved);
+      setSelectedStudent(saved);
+      setStuNickDraft(nicknameFromAltName(saved));
+      setStuNickMsg(note);
+      setTimeout(() => setStuNickMsg(""), 4000);
+      return true;
+    };
+
+    setStuNickMsg("");
+    if (!raw) {                                   // blank is the reset, not an error
+      if (!current) { setStuNickMsg("You are already using your name on file."); return; }
+      setStuNickBusy(true);
+      await apply({ altName: null, altNameBy: null, altNameAt: null }, `✅ You are now shown as ${stu.fullName}.`);
+      setStuNickBusy(false);
+      return;
+    }
+    if (raw === current) { setStuNickMsg("That is already your preferred name."); return; }
+    const format = checkNicknameFormat(raw);
+    if (!format.ok) { setStuNickMsg(format.reason); return; }
+
+    setStuNickBusy(true);
+    let verdict;
+    try {
+      const res = await fetch("/.netlify/functions/screen-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: raw, firstName: stu.firstName, fullName: stu.fullName }),
+      });
+      verdict = await res.json();
+    } catch {
+      verdict = null;
+    }
+    if (!verdict || verdict.ok !== true) {
+      setStuNickMsg(verdict?.reason || "The name check is unavailable right now. Please try again in a few minutes.");
+      setStuNickBusy(false);
+      return;
+    }
+    const altName = altNameFor(raw, stu);
+    await apply({ altName, altNameBy: "student", altNameAt: new Date().toISOString() }, `✅ You are now shown as ${altName}.`);
+    setStuNickBusy(false);
+  };
   const isValidEmail = v => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
   const saveEmail = async stu => {
     const val = emailInput.trim();
@@ -1956,11 +2053,44 @@ export default function App() {
           {bugModalJsx}
           <Footer onBugClick={() => setBugReportOpen(true)} />
           <div style={{ maxWidth: 420, width: "100%", ...th.s.card, padding: 36 }}>
-            <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); }} style={{ ...th.s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
+            <button onClick={() => { setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); setStuNickDraft(""); setStuNickMsg(""); }} style={{ ...th.s.btnGhost, marginBottom: 24, width: "auto" }}>← Back to course</button>
             <h2 style={{ fontSize: 20, fontWeight: 700, color: th.text, margin: "0 0 4px" }}>Account Settings</h2>
             <p style={{ ...th.s.muted, marginBottom: 28 }}>{loggedInStudent.fullName}</p>
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-              <div><label style={th.s.label}>Email</label><input type="email" style={th.s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
+              {/* Preferred first name. Writes the same altName the instructor edits, so the app has
+                  one display name. `nicknameAllowed` is the instructor's per-student off switch;
+                  the real enforcement is the guard inside saveStudentNickname, which re-reads the
+                  roster, since this snapshot dates from login. */}
+              <div>
+                <label style={th.s.label}>Preferred first name</label>
+                {nicknameAllowed(loggedInStudent) ? (
+                  <>
+                    <input
+                      style={th.s.input}
+                      maxLength={NICKNAME_MAX}
+                      placeholder={loggedInStudent.firstName || "First name"}
+                      value={stuNickDraft}
+                      onChange={e => setStuNickDraft(e.target.value)}
+                      onKeyDown={e => { if (e.key === "Enter" && !stuNickBusy) saveStudentNickname(); }}
+                      disabled={stuNickBusy}
+                    />
+                    <p style={{ ...th.s.muted, fontSize: 12, margin: "6px 0 0" }}>
+                      This is the name your instructor sees, and the name on the student list you pick from when you log in. Your last name and your record stay the same. Leave it blank to go back to {loggedInStudent.fullName}.
+                    </p>
+                  </>
+                ) : (
+                  <p style={{ ...th.s.muted, fontSize: 13, margin: "4px 0 0" }}>
+                    Your instructor sets your display name for this course.
+                  </p>
+                )}
+              </div>
+              {stuNickMsg && <p style={{ color: stuNickMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{stuNickMsg}</p>}
+              {nicknameAllowed(loggedInStudent) && (
+                <button onClick={saveStudentNickname} disabled={stuNickBusy} style={{ ...th.s.btnPri, opacity: stuNickBusy ? 0.6 : 1, cursor: stuNickBusy ? "default" : "pointer" }}>
+                  {stuNickBusy ? "Checking…" : "Update Name"}
+                </button>
+              )}
+              <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}><label style={th.s.label}>Email</label><input type="email" style={th.s.input} placeholder="your@email.com" value={stuEmailDraft} onChange={e => setStuEmailDraft(e.target.value)} /></div>
               {stuEmailMsg && <p style={{ color: stuEmailMsg.startsWith("✅") ? "#4ade80" : "#f87171", fontSize: 13, margin: 0 }}>{stuEmailMsg}</p>}
               <button onClick={saveStudentEmail} style={th.s.btnPri}>Update Email</button>
               <div style={{ borderTop: `1px solid ${th.border}`, paddingTop: 16 }}>
@@ -2027,7 +2157,7 @@ export default function App() {
             title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
             style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", color: th.muted, fontSize: 16 }}
           >{lightMode ? "☀" : "☽"}</button>
-          <button onClick={() => { setShowStudentSettings(true); setStuEmailDraft(loggedInStudent?.email || ""); setStuEmailMsg(""); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...th.s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
+          <button onClick={() => { setShowStudentSettings(true); setStuEmailDraft(loggedInStudent?.email || ""); setStuEmailMsg(""); setStuNickDraft(nicknameFromAltName(loggedInStudent)); setStuNickMsg(""); history.pushState({ newton: "settings" }, "", ""); }} style={{ ...th.s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 13 }}>Settings</button>
         </div>
       </>
     );
@@ -2493,9 +2623,25 @@ export default function App() {
                             <button onClick={() => setEditingAltName(null)} style={{ background: "none", border: `1px solid ${BORDER}`, color: MUTED, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                           </div>
                         ) : (
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                             <span>{stu.altName || stu.fullName}{stu.altName && <span style={{ color: MUTED, fontWeight: 400, fontSize: 12, marginLeft: 4 }}>({stu.fullName})</span>}</span>
+                            {/* A name the student chose is flagged, because it is the only one nobody
+                                has looked at. Screening approved it; this is what makes it reviewable. */}
+                            {stu.altNameBy === "student" && (
+                              <span title={stu.altNameAt ? `Set by the student on ${new Date(stu.altNameAt).toLocaleDateString()}` : "Set by the student"}
+                                    style={{ color: TEAL, background: "rgba(0,130,140,0.14)", border: `1px solid ${TEAL}`, borderRadius: 5, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>set by student</span>
+                            )}
+                            {!nicknameAllowed(stu) && (
+                              <span title="This student cannot set their own name" style={{ color: isLight ? "#92640a" : "#fde047", background: isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)", border: "1px solid rgba(202,138,4,0.5)", borderRadius: 5, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>name locked</span>
+                            )}
                             <button onClick={() => { setEditingAltName(stu.studentId); setAltNameInput(stu.altName || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Set preferred name">✎</button>
+                            {stu.altName && (
+                              <button onClick={() => resetAltName(stu)} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title={`Reset to ${stu.fullName}`}>↺</button>
+                            )}
+                            <button onClick={() => toggleNicknameLock(stu)} style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", lineHeight: 0, display: "inline-flex", alignItems: "center" }}
+                                    title={nicknameAllowed(stu) ? "Stop this student from setting their own name" : "Let this student set their own name again"}>
+                              <LockIcon size={13} color={nicknameAllowed(stu) ? MUTED : (isLight ? "#92640a" : "#fde047")} strokeWidth={nicknameAllowed(stu) ? 2 : 2.4} />
+                            </button>
                           </div>
                         )}</td>
                         <td style={{ padding: "12px 16px", color: MUTED, fontFamily: "monospace", fontSize: 13 }}>{stu.studentId}</td>
