@@ -2,7 +2,6 @@ import { useState, useMemo } from "react";
 import { useTheme } from "../../theme.js";
 import { useIsMobile } from "../../utils.js";
 import { calcGrades } from "../../utils.js";
-import { InfoDot } from "../../components/InfoDot.jsx";
 import { categoryColor } from "../../category-colors.js";
 import { countsTowardGrade, lastActiveMap, timeOnTaskMap } from "../../analytics.js";
 import { buildAbsenceMap } from "../../attendance.js";
@@ -225,18 +224,6 @@ export function AnalyticsStudents({
             <option value="time">Least time on task</option>
             <option value="name">Name (A-Z)</option>
           </select>
-        </div>
-        <div style={{ flex: 1 }} />
-        <div style={{ display: "flex", alignItems: "center", gap: 8, paddingBottom: isMobile ? 0 : 10 }}>
-          <span style={{ color: muted, fontSize: 12 }}>How to read this</span>
-          <InfoDot title="No risk score, on purpose" align="right">
-            This table shows the components rather than a single risk number. A composite would rank students by
-            a formula nobody can see, and every column here has an innocent explanation on its own: a student
-            with little time on task may work on paper, and one who has been quiet for a week may have been ill.
-            <br /><br />
-            Sorted by overall grade because that is the one ordering that needs no interpretation. Use it to
-            decide who to check in with, not to conclude anything.
-          </InfoDot>
         </div>
       </div>
 

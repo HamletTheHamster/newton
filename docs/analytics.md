@@ -12,9 +12,10 @@ from the most immediate question to the most reflective: **Pulse**, **Students**
 ## The panels explain themselves, or they are not finished
 
 **No explainer chrome anywhere on this tab: no `subtitle` under a panel heading, no blurb under
-the Analytics heading, and no circled-i popovers on Pulse.** An element that needs a sentence of
-prose to say what it shows is not designed well enough yet, and the sentence hides the fact that
-it isn't.
+the Analytics heading, and no circled-i popovers on any view** (three were removed from Pulse, and
+the "How to read this" dot above the Students table with them). An element that needs a sentence
+of prose to say what it shows is not designed well enough yet, and the sentence hides the fact
+that it isn't.
 
 What a reader genuinely needs in order to read a chart goes into the chart's own furniture, where
 it is met without knowing to look for it: the panel **title** (which is why it reads "When the
@@ -385,7 +386,9 @@ see, and every column has an innocent reading on its own: a student with little 
 work on paper; one quiet for a week may have been ill. The table shows the components, sorts by
 the one ordering that needs no interpretation (overall grade, lowest first), and lets the
 instructor sort by any of the others. Badges state only plain facts ("4 missing", "quiet 21d"),
-never an inference about why.
+never an inference about why. That reasoning is a design constraint, not a caption: it lived in a
+"How to read this" popover above the sort control and is now only a code comment and this
+paragraph, per [The panels explain themselves](#the-panels-explain-themselves-or-they-are-not-finished).
 
 Overall goes through the same `calcGrades` the Gradebook uses, on the same `countsTowardGrade`
 filter, so this column can never disagree with the gradebook's Overall.
