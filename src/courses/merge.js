@@ -7,7 +7,11 @@
 //   pages:        { [pageId]: { title, content, ... } }
 //   uploads:      { [uploadId]: { name, size, mime, downloadUrl, ... } }
 //
-// Output per module: { id, title, releaseDate, items: [...] }
+// Output per module: { id, title, kind, releaseDate, items: [...] }
+// `kind` is passed through untouched from the stored module. It is what tells the student portal
+// whether a module is a week of coursework or a reference shelf (see course-info.js); the merge
+// itself has no opinion about it, and the merged list stays COMPLETE either way, because the
+// instructor's analytics and the assignment locks read every module regardless of where it shows.
 // Each item carries `_key` (= item.id) and `_hidden`, plus resolved
 // pageContent / downloadUrl / etc. for page and file items.
 export function buildModules(modulesArr, moduleConfig = {}, pages = {}, uploads = {}) {
@@ -31,6 +35,6 @@ export function buildModules(modulesArr, moduleConfig = {}, pages = {}, uploads 
       }
       return resolved;
     });
-    return { id: mod.id, title: mod.title, releaseDate: cfg.releaseDate || null, items };
+    return { id: mod.id, title: mod.title, kind: mod.kind || null, releaseDate: cfg.releaseDate || null, items };
   });
 }

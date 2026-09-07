@@ -1,25 +1,10 @@
 import { useTheme } from "../../theme.js";
 import { categoryColorForName } from "../../category-colors.js";
+import { renderWithLinks } from "../../components/AutoLink.jsx";
 
 // A syllabus names its own grading categories in free text ("Quizzes", "Homework & Problem Sets"),
 // so the color is matched by name against the shared palette rather than by a category id.
 const gradingColor = name => categoryColorForName(name, "#00828c");
-
-function renderWithLinks(text, teal) {
-  if (!text) return text;
-  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
-  const parts = [];
-  let last = 0;
-  let match;
-  while ((match = urlRegex.exec(text)) !== null) {
-    if (match.index > last) parts.push(text.slice(last, match.index));
-    const url = match[0];
-    parts.push(<a key={match.index} href={url} target="_blank" rel="noopener noreferrer" style={{ color: teal, textDecoration: "underline" }}>{url}</a>);
-    last = match.index + url.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts.length > 0 ? parts : text;
-}
 
 export function StudentSyllabus({ syllabus, showHeader = true }) {
   const { s, text, muted, border, teal, tealDim } = useTheme();

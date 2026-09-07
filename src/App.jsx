@@ -20,7 +20,8 @@ import { buildModules } from "./courses/merge.js";
 import { migrateLegacyModuleConfig } from "./courses/migrate.js";
 import { newId } from "./courses/ids.js";
 import { unseenAnnouncements } from "./announcements.js";
-import { viewRecordOf } from "./material-views.js";
+import { viewRecordOf, materialTarget, isMaterialItem } from "./material-views.js";
+import { partitionModules, visibleShelves, normalizeGuide, guideHasContent } from "./course-info.js";
 
 import { SyncBadge } from "./components/SyncBadge.jsx";
 import { CustomSelect } from "./components/CustomSelect.jsx";
@@ -38,7 +39,10 @@ import { Home } from "./screens/student/Home.jsx";
 import { HomeworkRunner } from "./screens/student/HomeworkRunner.jsx";
 import { Stub } from "./screens/student/Stub.jsx";
 import { StudentSyllabus } from "./screens/student/StudentSyllabus.jsx";
+import { StudentResources } from "./screens/student/StudentResources.jsx";
+import { CourseGuide } from "./screens/student/CourseGuide.jsx";
 import { InstructorSyllabus } from "./screens/instructor/InstructorSyllabus.jsx";
+import { InstructorGuide } from "./screens/instructor/InstructorGuide.jsx";
 import { StudentAnnouncements } from "./screens/student/StudentAnnouncements.jsx";
 import { NewAnnouncementsModal } from "./components/lms/NewAnnouncementsModal.jsx";
 import { StudentCalendar } from "./screens/student/StudentCalendar.jsx";
@@ -103,10 +107,15 @@ const DEFAULT_GRADE_CATEGORIES = {
 };
 
 // ── Sidebar definitions ──────────────────────────────────────────────────────
+// Syllabus, Course Guide and Resources sit together on purpose: they are the three things a
+// student consults rather than completes, and they used to be scattered between a PDF page and a
+// couple of module rows carrying completion circles (see course-info.js).
 const STUDENT_SECTIONS = [
   { id: "home", label: "Home" },
   { id: "calendar", label: "Calendar" },
   { id: "syllabus", label: "Syllabus" },
+  { id: "guide", label: "Course Guide" },
+  { id: "resources", label: "Resources" },
   { id: "announcements", label: "Announcements" },
   { id: "grades", label: "Grades" },
   { id: "evals", label: "Course Evals" },
@@ -122,6 +131,7 @@ const INSTRUCTOR_SECTIONS = [
   { id: "roster",       label: "Roster" },
   { id: "announcements", label: "Announcements" },
   { id: "syllabus",     label: "Syllabus" },
+  { id: "guide",        label: "Course Guide" },
   { id: "evals",        label: "Evals" },
   { id: "settings",     label: "Settings" },
 ];
@@ -164,6 +174,7 @@ export default function App() {
   const [customQuizzes, setCustomQuizzes] = useState({});
   const [uploads, setUploads] = useState({});
   const [syllabus, setSyllabus] = useState(null);          // { pdf, fields } or null
+  const [courseGuide, setCourseGuide] = useState(null);    // { welcome, rhythm, policies } or null
   const [announcements, setAnnouncements] = useState({});  // raw { [annId]: record }
   // Announcement read receipts for the SIGNED-IN student only:
   // { classId, studentId, map: { [annId]: ISO timestamp } }, or null while unloaded.
@@ -318,6 +329,12 @@ export default function App() {
       dueDate: dueDates[ma.id] || null,
     }));
   const mergedModules = buildModules(modules, moduleConfig, pages, uploads);
+  // Where each module is SHOWN, and nothing else. `mergedModules` stays complete on purpose:
+  // `assignmentLocks` below, the instructor's `materialsOf` open rates, the course-evals nudge and
+  // StudentGrades all read every module and none of them care which page it appears on. Filter a
+  // shelf out of `mergedModules` itself and its files quietly disappear from the analytics while
+  // students go on clicking them every week. See course-info.js.
+  const { course: courseModules, resources: resourceShelves } = partitionModules(mergedModules);
   // A student only ever reaches a quiz/homework through its module item, so an
   // assignment is open exactly when some visible item points at it from a module
   // whose timed release has passed. An assignment no module references has
@@ -490,6 +507,7 @@ export default function App() {
           if (c.pages && typeof c.pages === 'object') setPages(c.pages);
           if (c.uploads && typeof c.uploads === 'object') setUploads(c.uploads);
           if (c.syllabus) setSyllabus(c.syllabus);
+          if (c.courseGuide !== undefined) setCourseGuide(normalizeGuide(c.courseGuide));
           if (Array.isArray(c.modules)) setModules(c.modules);
           if (c.announcements && typeof c.announcements === 'object') setAnnouncements(c.announcements);
           if (c.gradeCategories && typeof c.gradeCategories === 'object') setGradeCategories(c.gradeCategories);
@@ -524,7 +542,7 @@ export default function App() {
     if (!classId) return;
     setClassDataLoading(true);
     try {
-      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData, attendanceData, blackboardData] = await Promise.all([
+      const [rosterData, pwsData, datesData, checkedData, subsData, modulesData, moduleConfigData, pagesData, uploadsData, annsData, gradeCatsData, gradeOverridesData, assignmentCatsData, manualAsgnData, nameOverrideData, orderOverrideData, syllabusData, customQuizzesData, hwSettingsData, attendanceData, blackboardData, courseGuideData] = await Promise.all([
         fbGet(classPath(classId, 'roster')).catch(() => null),
         fbGet(classPath(classId, 'studentPws')).catch(() => null),
         fbGet(classPath(classId, 'dueDates')).catch(() => null),
@@ -546,6 +564,7 @@ export default function App() {
         fbGet(classPath(classId, 'homeworkSettings')).catch(() => null),
         fbGet(classPath(classId, 'attendance')).catch(() => null),
         fbGet(classPath(classId, 'blackboard')).catch(() => null),
+        fbGet(classPath(classId, 'courseGuide')).catch(() => null),
       ]);
       const rosterArr = Array.isArray(rosterData) ? rosterData : [];
       const pwsObj = (pwsData && typeof pwsData === 'object') ? pwsData : {};
@@ -599,6 +618,7 @@ export default function App() {
       }
 
       const syllabusObj = (syllabusData && typeof syllabusData === 'object') ? syllabusData : null;
+      const courseGuideObj = normalizeGuide(courseGuideData);
 
       setRoster(rosterArr);
       setStudentPws(pwsObj);
@@ -612,6 +632,7 @@ export default function App() {
       setCustomQuizzes(customQuizzesObj);
       setUploads(uploadsObj);
       setSyllabus(syllabusObj);
+      setCourseGuide(courseGuideObj);
       setAnnouncements(annsObj);
       setGradeCategories(gradeCatsObj);
       setGradeOverrides(gradeOverridesObj);
@@ -625,7 +646,7 @@ export default function App() {
       setAttendance(attendanceObj);
       const blackboardObj = (blackboardData && typeof blackboardData === 'object') ? blackboardData : null;
       setBlackboard(blackboardObj);
-      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj, attendance: attendanceObj, blackboard: blackboardObj } }));
+      setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), roster: rosterArr, studentPws: pwsObj, dueDates: datesObj, checkedSubs: checkedObj, submissions: subsData || {}, modules: modulesArr, moduleConfig: moduleConfigObj, pages: pagesObj, uploads: uploadsObj, syllabus: syllabusObj, courseGuide: courseGuideObj, announcements: annsObj, gradeCategories: gradeCatsObj, gradeOverrides: gradeOverridesObj, assignmentCategories: assignmentCatsObj, manualAssignments: manualAsgnObj, customQuizzes: customQuizzesObj, homeworkSettings: hwSettingsObj, attendance: attendanceObj, blackboard: blackboardObj } }));
     } finally { setClassDataLoading(false); }
   };
 
@@ -644,7 +665,7 @@ export default function App() {
     try {
       const [modulesData, moduleConfigData, pagesData, uploadsData, customQuizzesData,
              datesData, hwSettingsData, annsData, gradeOverridesData, syllabusData,
-             manualAsgnData, attendanceData] = await Promise.all([
+             manualAsgnData, attendanceData, courseGuideData] = await Promise.all([
         fbGet(classPath(classId, 'modules')).catch(() => undefined),
         fbGet(classPath(classId, 'moduleConfig')).catch(() => undefined),
         fbGet(classPath(classId, 'pages')).catch(() => undefined),
@@ -657,6 +678,7 @@ export default function App() {
         fbGet(classPath(classId, 'syllabus')).catch(() => undefined),
         fbGet(classPath(classId, 'manualAssignments')).catch(() => undefined),
         fbGet(classPath(classId, 'attendance')).catch(() => undefined),
+        fbGet(classPath(classId, 'courseGuide')).catch(() => undefined),
       ]);
       // `undefined` = the fetch failed; skip that node rather than blanking it.
       // `null` = the node genuinely doesn't exist → normalize to empty, same as loadClassData.
@@ -689,6 +711,10 @@ export default function App() {
       // and their grades list labels the row. Without re-polling, a roll call taken while a
       // student had their portal open would not reach them until they reloaded.
       take(attendanceData, setAttendance, 'attendance', obj);
+      // The guide is instructor-authored and students read it, so it re-polls like any other
+      // such node: without this, a welcome or a corrected deadline edited mid-morning would not
+      // reach a student whose portal has been open since breakfast.
+      take(courseGuideData, setCourseGuide, 'courseGuide', d => normalizeGuide(d));
       if (Object.keys(patch).length) {
         setClasses(prev => ({ ...prev, [classId]: { ...(prev[classId] || {}), ...patch } }));
       }
@@ -1183,6 +1209,17 @@ export default function App() {
     await fbSave(classPath(cid, 'syllabus'), null);
   };
 
+  // The course guide is a single instructor-authored document with one writer, so a whole-node
+  // write is correct here (unlike anything a student can also write - see student-work.js). It is
+  // normalized on the way in as well as on the way out, since Claude produces the first draft.
+  const saveCourseGuide = async (data) => {
+    const cid = requireClass();
+    const guide = normalizeGuide(data ? { ...data, updatedAt: new Date().toISOString() } : null);
+    setCourseGuide(guide);
+    updateClassCache(cid, 'courseGuide', guide);
+    await fbSave(classPath(cid, 'courseGuide'), guide);
+  };
+
   const saveAnnouncement = async (ann) => {
     const cid = requireClass();
     const now = new Date().toISOString();
@@ -1272,6 +1309,21 @@ export default function App() {
       // immediately; the in-flight fetch merges itself under this record, never over it.
       : { classId: cid, studentId: sid, map: { [itemId]: next } });
     await fbUpdate(classPath(cid, `materialViews/${sid}/${itemId}`), next).catch(() => {});
+  };
+
+  // Opening a posted material, from EITHER place a student meets one: a row in a module on Home,
+  // or a row on a reference shelf on the Resources page. One function, so a file cannot behave
+  // differently depending on which page the student found it on, and so the open is recorded from
+  // both (the shelves are in the instructor's open rates exactly as the weekly readings are).
+  //
+  // The record is written first and can never block or throw: the click's job is to open the
+  // file, and bookkeeping the student never asked for must not be able to stop it.
+  const openMaterial = item => {
+    if (!isMaterialItem(item)) return;
+    try { Promise.resolve(recordMaterialView(item)).catch(() => {}); } catch { /* bookkeeping only */ }
+    if (item.type === "page") { setViewingPage({ title: item.title, content: item.pageContent || "" }); return; }
+    const url = materialTarget(item);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
   };
   // Sitting on the Announcements page IS reading them, so the popup stays out of the way there
   // and the page itself records the view. Without this the modal would cover the very list the
@@ -2217,9 +2269,14 @@ export default function App() {
         return new Date() >= (dueToDate(last.releaseDate) || 0);
       } catch { return false; }
     })();
-    const studentSidebarItems = STUDENT_SECTIONS.map(item =>
-      item.id === "evals" ? { ...item, badge: evalNudge ? 1 : 0 } : item
-    );
+    // Course Guide and Resources are dropped from the nav until there is something behind them.
+    // A class where the instructor has not written a guide or posted a shelf would otherwise carry
+    // two entries whose only content is "nothing has been posted yet", which is worse than the
+    // student never seeing the entry at all. Every other section always has something to show.
+    const hasShelves = visibleShelves(resourceShelves).length > 0;
+    const studentSidebarItems = STUDENT_SECTIONS
+      .filter(item => (item.id === "guide" ? guideHasContent(courseGuide) : item.id === "resources" ? hasShelves : true))
+      .map(item => (item.id === "evals" ? { ...item, badge: evalNudge ? 1 : 0 } : item));
 
     const header = (
       <>
@@ -2260,7 +2317,7 @@ export default function App() {
         />
       );
     } else if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} onOpenMaterial={recordMaterialView} materialViews={myMaterialViews} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={courseModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenMaterial={openMaterial} materialViews={myMaterialViews} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
@@ -2269,6 +2326,10 @@ export default function App() {
       mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} manualAssignments={manualAssignments} attendance={attendance} dueDates={dueDates} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
       mainContent = <StudentSyllabus syllabus={syllabus} />;
+    } else if (studentSection === "guide") {
+      mainContent = <CourseGuide guide={courseGuide} />;
+    } else if (studentSection === "resources") {
+      mainContent = <StudentResources shelves={resourceShelves} onItemClick={openMaterial} />;
     } else if (studentSection === "evals") {
       mainContent = <CourseEvals classId={currentClassId} mergedModules={mergedModules} courseEvals={courseEvals} setCourseEvals={setCourseEvals} />;
     } else {
@@ -2929,6 +2990,10 @@ export default function App() {
             onSaveSyllabus={saveSyllabus}
             onDeleteSyllabus={deleteSyllabus}
           />
+        )}
+
+        {currentClassId && instructorSection === "guide" && (
+          <InstructorGuide guide={courseGuide} onSaveGuide={saveCourseGuide} />
         )}
 
         {currentClassId && instructorSection === "calendar" && (

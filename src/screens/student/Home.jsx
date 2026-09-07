@@ -11,14 +11,19 @@ import { closesAssignment } from "../../auto-submit.js";
 //   submissions: all submissions for the active class
 //   onStartQuiz(quiz): called when a quiz item is clicked
 //   onStartHomework(hw): called when a homework item is clicked
-//   onOpenPage(item): called when a page item is clicked
-//   onOpenMaterial(item): records that this student opened a posted material (file / reading /
-//     notes / link / page). Fire-and-forget bookkeeping the student never asked for, so it must
-//     never be able to stop the thing they clicked from opening.
+//   onOpenMaterial(item): opens a posted material (file / reading / notes / link / page) AND
+//     records the open. App.jsx owns it because the Resources page opens the same rows, and a
+//     file must not behave differently depending on which page a student met it on.
 //   materialViews: this student's own `{ [itemId]: record }` map for the active class, or null
 //     while it is still loading. It is what ticks a material off, so the same node that tells
 //     the instructor who opened a reading is what tells the student they have.
-export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, onOpenMaterial, materialViews, storageKey }) {
+//   modules is already the COURSEWORK half of the split (course-info.js), so the reference
+//     shelves are not in this list — they have their own page.
+//
+//   There is deliberately nothing above the module list. A welcome card lived here briefly and was
+//   removed: on Home it put something the student had already read above the work they had not.
+//   A course's introductory prose is a card on the Course Guide page, like any other.
+export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenMaterial, materialViews, storageKey }) {
   // A deadline auto-submission banks a score but leaves the assignment open (see
   // closesAssignment, auto-submit.js), so it must not tick the item off here either — the
   // student still has the rest of the set and their written work to hand in.
@@ -64,23 +69,12 @@ export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submis
   };
 
   const onItemClick = (item, meta) => {
-    // Record the open FIRST, and never let it throw or block: the click's job is to open the
-    // file. The call is async, so a rejected promise is swallowed too rather than surfacing as
-    // an unhandled rejection in the student's console.
-    if (onOpenMaterial && isMaterialItem(item)) {
-      try { Promise.resolve(onOpenMaterial(item)).catch(() => {}); } catch { /* bookkeeping only */ }
-    }
+    // A quiz and a homework are never material items, so the order here is not load-bearing —
+    // but every material goes through the ONE opener in App.jsx, which is what stops a reading
+    // opening one way from a module and another way from a shelf.
+    if (isMaterialItem(item)) { onOpenMaterial && onOpenMaterial(item); return; }
     if (item.type === "quiz" && meta?.quiz) { onStartQuiz(meta.quiz); return; }
     if (item.type === "homework" && meta?.homework) { onStartHomework(meta.homework, meta.completed); return; }
-    if ((item.type === "reading" || item.type === "notes" || item.type === "link") && item.url) {
-      window.open(item.url, "_blank", "noopener,noreferrer");
-      return;
-    }
-    if (item.type === "file" && item.downloadUrl) {
-      window.open(item.downloadUrl, "_blank", "noopener,noreferrer");
-      return;
-    }
-    if (item.type === "page" && item.pageId && onOpenPage) { onOpenPage(item); return; }
   };
 
   return (

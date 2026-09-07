@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, Fragment } from "react";
 import { useTheme } from "../../theme.js";
 import { dueToDate } from "../../utils.js";
 import { newId } from "../../courses/ids.js";
+import { RESOURCE_KIND, isResourceModule } from "../../course-info.js";
 import { ItemIcon } from "../../components/lms/itemIcons.jsx";
 import { DueDateField } from "../../components/lms/DueDateField.jsx";
 
@@ -108,6 +109,18 @@ export function Modules({
     if (!t) { setEditingTitleFor(null); return; }
     await updateModule(moduleId, m => ({ ...m, title: t }));
     setEditingTitleFor(null);
+  };
+
+  // Where this module is SHOWN. A shelf leaves the weekly list and appears on the student's
+  // Resources page instead, without a completion circle or a place in a module counter — a
+  // reference file is not work. Everything else about it is unchanged: the same items, the same
+  // editor, the same upload, and the same open rates in Analytics -> Materials.
+  const toggleResourceShelf = async (mod) => {
+    await updateModule(mod.id, m => {
+      const next = { ...m };
+      if (isResourceModule(m)) delete next.kind; else next.kind = RESOURCE_KIND;
+      return next;
+    });
   };
 
   const moveModule = async (moduleId, dir) => {
@@ -441,7 +454,12 @@ export function Modules({
                       <button onClick={() => setEditingTitleFor(null)} style={{ background: "none", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "3px 8px", cursor: "pointer", fontSize: 12 }}>✕</button>
                     </div>
                   ) : (
-                    <span style={{ fontWeight: 500, fontSize: 14, color: text }}>{mod.title || "Untitled module"}</span>
+                    <>
+                      <span style={{ fontWeight: 500, fontSize: 14, color: text }}>{mod.title || "Untitled module"}</span>
+                      {/* A shelf is not in the student's weekly list at all, which is a big enough
+                          difference that the header has to say so rather than leaving it in a menu. */}
+                      {isResourceModule(mod) && <span style={{ ...s.badge(teal), marginLeft: 8 }}>Resources</span>}
+                    </>
                   )}
                 </div>
                 {/* Three-dot menu */}
@@ -460,6 +478,8 @@ export function Modules({
                       locked={locked}
                       onSaveRelease={val => setReleaseFull(mod, val)}
                       onRename={() => { setModuleMenuFor(null); setEditingTitleFor(mod.id); setTitleDraft(mod.title || ""); }}
+                      isShelf={isResourceModule(mod)}
+                      onToggleShelf={() => { setModuleMenuFor(null); toggleResourceShelf(mod); }}
                       onAddItem={type => {
                         setModuleMenuFor(null);
                         setOpenMap(prev => ({ ...prev, [mod.id]: true }));
@@ -900,7 +920,7 @@ function AddItemBar({
 }
 
 // ── ModuleMenu ────────────────────────────────────────────────────────────────
-function ModuleMenu({ releaseDate, locked, onSaveRelease, onRename, onAddItem, onOpenPageEditor, onDelete }) {
+function ModuleMenu({ releaseDate, locked, onSaveRelease, onRename, onAddItem, onOpenPageEditor, onDelete, isShelf, onToggleShelf }) {
   const { s, muted, border, text, teal, bg } = useTheme();
   const ET = "America/New_York";
   const etParts = d => {
@@ -990,6 +1010,22 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onRename, onAddItem, o
       {onRename && (
         <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
           <button onClick={onRename} style={{ background: "transparent", border: `1px solid ${border}`, color: muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>✎ Rename module</button>
+        </div>
+      )}
+
+      {/* Where the module is shown. It sits with Rename because it is the same kind of decision
+          about the module itself, and the wording names the item types that appear on a shelf:
+          coursework dropped into one is not reference material and is not listed there. */}
+      {onToggleShelf && (
+        <div style={{ borderTop: `1px solid ${border}`, paddingTop: 10, marginBottom: 10 }}>
+          <button onClick={onToggleShelf} style={{ background: "transparent", border: `1px solid ${isShelf ? teal : border}`, color: isShelf ? teal : muted, borderRadius: 6, padding: "6px 12px", cursor: "pointer", fontSize: 12, width: "100%", textAlign: "left" }}>
+            {isShelf ? "↩ Move back to the weekly list" : "⇢ Show on Resources page"}
+          </button>
+          <div style={{ color: muted, fontSize: 11, lineHeight: 1.5, marginTop: 6 }}>
+            {isShelf
+              ? "Listed on the student's Resources page, with no due dates and no completion ticks."
+              : "For reference material students return to all term. Readings, notes, links, files and pages appear there."}
+          </div>
         </div>
       )}
 

@@ -113,6 +113,7 @@ classes/{classId}/modules:
   {
     id: "m_<rand>",
     title: "Lecture 1 | Course Access & Logistics",
+    kind: undefined,          // or "resources" — see § Shelves vs. the weekly list
     items: [
       { id: "it_<rand>", type: "quiz",     refId: "q1" },
       { id: "it_<rand>", type: "reading",  title: "Ch. 1", url: "https://…" | null },
@@ -126,6 +127,27 @@ classes/{classId}/modules:
   ...
 ]
 ```
+
+### Shelves vs. the weekly list
+
+A module carrying `kind: "resources"` is a **reference shelf**: it leaves the student's Home list
+and appears on their **Resources** page instead, with no completion circles, no `n / total`, no
+collapse control and no release lock. It is set from the module's ⋮ menu ("Show on Resources page")
+in the instructor's Modules editor, and nothing else about the module changes — same items, same
+editor, same upload, same open rates in Analytics → Materials.
+
+This is a flag on an existing node rather than a node of its own, deliberately: every item type,
+the page editor, the file upload, the hide toggle and the `materialViews` tracking all work
+already, there is no second editor to keep in step, and several shelves ("Reference", "Textbooks")
+fall out for free. See `src/course-info.js` for the full reasoning.
+
+**Two rules that must hold.** The partition is at the RENDER boundary only — `mergedModules` stays
+the complete list, since `assignmentLocks`, `materialsOf`, the course-evals nudge and StudentGrades
+all read it and none of them care where a module is shown; filter a shelf out of `mergedModules`
+itself and its files silently vanish from the instructor's analytics while students go on clicking
+them every week. And a shelf lists **reference material only** (`visibleShelves`): placeholders,
+hidden items and any coursework dropped into a shelf by mistake are not listed, and a shelf left
+with nothing is dropped rather than rendered as an empty card.
 
 ### Module progress — what counts as done
 
@@ -182,7 +204,7 @@ classes/{classId}/
   submissions/              — { [studentId]: [submission, …] }
   checkedSubs/              — { [submissionId]: true }
   dueDates/                 — { [quizId]: "YYYY-MM-DD HH:mm" }
-  modules/                  — ordered array of { id, title, items: [...] }
+  modules/                  — ordered array of { id, title, kind?, items: [...] }  — `kind: "resources"` = a reference shelf (§ Shelves vs. the weekly list)
   moduleConfig/             — { [moduleId]: { releaseDate?, hiddenItems: { [itemId]: true } } }
   pages/                    — { [pageId]: { title, body, createdAt } }
   uploads/                  — { [uploadId]: { name, size, mime, storagePath, downloadUrl, createdAt, updatedAt? } }
@@ -195,6 +217,7 @@ classes/{classId}/
   assignmentOrderOverrides/ — { [assignmentId]: number }  — set by column drag/drop; overrides natural sort order
   homeworks/                — (future) student homework submissions
   syllabus/                 — (future) visual syllabus content
+  courseGuide/              — { rhythm: { title, intro, steps[] }, policies[] }  — "How this course works"; prose in, Claude-structured, hand-editable. No greeting field: a welcome is a titled card in `policies`
 
 courseEvals/              — root-level (not per-class); anonymous submissions
   {id}/                   — { id, type: "quick"|"survey", classId, timestamp, read: bool,
