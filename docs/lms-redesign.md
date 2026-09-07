@@ -69,8 +69,11 @@ src/
       TodoRail.jsx               — right rail To Do widget (a still-locked assignment is listed, dimmed and
                                    unclickable, with the date its module unlocks)
       ModuleList.jsx             — collapsible module list + Collapse/Expand All + lock gate
-      ModuleRow.jsx              — one module (header + items when expanded; hard-lock state)
-      ModuleItem.jsx             — one item row (quiz/reading/notes/homework/page/file/link)
+      ModuleRow.jsx              — one module (header + items when expanded; hard-lock state; the
+                                   header's "n / total" counts every item resolveItem marks `tracked`,
+                                   and becomes a filled tick once they are all complete)
+      ModuleItem.jsx             — one item row (quiz/reading/notes/homework/page/file/link); a
+                                   `tracked` item carries the completion circle, filled when done
       PageEditor.jsx             — instructor modal: title + textarea for authoring pages
       PageViewer.jsx             — student modal: read-only page rendering (pre-wrap text)
   screens/student/
@@ -123,6 +126,36 @@ classes/{classId}/modules:
   ...
 ]
 ```
+
+### Module progress — what counts as done
+
+The student's module header shows `completed / total` until everything in the module is done, at
+which point it becomes the same filled tick the items wear — a count with nothing left to count
+is not telling the student anything, and the tick is the signal they are already reading down the
+rest of the card. The exact total survives on the tick's `title`. Each item carries that same
+completion circle. Header and items read ONE judgment, `resolveItem(item).tracked` in `src/screens/student/Home.jsx`,
+so the circle and the counter cannot disagree about what a module contains:
+
+| Item | Tracked? | Completed when |
+|------|----------|----------------|
+| `quiz` with a resolved quiz | yes | a submission exists for it |
+| `homework` with authored content | yes | a submission exists for it |
+| `file` / `reading` / `notes` / `link` / `page` with something behind it (`isMaterialItem`) | yes | the student has a `materialViews` record for it |
+| an unlinked placeholder, a "coming soon" homework | **no** | — |
+
+A material's tick is an **open**, not a read (see `src/material-views.js`), and it deliberately
+wears the same tick as a graded quiz anyway: the checklist answers "have I been through this
+module", where an unopened reading is exactly as unfinished as an unattempted quiz. Nothing in
+the student UI or the instructor's Analytics calls it reading.
+
+Two rules keep the tick honest. A placeholder is never tracked, so a module the instructor is
+still filling in does not read as work the student has failed to do. And the tick appears the
+instant the student clicks, because `recordMaterialView` (App.jsx) updates `materialViews` state
+optimistically — including when the click beats the initial fetch, which then merges itself
+*under* the optimistic record rather than over it.
+
+Only the student view uses `ModuleList`; the instructor authors modules in
+`screens/instructor/Modules.jsx`, which has no progress counter.
 
 Every item has a stable `id`. The renderer (`src/components/lms/ModuleItem.jsx`)
 dispatches on `type`. `quiz` and `homework` reference data in the course code

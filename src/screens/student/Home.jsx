@@ -1,6 +1,6 @@
 import { s } from "../../theme.js";
 import { ModuleList } from "../../components/lms/ModuleList.jsx";
-import { isMaterialItem } from "../../material-views.js";
+import { isMaterialItem, viewRecordOf } from "../../material-views.js";
 
 // Student "Home" landing page — collapsible module list.
 // Props:
@@ -14,25 +14,47 @@ import { isMaterialItem } from "../../material-views.js";
 //   onOpenMaterial(item): records that this student opened a posted material (file / reading /
 //     notes / link / page). Fire-and-forget bookkeeping the student never asked for, so it must
 //     never be able to stop the thing they clicked from opening.
-export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, onOpenMaterial, storageKey }) {
+//   materialViews: this student's own `{ [itemId]: record }` map for the active class, or null
+//     while it is still loading. It is what ticks a material off, so the same node that tells
+//     the instructor who opened a reading is what tells the student they have.
+export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenPage, onOpenMaterial, materialViews, storageKey }) {
   const completedQuizIds = new Set(
     submissions.filter(s => s.studentId === loggedInStudent?.studentId).map(s => s.quizId)
   );
 
   const latestSub = id => [...submissions].reverse().find(s => s.studentId === loggedInStudent?.studentId && s.quizId === id) || null;
 
+  // Null while the fetch is in flight, which reads as "nothing opened yet" for the moment it
+  // takes to land. The ticks appear a beat late rather than being asserted from another
+  // student's or another class's records — see myMaterialViews in App.jsx.
+  const openedMap = materialViews || {};
+
+  // `tracked` is what puts an item in the module header's "n / total" and gives it a completion
+  // circle. It means "there is something here the student can finish": a resolved quiz or
+  // homework, or a material with an actual file/link/page behind it. An unlinked placeholder and
+  // a not-yet-authored homework return null and count for nothing, so a module the instructor is
+  // still filling in never reads as work the student has failed to do.
+  //
+  // For a material, completing it is opening it. That is a weaker fact than a graded score, and
+  // deliberately wears the same tick anyway: the checklist answers "have I been through this
+  // module", and an unopened reading is exactly as unfinished as an unattempted quiz. What it is
+  // NOT is evidence of reading (see material-views.js) — which is why nothing here or in the
+  // instructor's view ever calls it that.
   const resolveItem = item => {
     if (item.type === "quiz") {
       const quiz = quizzes.find(q => q.id === item.refId);
       if (!quiz) return null;
       const completed = completedQuizIds.has(quiz.id);
-      return { quiz, completed, sub: completed ? latestSub(quiz.id) : null };
+      return { quiz, completed, tracked: true, sub: completed ? latestSub(quiz.id) : null };
     }
     if (item.type === "homework") {
       const homework = homeworks.find(h => h.id === item.refId);
       if (!homework) return null; // not yet authored — falls back to placeholder
       const completed = completedQuizIds.has(homework.id);
-      return { homework, completed, sub: completed ? latestSub(homework.id) : null };
+      return { homework, completed, tracked: true, sub: completed ? latestSub(homework.id) : null };
+    }
+    if (isMaterialItem(item)) {
+      return { completed: !!viewRecordOf(openedMap[item._key || item.id]), tracked: true };
     }
     return null;
   };

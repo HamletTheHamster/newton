@@ -1,23 +1,25 @@
 import { useTheme } from "../../theme.js";
 import { isLate, dueToDate } from "../../utils.js";
 import { ItemIcon } from "./itemIcons.jsx";
+import { isMaterialItem } from "../../material-views.js";
 
 const hostnameOf = url => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; } };
 
 // One row in an expanded module.
 // `item`: merged item from buildModules — may carry url, pageId, pageContent, etc.
-// `meta`: { quiz?, completed?, late?, sub? } resolved data for quiz items
+// `meta`: { quiz?, homework?, completed?, tracked?, sub? } from the caller's resolveItem.
+//   `tracked` says this item counts toward the module's progress, so it gets a completion
+//   circle; `completed` fills it in. For a material, completed means the student has opened it.
 export function ModuleItem({ item, meta, onClick }) {
   const { s, text, muted, border, teal, hover } = useTheme();
   const t = item.type;
+  // Whether there is anything behind this row to click. The material half is the shared
+  // `isMaterialItem` — the same predicate that decides what the instructor's open rates are
+  // measured over — so a row can never be clickable here while counting for nothing there.
   const hasContent =
     (t === "quiz"     && !!meta?.quiz) ||
     (t === "homework" && !!meta?.homework) ||
-    (t === "reading"  && !!item.url) ||
-    (t === "notes"    && !!item.url) ||
-    (t === "page"     && !!item.pageId) ||
-    (t === "link"     && !!item.url) ||
-    (t === "file"     && !!item.downloadUrl);
+    isMaterialItem(item);
   const isComingSoon = t === "homework" && !meta?.homework;
   const isPending = !hasContent && !isComingSoon;
 
@@ -88,7 +90,11 @@ export function ModuleItem({ item, meta, onClick }) {
           {isComingSoon && <span style={{ ...s.badge(muted), fontSize: 10 }}>Coming soon</span>}
         </div>
       </div>
-      {((t === "quiz" && meta?.quiz) || (t === "homework" && meta?.homework)) && (
+      {/* Every item the module counts gets a circle, in the same place: a reading with nothing
+          behind it yet has none, but a posted one is ticked the moment it is opened, exactly
+          like a submitted quiz. `tracked` is resolveItem's call (see Home.jsx), so the circle
+          and the header's "n / total" can never disagree about what counts. */}
+      {meta?.tracked && (
         <div style={{ flexShrink: 0, width: 22, height: 22, borderRadius: "50%", border: `2px solid ${completed ? teal : border}`, background: completed ? teal : "transparent", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, color: "#fff", fontWeight: 700 }}>
           {completed && "✓"}
         </div>

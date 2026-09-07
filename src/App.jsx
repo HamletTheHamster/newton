@@ -357,6 +357,11 @@ export default function App() {
   // receipts land rather than measuring one class's announcements against another's reads.
   const myAnnReads = (annReads && annReads.classId === currentClassId && annReads.studentId === loggedInStudent?.studentId) ? annReads.map : null;
   const unseenAnns = myAnnReads ? unseenAnnouncements(sortedAnnouncements, myAnnReads) : [];
+  // The same pairing rule for this student's own material opens, which the module list reads to
+  // tick a reading/file/link/page off. Null until the fetch lands, which the list treats as "no
+  // opens yet" — the ticks fill in a moment later rather than being asserted against another
+  // class's records.
+  const myMaterialViews = (materialViews && materialViews.classId === currentClassId && materialViews.studentId === loggedInStudent?.studentId) ? materialViews.map : null;
   const syllabusBreakdown = syllabus?.fields?.gradingBreakdown ?? [];
   const gradeCatList = Object.values(gradeCategories ?? {});
   const syllabusMismatch = gradeCatList.length > 0 && syllabusBreakdown.length > 0 && (() => {
@@ -758,7 +763,15 @@ export default function App() {
     let cancelled = false;
     fbGet(classPath(cid, `materialViews/${sid}`))
       .catch(() => null)
-      .then(d => { if (!cancelled) setMaterialViews({ classId: cid, studentId: sid, map: (d && typeof d === 'object') ? d : {} }); });
+      .then(d => { if (cancelled) return; setMaterialViews(cur => {
+        const fetched = (d && typeof d === 'object') ? d : {};
+        // A click can land while this GET is in flight (the student opened a module the moment
+        // the portal did). `recordMaterialView` has already written that record to state and to
+        // RTDB, so the older fetched map is merged UNDER it rather than over it — otherwise the
+        // tick the student just earned would vanish until the next reload.
+        const optimistic = (cur && cur.classId === cid && cur.studentId === sid) ? cur.map : null;
+        return { classId: cid, studentId: sid, map: optimistic ? { ...fetched, ...optimistic } : fetched };
+      }); });
     return () => { cancelled = true; };
   }, [studentPortalActive, currentClassId, loggedInStudent?.studentId]);
 
@@ -1181,7 +1194,9 @@ export default function App() {
     const next = { first: prev?.first || at, last: at, count: (prev?.count || 0) + 1 };
     setMaterialViews(cur => (cur && cur.classId === cid && cur.studentId === sid)
       ? { ...cur, map: { ...cur.map, [itemId]: next } }
-      : cur);
+      // Not loaded yet (the click beat the fetch). Seed the map anyway so the item ticks
+      // immediately; the in-flight fetch merges itself under this record, never over it.
+      : { classId: cid, studentId: sid, map: { [itemId]: next } });
     await fbUpdate(classPath(cid, `materialViews/${sid}/${itemId}`), next).catch(() => {});
   };
   // Sitting on the Announcements page IS reading them, so the popup stays out of the way there
@@ -2145,7 +2160,7 @@ export default function App() {
         />
       );
     } else if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} onOpenMaterial={recordMaterialView} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenPage={p => setViewingPage({ title: p.title, content: p.pageContent || "" })} onOpenMaterial={recordMaterialView} materialViews={myMaterialViews} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {

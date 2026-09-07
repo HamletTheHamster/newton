@@ -532,6 +532,12 @@ state, so two tabs opening the *same* file in the same moment can lose one incre
 because what is read here is *whether* a student opened the material, and the record's existence
 carries that whatever happens to the tally.
 
+**The student sees this node too**, as the completion tick beside each material in their module
+list (see [lms-redesign.md](lms-redesign.md) § Module progress). That is the reason the honest
+wording matters in both directions: the same record that tells the instructor "9 of 24 opened
+this" tells the student "you have opened this", and neither is a claim about reading. The student
+reads only their own subtree; the whole node stays the instructor's lazy read.
+
 ## Implementation notes
 
 - **`mergeTelemetry` is not optional.** Telemetry lives in two places: the live `hwTelemetry`
