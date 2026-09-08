@@ -15,7 +15,7 @@
 // performance", which is the question that tells the instructor what to keep, cut or reweight.
 import { resolveScore, itemsOf } from "./homework.js";
 import { buildAbsenceMap, attendanceFor } from "./attendance.js";
-import { dueToDate } from "./utils.js";
+import { dueToDate, effectiveDue } from "./utils.js";
 import { closesAssignment } from "./auto-submit.js";
 
 // ── The score matrix ──────────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ export function buildScoreMatrix({ roster, assignments, submissions, gradeOverri
     for (const a of (assignments || [])) {
       const ov = (overrides[sid] || {})[a.id];
       const sub = subsByStudent[sid]?.[a.id];
-      const r = resolveScore(sub, ov, attendanceFor(absenceMap, sid, a.id));
+      const r = resolveScore(sub, ov, attendanceFor(absenceMap, sid, a.id), effectiveDue(a.dueDate, ov?.dueDate));
       if (r.excused) { excusedMap[sid][a.id] = true; continue; }
       if (r.flagged) flaggedMap[sid][a.id] = true;
       if (r.workPending) pendingMap[sid][a.id] = { base: r.base };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useTheme } from "../../theme.js";
-import { isLate } from "../../utils.js";
+import { isLate, dueToDate } from "../../utils.js";
 import { fbGet, fbSet, fbUpdate, fbUpload, classPath } from "../../firebase.js";
 import { normalizeWorkFile, formatBytes } from "../../work-files.js";
 import { createTelemetry } from "../../hw-telemetry.js";
@@ -38,7 +38,9 @@ import {
   parseNumber,
   sigFigsOf,
   toSciString,
+  rescoreSubmission,
 } from "../../homework.js";
+import { onTimeIdsFromTelemetry, stampOnTimeParts } from "../../auto-submit.js";
 
 const GRAPHICAL = new Set(["graph", "vector", "fbd"]);
 
@@ -459,6 +461,24 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   }, [idx]);
 
   const late = isLate(homework.dueDate);
+  // Whether the deadline had ALREADY passed when this run opened. A student who opens a past-due
+  // homework gets the start-screen callout; this separates them from the student the deadline
+  // passes over mid-session, who has seen nothing and is the one who needs telling.
+  const [startedLate] = useState(() => isLate(homework.dueDate));
+  const [deadlineNoticeDismissed, setDeadlineNoticeDismissed] = useState(false);
+  // `late` is read from the clock on every render, but nothing forces a render at the deadline,
+  // so without this timer the switch to half credit would appear only whenever the student next
+  // happened to interact — they could answer several problems after midnight still believing
+  // they were on time. One timeout, set for the deadline itself, makes it land when it happens.
+  const [, setDeadlineTick] = useState(0);
+  useEffect(() => {
+    const at = dueToDate(homework.dueDate);
+    if (!at || isNaN(at.getTime())) return;
+    const ms = at.getTime() - Date.now();
+    if (ms <= 0 || ms > 2147483647) return;   // already past, or beyond setTimeout's range
+    const t = setTimeout(() => setDeadlineTick(n => n + 1), ms + 1000);
+    return () => clearTimeout(t);
+  }, [homework.dueDate]);
   const runningScore = allItems.reduce((sum, it) => sum + (earned[it.id] || 0), 0);
   const allResolved = allItems.every(it => status[it.id] && status[it.id] !== "open");
 
@@ -608,8 +628,6 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
   const buildSubmission = (workFilesMeta = [], integrity = null, serverAnswers = {}) => {
     const rawScore = parseFloat(runningScore.toFixed(2));
-    const pct = total > 0 ? rawScore / total : 0;
-    const score = parseFloat((pct * 10 * (late ? 0.5 : 1)).toFixed(2));
     const problemsBreakdown = problems.map(p => {
       const its = itemsOf(p);
       const partRows = its.map(it => ({
@@ -630,22 +648,34 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       }
       return { ...partRows[0], id: p.id, prompt: p.prompt, figure: p.figure || null, max: 1, earned: pEarned };
     });
-    return {
+    // Copied onto the submission because `clearDraft` removes the live node at this point;
+    // from here the submission is the only record of how the work was done — including, for a
+    // late hand-in, WHEN each problem was actually finished.
+    const telemetry = telemetrySnapshot();
+    const sub = {
       id: "sub_" + Date.now(),
       studentName: loggedInStudent.fullName,
       studentId: loggedInStudent.studentId,
       quizId: homework.id,
       quizTitle: homework.title,
       type: "homework",
-      rawScore, nativeTotal: total, score, late,
+      rawScore, nativeTotal: total, late,
       timestamp: new Date().toISOString(),
       problems: problemsBreakdown,
       workFiles: workFilesMeta || [],
       integrity: integrity || null,
-      // Copied onto the submission because `clearDraft` removes the live node at this point;
-      // from here the submission is the only record of how the work was done.
-      telemetry: telemetrySnapshot(),
+      telemetry,
     };
+    // A late hand-in is halved only on the work that was actually done late. The parts the
+    // student had already finished before the deadline are stamped here, from their own
+    // telemetry, so the score on the finish screen is the score the gradebook shows — and so a
+    // student is never worse off for having started early, or for coming back to finish.
+    // `resolveScore` derives the same stamps on every read, but doing it here means the record
+    // itself says which parts were on time rather than leaving it to be recomputed.
+    const stamped = late
+      ? stampOnTimeParts(sub, onTimeIdsFromTelemetry(telemetry, dueToDate(homework.dueDate)), homework.dueDate || null)
+      : sub;
+    return { ...stamped, score: rescoreSubmission(stamped) };
   };
 
   // Practice has no submission/proof step; graded homework goes through the work-upload step.
@@ -942,7 +972,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
             <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{preview ? "Preview complete, nothing saved or graded" : practice ? "Practice complete, not submitted for a grade" : "Homework complete"}</div>
             <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
-            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late: 50% penalty applied to your recorded grade.</div>}
+            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late: work you finished after the deadline earns half credit. Anything you had already finished before it keeps full credit.</div>}
           </div>
           {problems.map((p, i) => {
             const its = itemsOf(p);
@@ -1147,6 +1177,18 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ ...s.card, background: solidBg, padding: 24, width: "100%", maxWidth: 360, boxShadow: "0 20px 60px rgba(0,0,0,0.6)" }}>
             <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: "0 0 8px" }}>{preview ? "Leave preview?" : "Leave homework?"}</h3>
             <p style={{ ...s.muted, marginBottom: 20 }}>{preview ? "This is an instructor preview. Nothing is graded or saved, and you can open it again anytime." : practice ? "This is a practice session. Nothing is graded, and you can start it again anytime. Your practice progress won't be saved." : "Your progress will be saved, so you can resume later."}</p>
+            {/* The past-due start screen has to say the one thing that decides whether a student
+                bothers to come back: the work they already finished is not lost and is not
+                halved. Without it the deadline reads as a closed door, and a half-finished set
+                sits at zero because nobody told them finishing it was still worth doing. */}
+            {!practice && late && (
+              <div style={{ ...s.card, padding: "14px 16px", marginBottom: 20, border: "1px solid rgba(251,191,36,0.45)", textAlign: "left" }}>
+                <div style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13, marginBottom: 6 }}>This homework is past due, and still worth finishing</div>
+                <div style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
+                  Anything you finished before the deadline keeps full credit. Only what you answer from here on earns half credit. Nothing counts until you finish and upload your written work, so open it, answer what you want to answer, and submit.
+                </div>
+              </div>
+            )}
             <div style={{ display: "flex", gap: 10 }}>
               <button onClick={() => setShowLeave(false)} style={{ ...s.btnSec, flex: 1 }}>Keep going</button>
               <button onClick={handleLeaveConfirm} style={{ ...s.btnPri, flex: 1, background: "#b91c1c" }}>Leave</button>
@@ -1196,7 +1238,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
               {homework.title}{practice && <span style={s.badge(teal)}>{preview ? "Preview" : "Practice"}</span>}
             </div>
-            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{whoLabel}{!practice && late ? " · ⚠️ past due (50% penalty)" : ""}</p>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{whoLabel}{!practice && late ? " · ⚠️ past due (work from here on earns half credit)" : ""}</p>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1213,6 +1255,23 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           </div>
         </div>
       </div>
+
+      {/* The deadline passing mid-session is the one moment a student can be badly surprised: they
+          are still working, nothing stops them, and the terms have just changed. Nothing is locked
+          and nothing is lost, so the notice says exactly that and what it now costs. Shown only
+          when the deadline passed DURING this run — someone who opened it already past due has
+          had the same message on the start screen. */}
+      {!practice && late && !startedLate && !deadlineNoticeDismissed && (
+        <div style={{ background: isLight ? "rgba(251,191,36,0.12)" : "rgba(251,191,36,0.1)", borderBottom: "1px solid rgba(251,191,36,0.45)", padding: "12px 24px", flexShrink: 0, display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ maxWidth: 820 }}>
+            <div style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13, marginBottom: 4 }}>The deadline has passed. Keep going, nothing is lost</div>
+            <div style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
+              Everything you finished before the deadline keeps full credit. Anything you answer from here on earns half credit. You still have to finish, upload your written work and submit for any of it to count.
+            </div>
+          </div>
+          <button onClick={() => setDeadlineNoticeDismissed(true)} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto", flexShrink: 0 }}>Got it</button>
+        </div>
+      )}
 
       {/* Body */}
       <div ref={bodyRef} style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 960, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 16 }}>

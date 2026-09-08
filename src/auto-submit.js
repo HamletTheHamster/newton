@@ -208,7 +208,48 @@ export function onTimeItemIds(previous) {
   return ids;
 }
 
-// Carry those stamps onto the real submission that replaces the record.
+// Every part id the submission's OWN telemetry says was resolved before the deadline.
+//
+// The deadline record is the tidier evidence, but it only exists when the sweep happened to run
+// while the draft was still open, and it cannot exist at all for work submitted before that
+// sweep shipped. That made on-time credit depend on whether anyone opened a portal near
+// midnight — the student who stays up to 1am and finishes is exactly the one nobody was there
+// to sweep for. The telemetry snapshot rides on every real submission (`telemetrySnapshot`,
+// HomeworkRunner) and stamps `resolvedAt` the moment an item is answered correctly or revealed,
+// accumulated across sittings, so it carries the same fact and survives both gaps.
+//
+// `resolvedAt` is the student's own browser clock, so this is evidence rather than proof. That
+// is acceptable because of the direction it can move a grade: it only ever REMOVES a penalty
+// from an answer already graded correct, and can never add one or create credit.
+export function onTimeIdsFromTelemetry(telemetry, deadline) {
+  const ids = new Set();
+  const at = deadline instanceof Date ? deadline : (deadline ? new Date(deadline) : null);
+  if (!at || isNaN(at.getTime())) return ids;
+  for (const [id, it] of Object.entries(telemetry?.items || {})) {
+    const r = it?.resolvedAt ? new Date(it.resolvedAt) : null;
+    if (r && !isNaN(r.getTime()) && r.getTime() <= at.getTime()) ids.add(id);
+  }
+  return ids;
+}
+
+// Stamp `onTime: true` onto every part named by `ids`, and record how many were stamped.
+// The count is taken from the rows actually stamped, not from `ids.size`: an id set derived from
+// telemetry can name items that are not in this submission's breakdown, and the banner reports
+// what the student is being credited for.
+export function stampOnTimeParts(sub, ids, at = null) {
+  if (!sub || !ids || !ids.size) return sub;
+  let parts = 0;
+  const stamp = row => {
+    if (!row?.id || !ids.has(row.id)) return row;
+    parts += 1;
+    return { ...row, onTime: true };
+  };
+  const problems = (sub.problems || []).map(p => (p.parts ? { ...p, parts: p.parts.map(stamp) } : stamp(p)));
+  if (!parts) return sub;
+  return { ...sub, problems, onTimeCredit: { at, parts } };
+}
+
+// Carry the deadline record's stamps onto the real submission that replaces it.
 //
 // This is what makes the whole thing worth doing. Without it a student who had 3 of 10 problems
 // done at the deadline and finished the rest the next day is halved on all ten and scores 5.0 —
@@ -222,12 +263,7 @@ export function onTimeItemIds(previous) {
 export function markOnTimeParts(sub, previous) {
   const ids = onTimeItemIds(previous);
   if (!sub || !ids.size) return sub;
-  const stamp = row => (row?.id && ids.has(row.id) ? { ...row, onTime: true } : row);
-  return {
-    ...sub,
-    problems: (sub.problems || []).map(p => (p.parts ? { ...p, parts: p.parts.map(stamp) } : stamp(p))),
-    onTimeCredit: { at: previous.autoSubmitted?.at || previous.timestamp || null, parts: ids.size },
-  };
+  return stampOnTimeParts(sub, ids, previous.autoSubmitted?.at || previous.timestamp || null);
 }
 
 // ── Pending written work ──────────────────────────────────────────────────────

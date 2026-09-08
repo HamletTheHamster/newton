@@ -36,6 +36,8 @@ The **effective base score** for a cell is:
 2. **lecture absence** (course policy, labs) → hard `0`, unless `ov.attendanceWaived`
 3. `ov.score` (whole-assignment override) — **wins over everything below**
 4. `ov.partScores` (homework only) → recompute via `computeScoreFromPartOverrides`
+4b. **on-time credit** (a *late* homework with parts finished before the deadline) → recompute
+   via `scoreFromPartOverrides`, sparing those parts the penalty
 5. otherwise `submission.score`
 
 …then `integrityAdjustedScore(base, integrityState(sub, ov).penalized)` applies the
@@ -49,7 +51,9 @@ without becoming the way around it.
 
 This order is implemented **once**, in `resolveScore` (`src/homework.js`), the single
 source of truth shared by the instructor Gradebook, the student StudentGrades page, and
-the shared `SubViewModal`. Its companion `scoreFromPartOverrides` does the homework
+the shared `SubViewModal`. It takes a fourth argument, `due` — **the deadline as it applies to
+this student**, i.e. `effectiveDue(assignment.dueDate, ov.dueDate)` — which is what makes step 4b
+possible; omit it and only the stamps already on the record count. Its companion `scoreFromPartOverrides` does the homework
 per-part recompute (step 3). That recompute **rounds each problem's earned subtotal to 2
 decimals (its natural 1-point unit) before aggregating** — each part stores `earned`
 rounded to 3 decimals, so a fractional part weight (1/3, 1/9, …) doesn't sum back to the
@@ -110,6 +114,33 @@ ordinary one, and every one that predates this feature — puts its whole value 
 and comes out at exactly the number the old `pct * 10 * (late ? 0.5 : 1)` produced, to the cent.
 Halving part by part instead would have shifted a handful of existing grades by a hundredth
 through rounding. `src/auto-submit.test.mjs` pins that with a fractional-weight case.
+
+#### Where "which parts were on time" comes from
+
+Two independent sources, **unioned** (`onTimeCreditIds`, `src/homework.js`) — they cover
+different gaps, and a part either was or was not finished before the deadline:
+
+1. **`onTime` stamps on the record.** Written by the deadline sweep (`buildAutoSubmission`) and
+   carried onto the real submission by `markOnTimeParts`, or written directly by
+   `HomeworkRunner`'s `buildSubmission` at submit time.
+2. **The submission's own telemetry** (`onTimeIdsFromTelemetry`, `src/auto-submit.js`) — every
+   item whose `resolvedAt` is at or before `due`.
+
+Source 2 exists because source 1 alone made on-time credit depend on *whether anyone happened to
+open a portal near midnight*: the sweep is lazy (`src/auto-submit-sweep.js`), so with no sweep
+there are no stamps, and a student who worked most of the set before the deadline and finished at
+1am was halved on all of it. That is the exact case this feature is for. It also means the credit
+applies to homework **submitted before any of this shipped**, with no migration and no write:
+`hwTelemetry` already recorded `resolvedAt` per item, and `HomeworkRunner` copies the telemetry
+snapshot onto the submission, so the evidence was already sitting in the record.
+
+`resolvedAt` is the student's own browser clock, so it is evidence rather than proof. That is
+acceptable **because of the direction it can move a grade**: it only ever removes a penalty from
+an answer already graded correct, and can never add one or create credit that was not earned.
+
+Because the derivation is done **on every read** rather than written into the record, correcting
+an assignment's due date or granting a student an extension re-resolves it with nothing to
+migrate and nothing to undo — the same discipline as the derived attendance zero.
 
 ### The lecture-attendance policy (step 2)
 

@@ -12,7 +12,7 @@
 import { courseLabelFor } from "./course-meta.js";
 import { compressImage } from "./utils.js";
 import { formatNumeric, parseJsonReply } from "./grading-core.js";
-import { workPendingState } from "./auto-submit.js";
+import { workPendingState, onTimeIdsFromTelemetry } from "./auto-submit.js";
 
 // Re-export the shared pure grading helpers so existing importers of homework.js keep working.
 // The actual numeric/text/math grading now happens server-side (netlify/functions/grade.js) so the
@@ -563,7 +563,31 @@ export const partEarned = (row, override) => (override != null ? Number(override
 // student with 3 of 10 problems finished on time who comes back and completes the set is halved
 // on all ten and scores 5.0 — worse than the 6.5 the same work earns part by part, and worse off
 // than if they had never started early.
-export const partIsOnTime = row => !!row?.onTime;
+export const partIsOnTime = (row, onTimeIds) =>
+  !!(row?.onTime || (onTimeIds && row?.id && onTimeIds.has(row.id)));
+
+// Every part of a LATE homework that should be spared the penalty, from both kinds of evidence:
+// the stamps a deadline record left on the submission, and the submission's own telemetry read
+// against `due` (see onTimeIdsFromTelemetry, auto-submit.js). The union is deliberate — the two
+// cover different gaps, and a part either was or was not finished before the deadline.
+//
+// `due` is the deadline AS IT APPLIES TO THIS STUDENT: callers pass
+// `effectiveDue(assignment.dueDate, override.dueDate)`, so extending one student's deadline
+// retroactively widens what counts as on time, exactly as an extension should. Omit it and only
+// the stamps count, which is what every pre-existing caller got.
+//
+// Returns null (not an empty set) when there is nothing to spare, so `resolveScore` can tell
+// "no on-time credit applies here" from "on-time credit applies to nothing".
+export function onTimeCreditIds(submission, due) {
+  const sub = submission || null;
+  if (!sub || sub.type !== "homework" || !sub.late) return null;
+  const ids = new Set();
+  for (const p of sub.problems || []) {
+    for (const row of (p.parts || [p])) if (row?.onTime && row.id) ids.add(row.id);
+  }
+  for (const id of onTimeIdsFromTelemetry(sub.telemetry, due)) ids.add(id);
+  return ids.size ? ids : null;
+}
 
 // Recompute a homework /10 score from instructor per-part overrides
 // (partScores: { [itemId]: earnedValue }). Items without an override keep their submitted
@@ -574,7 +598,7 @@ export const partIsOnTime = row => !!row?.onTime;
 // that predates this feature — puts its whole value in the late bucket and comes out at exactly
 // the number the old `pct * 10 * (late ? 0.5 : 1)` produced, to the cent. Halving part by part
 // instead would have moved a handful of existing grades by a hundredth through rounding.
-export function scoreFromPartOverrides(submission, partScores) {
+export function scoreFromPartOverrides(submission, partScores, onTimeIds) {
   let onTimeRaw = 0, lateRaw = 0;
   for (const p of (submission.problems || [])) {
     const items = p.parts || [p];
@@ -588,7 +612,7 @@ export function scoreFromPartOverrides(submission, partScores) {
     let onTime = 0, rest = 0;
     for (const item of items) {
       const v = partEarned(item, (partScores || {})[item.id]);
-      if (partIsOnTime(item)) onTime += v; else rest += v;
+      if (partIsOnTime(item, onTimeIds)) onTime += v; else rest += v;
     }
     onTimeRaw += parseFloat(onTime.toFixed(2));
     lateRaw += parseFloat(rest.toFixed(2));
@@ -608,6 +632,7 @@ export const rescoreSubmission = submission => scoreFromPartOverrides(submission
 //   2. attendance absence (lab policy)   → hard 0, unless ov.attendanceWaived
 //   3. ov.score (whole-assignment)       → wins over everything below
 //   4. ov.partScores (homework only)     → recompute via scoreFromPartOverrides
+//   4b. on-time credit (late homework)   → recompute, sparing parts finished before `due`
 //   5. submission.score                  → the auto-graded score
 // then the upheld-integrity 50% penalty applies, and finally a deadline auto-submission with no
 // written work behind it is worth 0 until the work arrives or the instructor accepts it without
@@ -619,6 +644,12 @@ export const rescoreSubmission = submission => scoreFromPartOverrides(submission
 //   absentZero = the course attendance policy is what produced `effective`
 //   effective  = the /10 score to display & feed into calcGrades (null when excused)
 //
+// `due` is the deadline AS IT APPLIES TO THIS STUDENT — callers pass
+// `effectiveDue(assignment.dueDate, override.dueDate)`. It is what lets a late homework keep full
+// credit on the parts finished before the deadline (`onTimeCreditIds`), so the penalty falls only
+// on the work actually done late. Omit it and only the stamps already on the record count, which
+// is the behaviour every caller had before it existed.
+//
 // `attendance` is { absent, date } | null — build it with attendanceFor(buildAbsenceMap(…))
 // from attendance.js. Course policy: a student absent from lecture earns no credit for that
 // day's lab. The zero is DERIVED here on every read, never written into gradeOverrides, so
@@ -629,15 +660,25 @@ export const rescoreSubmission = submission => scoreFromPartOverrides(submission
 // — the ones who handed in a lab they were absent for. The instructor's escape hatch is the
 // explicit `ov.attendanceWaived` flag (the Waive button in the gradebook's detail panel),
 // which mirrors how `integrityReview` gates the integrity penalty.
-export function resolveScore(submission, override, attendance) {
+export function resolveScore(submission, override, attendance, due) {
   const ov = override || {};
   const sub = submission || null;
   const ist = integrityState(sub, ov);
   const wps = workPendingState(sub, ov);
+  // Which parts of a late submission escape the penalty. Derived on every read rather than
+  // written into the record, for the same reason the attendance zero is: it is a function of
+  // evidence already stored plus the deadline that currently applies, so correcting a due date
+  // or granting an extension fixes the score with nothing to migrate and nothing to undo.
+  const onTimeIds = onTimeCreditIds(sub, due);
   if (ov.excused) return { excused: true, base: null, penalized: ist.penalized, flagged: ist.flagged, absentZero: false, workPending: wps.pending, workWithheld: false, effective: null };
   let base;
   if (ov.score != null) base = ov.score;
-  else if (ov.partScores && sub && sub.type === "homework") base = scoreFromPartOverrides(sub, ov.partScores);
+  // Recompute from the breakdown whenever there are per-part overrides OR on-time credit to
+  // apply. `sub.score` is the number the runner stored at submit; for a late homework that
+  // predates on-time credit it halves work the student had already finished, so the stored
+  // value cannot be trusted once we know which parts were on time. With no on-time ids and no
+  // overrides this branch is skipped and the stored score stands untouched.
+  else if (sub && sub.type === "homework" && (ov.partScores || onTimeIds)) base = scoreFromPartOverrides(sub, ov.partScores || null, onTimeIds);
   else base = sub != null ? sub.score : null;
   const absentZero = !!(attendance?.absent && !ov.attendanceWaived);
   if (absentZero) return { excused: false, base, penalized: ist.penalized, flagged: ist.flagged, absentZero: true, workPending: wps.pending, workWithheld: false, effective: 0 };

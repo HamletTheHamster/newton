@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTheme } from "../../theme.js";
-import { buildGradebookAssignments, calcGrades, dueToDate } from "../../utils.js";
+import { fbGet, classPath } from "../../firebase.js";
+import { buildGradebookAssignments, calcGrades, dueToDate, effectiveDue } from "../../utils.js";
 import { resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { categoryColor } from "../../category-colors.js";
 import { splitRemaining, overallColor, overallLetter } from "../../grade-scenarios.js";
 import { GradeScenario } from "./GradeScenario.jsx";
 import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
+import { closesAssignment } from "../../auto-submit.js";
 
 // The what-if panel is BUILT AND TESTED but not yet shown to students: it is worth the most late
 // in a term, when there is a real spread of marks behind it and the work still ahead is the thing
@@ -27,10 +29,25 @@ function scoreColor(score, maxPts, excused, missing, muted) {
   return "#f87171";
 }
 
-export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, manualAssignments, attendance, dueDates, assignmentNameOverrides }) {
+export function StudentGrades({ classId, loggedInStudent, modules, quizzes, submissions, gradeCategories, gradeOverrides, assignmentCategories, manualAssignments, attendance, dueDates, assignmentNameOverrides }) {
   const { s, text, muted, border, teal } = useTheme();
   const myId = loggedInStudent?.studentId;
   const [viewSub, setViewSub] = useState(null);  // { submission, title, id } — opens read-only SubViewModal
+  // This student's own homework progress ({ [hwId]: { done, total, pct } }), read on demand like
+  // every other per-student node. It is what tells a student their unfinished homework is still
+  // claimable, and it is read HERE rather than taken from a deadline record because the deadline
+  // sweep is lazy (src/auto-submit-sweep.js): if nobody's portal happened to open after the
+  // deadline there is no record, and the student would be told nothing at all while the row
+  // showed a zero. The draft's progress summary always exists, so the notice always appears.
+  const [myProgress, setMyProgress] = useState(null);   // null while loading, {} when there is none
+  useEffect(() => {
+    if (!classId || !myId) { setMyProgress({}); return; }
+    let cancelled = false;
+    fbGet(classPath(classId, `hwProgress/${myId}`))
+      .then(r => { if (!cancelled) setMyProgress(r || {}); })
+      .catch(() => { if (!cancelled) setMyProgress({}); });
+    return () => { cancelled = true; };
+  }, [classId, myId]);
 
   // Only show non-hidden items in the student view
   const visibleModules = (modules || []).map(mod => ({
@@ -69,7 +86,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
     // Shared resolver: whole-assignment override > per-part overrides > submission score,
     // then the upheld-integrity penalty — identical to the instructor Gradebook so what the
     // instructor sets is exactly what the student sees here. A flag alone never withholds credit.
-    const r = resolveScore(sub, ov, attendanceFor(absenceMap, myId, a.id));
+    const r = resolveScore(sub, ov, attendanceFor(absenceMap, myId, a.id), effectiveDue(a.dueDate, ov?.dueDate));
     if (r.excused) { excused[a.id] = true; continue; }
     if (r.absentZero) absentOn[a.id] = myAbsences[a.id];
     // An auto-submission still owing its written work is the one row a student has to act on:
@@ -78,6 +95,23 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
     // score being held and what to do to claim it — the same reasoning as the absence badge.
     if (r.workPending) workPending[a.id] = { base: r.base };
     scores[a.id] = r.effective;
+  }
+
+  // Past-due homework the student has started but never handed in — the row that otherwise reads
+  // as a bare zero with nothing to act on. `closesAssignment` is what separates "handed in" from
+  // "a record the app wrote on their behalf at the deadline", which does not close the assignment
+  // and still needs finishing. Driven by the student's own draft progress rather than by that
+  // record, so the notice does not depend on a lazy sweep having run.
+  const unfinished = {};
+  for (const a of assignments) {
+    if (a.type !== "homework") continue;
+    const due = effectiveDue(a.dueDate, myOverrides[a.id]?.dueDate);
+    if (!due || dueToDate(due) >= now) continue;
+    if (myOverrides[a.id]?.excused) continue;
+    if ((submissions || []).some(sb => sb.studentId === myId && sb.quizId === a.id && closesAssignment(sb))) continue;
+    const prog = (myProgress || {})[a.id];
+    const done = prog?.done || 0;
+    if (done > 0) unfinished[a.id] = { done, total: prog.total || 0 };
   }
 
   const { overall, byCategory } = calcGrades({ assignments, categories: gradeCategories, scores, excused });
@@ -108,6 +142,7 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
         studentName={loggedInStudent?.fullName}
         assignmentTitle={viewSub.title}
         override={(gradeOverrides[myId] || {})[viewSub.id] || {}}
+        due={effectiveDue(allAssignments.find(a => a.id === viewSub.id)?.dueDate, (gradeOverrides[myId] || {})[viewSub.id]?.dueDate)}
         showIntegrity={false}
         audience="student"
         onClose={() => setViewSub(null)}
@@ -213,9 +248,11 @@ export function StudentGrades({ loggedInStudent, modules, quizzes, submissions, 
                     )}
                     {/* Same reasoning as the absence badge: a score the student did not hand in
                         themselves prompts a question, so the row answers it and says what to do. */}
-                    {workPending[item.id] && (
+                    {(unfinished[item.id] || workPending[item.id]) && (
                       <span style={{ ...s.badge("#fbbf24"), fontSize: 10 }}>
-                        {workPending[item.id].base != null ? `${workPending[item.id].base}/${item.maxPts} saved at the deadline: ` : ""}hand in your written work to claim it
+                        {unfinished[item.id]
+                          ? `${unfinished[item.id].done} of ${unfinished[item.id].total} problems finished: open it, finish it and upload your written work. Anything you finished before the deadline still earns full credit`
+                          : `${workPending[item.id].base != null ? `${workPending[item.id].base}/${item.maxPts} saved at the deadline: ` : ""}upload your written work to claim it. Anything you finished before the deadline still earns full credit`}
                       </span>
                     )}
                     {mySub && <span style={{ color: teal, fontSize: 12 }}>View ›</span>}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useTheme, TEAL, MUTED } from "../../theme.js";
-import { buildGradebookAssignments, calcGrades } from "../../utils.js";
+import { buildGradebookAssignments, calcGrades, effectiveDue } from "../../utils.js";
 import { integrityState, resolveScore } from "../../homework.js";
 import { workPendingState } from "../../auto-submit.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
@@ -1022,7 +1022,8 @@ export function Gradebook({
     if (!isNaN(parsed)) {
       // Typing a score clears excused status. Clamp to the assignment's own maximum —
       // exams are out of 100, labs and quizzes out of 10.
-      const maxPts = assignments.find(a => a.id === assignmentId)?.maxPts || 10;
+      const asgnForCell = assignments.find(a => a.id === assignmentId);
+      const maxPts = asgnForCell?.maxPts || 10;
       const { excused: _e, previousScore: _p, ...rest } = existing;
       const clamped = Math.max(0, Math.min(maxPts, parsed));
       // A score that changes nothing is not stored. Grading is what the student's work says
@@ -1033,7 +1034,9 @@ export function Gradebook({
       // struck through and has to be kept even though the cell reads 0.
       const isAbsent = !!absentMap[studentId]?.[assignmentId];
       const sub = subsByStudent[studentId]?.[assignmentId];
-      const natural = (!isAbsent && sub) ? resolveScore(sub, rest).effective : null;
+      // Same deadline the cell itself is resolved against, or a late homework's on-time credit
+      // would be missing here and typing the number already on screen would pin an override.
+      const natural = (!isAbsent && sub) ? resolveScore(sub, rest, null, effectiveDue(asgnForCell?.dueDate, rest.dueDate)).effective : null;
       if (natural != null && Math.abs(natural - clamped) < 0.005) {
         if (Object.keys(rest).length) current[assignmentId] = rest;
         else delete current[assignmentId];
@@ -1640,6 +1643,10 @@ export function Gradebook({
           assignmentTitle={viewSubModal.assignmentTitle}
           onClose={() => setViewSubModal(null)}
           override={(gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId] || {}}
+          due={effectiveDue(
+            assignments.find(a => a.id === viewSubModal.assignmentId)?.dueDate,
+            (gradeOverrides[viewSubModal.studentId] || {})[viewSubModal.assignmentId]?.dueDate,
+          )}
           onSavePartScores={viewSubModal.submission.type === "homework"
             ? ps => savePartScoresForCell(viewSubModal.studentId, viewSubModal.assignmentId, ps)
             : undefined}

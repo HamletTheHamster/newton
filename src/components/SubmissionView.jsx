@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useTheme } from "../theme.js";
-import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore } from "../homework.js";
+import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore, onTimeCreditIds } from "../homework.js";
 import { ChatMessages } from "./ChatMessages.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
@@ -97,7 +97,10 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }
 // (read-only — no edit/review callbacks, and `showIntegrity={false}` hides the AI verdict).
 // Renders the per-problem/per-part breakdown for homework (`submission.type === "homework"`)
 // or the graded chat dialogue for quizzes.
-export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true, audience = "instructor" }) {
+// `due` is the deadline as it applies to THIS student (effectiveDue of the assignment date and
+// any extension). It is what tells a late homework which of its parts were finished on time, so
+// the header score here matches the gradebook cell and the student's grades row.
+export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true, audience = "instructor", due = null }) {
   const { s, muted, border, text, card, bg, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
@@ -108,7 +111,14 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
   // their grades list exactly (whole-assignment score > per-part scores > submission).
   const partOverrides = override.partScores || {};
   const integrityReview = override.integrityReview || null;
-  const resolved = resolveScore(submission, override);
+  const resolved = resolveScore(submission, override, null, due);
+  // The same derivation the score went through, so the banner below is right for a record whose
+  // parts carry no stamps (anything submitted before on-time credit existed) as well as one
+  // whose do. Counted over the rows actually in this breakdown.
+  const onTimeIds = onTimeCreditIds(submission, due);
+  const onTimeParts = onTimeIds
+    ? (submission.problems || []).reduce((n, p) => n + (p.parts || [p]).filter(r => r?.id && onTimeIds.has(r.id)).length, 0)
+    : 0;
   const hasOverrides = Object.keys(partOverrides).length > 0;
   // Per-item earned to display read-only (instructor edit mode uses the draft inputs instead).
   const earnedFor = row => (partOverrides[row.id] != null ? Number(partOverrides[row.id]) : (row.earned ?? 0));
@@ -175,7 +185,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
           <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
             Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
             {!resolved.excused && resolved.effective != null && Math.abs(resolved.effective - submission.score) > 0.0001 ? " · adjusted by instructor" : ""}
-            {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? " (late, 50% penalty)" : ""} · {new Date(submission.timestamp).toLocaleString()}
+            {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? (isHomework ? " (late)" : " (late, 50% penalty)") : ""} · {new Date(submission.timestamp).toLocaleString()}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -216,12 +226,12 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
         {auto && (
           <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(251,191,36,0.4)", background: isLight ? "rgba(251,191,36,0.07)" : "rgba(251,191,36,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13 }}>
-              {toStudent ? "Saved at the deadline — your written work is still needed" : "Auto-submitted at the deadline: no written work"}
+              {toStudent ? "Saved at the deadline: your written work is still needed" : "Auto-submitted at the deadline: no written work"}
             </span>
             <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
               {auto.resolved != null && auto.totalItems != null ? `${auto.resolved} of ${auto.totalItems} parts were finished when the deadline passed, and ` : ""}
               {toStudent
-                ? "this record was saved so that work would not be lost. It does not count towards your grade yet: homework counts once your handwritten work is handed in. Open the assignment again, finish anything you still want to answer, and submit your written work. The parts you finished before the deadline keep full credit."
+                ? "this record was saved so that work would not be lost. It does not count towards your grade yet: homework counts once you upload your handwritten work. Open the assignment again, finish anything you still want to answer, and upload your written work. The parts you finished before the deadline keep full credit."
                 : "this record was saved so the work would not be lost. Nothing was uploaded and the integrity check never ran, so it scores 0 until the written work is handed in. The assignment is still open, and the parts finished before the deadline keep full credit when it is."}
             </span>
             <span style={{ color: muted, fontSize: 11 }}>Recorded {new Date(auto.at || submission.timestamp).toLocaleString()}</span>
@@ -229,13 +239,13 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
         )}
         {/* A late submission carrying on-time parts. The banner exists because the score is not
             simply "half of what you earned" any more, and an unexplained number invites email. */}
-        {submission.onTimeCredit && (
+        {onTimeParts > 0 && (
           <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
             <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>
-              {submission.onTimeCredit.parts} part{submission.onTimeCredit.parts === 1 ? "" : "s"} kept full credit
+              {onTimeParts} part{onTimeParts === 1 ? "" : "s"} kept full credit
             </span>
             <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
-              {submission.onTimeCredit.parts === 1 ? "This part was" : "These parts were"} already finished when the deadline passed, so the late penalty does not apply to {submission.onTimeCredit.parts === 1 ? "it" : "them"}. Everything answered afterwards is at half credit.
+              {onTimeParts === 1 ? "This part was" : "These parts were"} already finished when the deadline passed, so the late penalty does not apply to {onTimeParts === 1 ? "it" : "them"}. Everything answered afterwards is at half credit.
             </span>
           </div>
         )}

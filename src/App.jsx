@@ -2323,7 +2323,7 @@ export default function App() {
     } else if (studentSection === "calendar") {
       mainContent = <StudentCalendar quizzes={quizzes} homeworks={homeworks} manual={manualAssignmentList} completedQuizIds={completedQuizIds} locks={assignmentLocks} onOpen={openAssignment} />;
     } else if (studentSection === "grades") {
-      mainContent = <StudentGrades loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} manualAssignments={manualAssignments} attendance={attendance} dueDates={dueDates} assignmentNameOverrides={assignmentNameOverrides} />;
+      mainContent = <StudentGrades classId={currentClassId} loggedInStudent={loggedInStudent} modules={mergedModules} quizzes={[...quizzes, ...homeworks]} submissions={submissions} gradeCategories={gradeCategories} gradeOverrides={gradeOverrides} assignmentCategories={assignmentCategories} manualAssignments={manualAssignments} attendance={attendance} dueDates={dueDates} assignmentNameOverrides={assignmentNameOverrides} />;
     } else if (studentSection === "syllabus") {
       mainContent = <StudentSyllabus syllabus={syllabus} />;
     } else if (studentSection === "guide") {

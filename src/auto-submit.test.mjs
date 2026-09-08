@@ -13,9 +13,9 @@ import assert from "node:assert";
 import {
   AUTO_SUBMIT_SINCE, autoSubmitId, isAutoSubmission, closesAssignment, isTrackedDeadline,
   resolvedItems, draftHasCompletedWork, pendingAutoSubmissions, buildAutoSubmission,
-  onTimeItemIds, markOnTimeParts, workPendingState,
+  onTimeItemIds, markOnTimeParts, workPendingState, onTimeIdsFromTelemetry, stampOnTimeParts,
 } from "./auto-submit.js";
-import { itemsOf, resolveScore, partEarned, partIsOnTime, rescoreSubmission } from "./homework.js";
+import { itemsOf, resolveScore, partEarned, partIsOnTime, rescoreSubmission, onTimeCreditIds, scoreFromPartOverrides } from "./homework.js";
 
 let passed = 0;
 const test = (name, fn) => { fn(); passed++; console.log(`  ok  ${name}`); };
@@ -285,6 +285,94 @@ test("a real submission is never pending, and excusing still wins", () => {
   assert.strictEqual(resolveScore(real, {}).workPending, false);
   assert.strictEqual(resolveScore(real, {}).effective, 6);
   assert.strictEqual(resolveScore(build(), { excused: true }).effective, null);
+});
+
+// ── On-time credit derived from the submission's own telemetry ────────────────
+//
+// The deadline record only exists if the sweep ran while the draft was still open. The student
+// who stays up until 1am and finishes is exactly the one nobody was there to sweep for, and no
+// record can exist at all for work handed in before the sweep shipped. Telemetry's `resolvedAt`
+// is the same fact from the student's own session, so it has to carry the same credit — getting
+// this wrong halves work that was demonstrably finished on time and nothing on screen says so.
+
+const DEADLINE = "2026-09-10 23:59";
+const AT = new Date(2026, 8, 10, 23, 59);
+// Telemetry for `on` of the ten problems resolved an hour before the deadline, the rest at 1am.
+const teleFor = on => ({
+  items: Object.fromEntries(TEN.problems.map((p, i) => [p.id, {
+    resolvedAt: new Date(i < on ? AT.getTime() - 3600_000 : AT.getTime() + 3600_000).toISOString(),
+  }])),
+});
+
+test("telemetry names the parts resolved before the deadline", () => {
+  assert.deepStrictEqual([...onTimeIdsFromTelemetry(teleFor(3), AT)].sort(), ["q0", "q1", "q2"]);
+  // An item never resolved carries no timestamp and earns nothing.
+  assert.strictEqual(onTimeIdsFromTelemetry({ items: { q0: { resolvedAt: null } } }, AT).size, 0);
+  // No deadline to compare against is not an excuse to hand out credit.
+  assert.strictEqual(onTimeIdsFromTelemetry(teleFor(10), null).size, 0);
+  assert.strictEqual(onTimeIdsFromTelemetry(teleFor(10), "not a date").size, 0);
+  assert.strictEqual(onTimeIdsFromTelemetry(null, AT).size, 0);
+});
+
+test("a late submission keeps full credit on the parts telemetry proves were on time", () => {
+  // Ben: 7 of 10 finished before the deadline, the rest at 1am. 7 + 3 x 0.5 = 8.5, not 5.0.
+  const sub = { ...lateSubmission(), score: 5, telemetry: teleFor(7) };
+  assert.strictEqual(resolveScore(sub, {}, null, DEADLINE).effective, 8.5);
+  // Without the deadline nothing is derived, so every existing caller is unaffected: the stored
+  // score (the old whole-assignment halving) is handed back untouched.
+  assert.strictEqual(resolveScore(sub, {}).effective, 5);
+});
+
+test("the stored score is what stands when no part was on time", () => {
+  const sub = { ...lateSubmission(), score: 5, telemetry: teleFor(0) };
+  assert.strictEqual(resolveScore(sub, {}, null, DEADLINE).effective, 5);
+  assert.strictEqual(onTimeCreditIds(sub, DEADLINE), null);
+});
+
+test("on-time credit is only ever read off a late homework", () => {
+  assert.strictEqual(onTimeCreditIds({ ...lateSubmission(), late: false, telemetry: teleFor(7) }, DEADLINE), null);
+  assert.strictEqual(onTimeCreditIds({ type: "quiz", late: true, telemetry: teleFor(7) }, DEADLINE), null);
+  assert.strictEqual(onTimeCreditIds(null, DEADLINE), null);
+});
+
+test("the two kinds of evidence are unioned, never traded off", () => {
+  // Stamps from the deadline record cover q0-q2; telemetry additionally proves q3 and q4.
+  const stamped = markOnTimeParts({ ...lateSubmission(), telemetry: teleFor(5) }, deadlineRecord(3));
+  assert.deepStrictEqual([...onTimeCreditIds(stamped, DEADLINE)].sort(), ["q0", "q1", "q2", "q3", "q4"]);
+  assert.strictEqual(resolveScore(stamped, {}, null, DEADLINE).effective, 7.5);   // 5 + 5 x 0.5
+  // A stamp still counts on its own when telemetry was never recorded.
+  assert.strictEqual(resolveScore(markOnTimeParts(lateSubmission(), deadlineRecord(3)), {}, null, DEADLINE).effective, 6.5);
+});
+
+test("a per-student extension widens what counts as on time", () => {
+  // The instructor extends Ben to 2am. Work he did at 1am is no longer late at all.
+  const sub = { ...lateSubmission(), telemetry: teleFor(7) };
+  const ov = { dueDate: new Date(2026, 8, 11, 2, 0).toISOString() };
+  assert.strictEqual(resolveScore(sub, ov, null, ov.dueDate).effective, 10);
+});
+
+test("an instructor per-part regrade keeps the derived on-time credit", () => {
+  // The regrade path and the plain path must not disagree about which parts were on time.
+  const sub = { ...lateSubmission(0), telemetry: teleFor(3) };
+  const ids = onTimeCreditIds(sub, DEADLINE);
+  const partScores = Object.fromEntries(TEN.problems.map(p => [p.id, 1]));
+  assert.strictEqual(scoreFromPartOverrides(sub, partScores, ids), 6.5);
+  assert.strictEqual(resolveScore(sub, { partScores }, null, DEADLINE).effective, 6.5);
+});
+
+test("stamping counts the rows stamped, not the ids offered", () => {
+  // A telemetry id for an item that is not in this breakdown must not inflate the banner.
+  const stamped = stampOnTimeParts(lateSubmission(), new Set(["q0", "q1", "ghost"]), DEADLINE);
+  assert.strictEqual(stamped.onTimeCredit.parts, 2);
+  assert.strictEqual(stampOnTimeParts(lateSubmission(), new Set(["ghost"])).onTimeCredit, undefined);
+  assert.strictEqual(stampOnTimeParts(lateSubmission(), new Set()).onTimeCredit, undefined);
+});
+
+test("on-time credit never outranks an excusal, an absence or a whole-assignment override", () => {
+  const sub = { ...lateSubmission(), telemetry: teleFor(7) };
+  assert.strictEqual(resolveScore(sub, { excused: true }, null, DEADLINE).effective, null);
+  assert.strictEqual(resolveScore(sub, {}, { absent: true, date: "2026-09-10" }, DEADLINE).effective, 0);
+  assert.strictEqual(resolveScore(sub, { score: 4 }, null, DEADLINE).effective, 4);
 });
 
 console.log(`\nall passed (${passed})`);
