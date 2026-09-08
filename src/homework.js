@@ -10,7 +10,7 @@
 //   • After the 5th failed attempt: the answer is revealed → 0% credit (no more attempts).
 // Each problem is worth 1 point; multipart `parts` split that point equally.
 import { courseLabelFor } from "./course-meta.js";
-import { compressImage } from "./utils.js";
+import { compressImage, dueToDate } from "./utils.js";
 import { formatNumeric, parseJsonReply } from "./grading-core.js";
 import { workPendingState, onTimeIdsFromTelemetry } from "./auto-submit.js";
 
@@ -585,7 +585,12 @@ export function onTimeCreditIds(submission, due) {
   for (const p of sub.problems || []) {
     for (const row of (p.parts || [p])) if (row?.onTime && row.id) ids.add(row.id);
   }
-  for (const id of onTimeIdsFromTelemetry(sub.telemetry, due)) ids.add(id);
+  // `due` arrives as a stored due-date STRING, and a bare "YYYY-MM-DD" must go through
+  // `dueToDate` (11:59 PM Eastern) rather than `new Date`, which reads it as UTC midnight and
+  // lands nearly a day early west of Greenwich — the same trap `isTrackedDeadline` hand-parses
+  // around. Getting this wrong silently rejects on-time work: it cost a student five parts that
+  // her telemetry timestamped before the deadline.
+  for (const id of onTimeIdsFromTelemetry(sub.telemetry, due instanceof Date ? due : dueToDate(due))) ids.add(id);
   return ids.size ? ids : null;
 }
 

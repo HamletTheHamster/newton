@@ -124,7 +124,10 @@ different gaps, and a part either was or was not finished before the deadline:
    carried onto the real submission by `markOnTimeParts`, or written directly by
    `HomeworkRunner`'s `buildSubmission` at submit time.
 2. **The submission's own telemetry** (`onTimeIdsFromTelemetry`, `src/auto-submit.js`) — every
-   item whose `resolvedAt` is at or before `due`.
+   item whose `resolvedAt` is at or before `due`. `onTimeCreditIds` resolves `due` through
+   **`dueToDate`**, never `new Date`: a stored bare `YYYY-MM-DD` read by `new Date` is UTC
+   midnight, i.e. 8 PM the *previous* evening in Eastern, and rejects nearly a day of
+   genuinely on-time work. Pinned by a test.
 
 Source 2 exists because source 1 alone made on-time credit depend on *whether anyone happened to
 open a portal near midnight*: the sweep is lazy (`src/auto-submit-sweep.js`), so with no sweep

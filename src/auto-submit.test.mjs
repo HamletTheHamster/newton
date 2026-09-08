@@ -368,6 +368,22 @@ test("stamping counts the rows stamped, not the ids offered", () => {
   assert.strictEqual(stampOnTimeParts(lateSubmission(), new Set()).onTimeCredit, undefined);
 });
 
+test("a bare YYYY-MM-DD deadline means 11:59 PM Eastern, not UTC midnight", () => {
+  // `new Date("2026-09-07")` is UTC midnight, i.e. 8 PM the PREVIOUS evening in Eastern — nearly
+  // 28 hours before the real deadline. Reading the due date that way silently rejects work the
+  // telemetry timestamped as on time, which is a penalty applied to a student who was not late.
+  const AT_11PM = new Date(2026, 8, 7, 23, 8).toISOString();     // 11:08 PM ET on the due date
+  const sub = {
+    id: "sub_d", quizId: "hw1", type: "homework", nativeTotal: 2, late: true,
+    problems: [{ id: "a", earned: 1, max: 1 }, { id: "b", earned: 1, max: 1 }],
+    telemetry: { items: { a: { resolvedAt: AT_11PM } } },
+  };
+  const ids = onTimeCreditIds(sub, "2026-09-07");
+  assert.deepStrictEqual([...ids], ["a"]);
+  // 1 on time + 1 late halved, out of 2 = 7.5/10, not the 5.0 the whole-assignment halving gives.
+  assert.strictEqual(resolveScore(sub, {}, null, "2026-09-07").effective, 7.5);
+});
+
 test("on-time credit never outranks an excusal, an absence or a whole-assignment override", () => {
   const sub = { ...lateSubmission(), telemetry: teleFor(7) };
   assert.strictEqual(resolveScore(sub, { excused: true }, null, DEADLINE).effective, null);
