@@ -6,6 +6,7 @@ import { categoryColor } from "../../category-colors.js";
 import { fbGet, classPath } from "../../firebase.js";
 import { DueDateField } from "../../components/lms/DueDateField.jsx";
 import { closesAssignment, isAutoSubmission } from "../../auto-submit.js";
+import { flattenSubs } from "../../student-work.js";
 
 // Row types are "quiz", "homework", and — for manual assignments (exams, labs) — the
 // assignment's gradebook category id, so each category filters and colors separately.
@@ -296,18 +297,42 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   // null | { hwId: string, title: string, draft: { ...grading fields } }
   const [ptsDraft, setPtsDraft] = useState({});   // { [assignmentId]: typed string }, committed on blur/Enter
   const [progress, setProgress] = useState(null); // { [studentId]: { [hwId]: { done, total, pct, updatedAt } } }; null while loading
+  const [liveSubs, setLiveSubs] = useState(null);  // submissions re-read here for the join below; null until the first read lands
   const [progressDetail, setProgressDetail] = useState(null); // null | { hwId, title }
 
-  // One small read for the whole class. hwProgress is per-student, so like hwDrafts and
-  // hwAttempts it stays out of the App.jsx class cache and is fetched on demand here.
+  // hwProgress and submissions are read TOGETHER, and re-read on a timer, because `progressRows`
+  // joins them and a join between a fresh source and a frozen one is always wrong.
+  //
+  // A student's hwProgress record is deleted the moment they hand in - from then on the
+  // submission is the record - so "no progress record" means "finished and submitted" only if
+  // that submission is visible here. App.jsx loads `submissions` once per class and never
+  // re-polls it (deliberately: instructor writes to that node are optimistic, and a shared poll
+  // could revert an in-flight edit), so an instructor watching a deadline in an already-open tab
+  // saw every student who submitted flip from their real percentage to "not started" - the one
+  // reading this column must never produce, and indistinguishable from a student who did nothing.
+  //
+  // Reading it here keeps the fix view-local: this copy is only ever joined for display and is
+  // never written back, so it cannot clobber an optimistic edit. The 60s visible-only cadence
+  // matches App.jsx's refreshClassContent, and is what makes the column watchable on the night
+  // work actually comes in rather than a snapshot of whenever the tab was opened.
   useEffect(() => {
-    if (!classId) { setProgress({}); return; }
+    if (!classId) { setProgress({}); setLiveSubs(null); return; }
     let cancelled = false;
-    setProgress(null);
-    fbGet(classPath(classId, "hwProgress"))
-      .then(d => { if (!cancelled) setProgress(d && typeof d === "object" ? d : {}); })
-      .catch(() => { if (!cancelled) setProgress({}); });
-    return () => { cancelled = true; };
+    setProgress(null); setLiveSubs(null);
+    // `undefined` = the read failed. A failed read keeps whatever is already on screen: it must
+    // never blank the column, and above all must never empty the submission side of the join,
+    // which would report the whole class as having handed nothing in.
+    const read = () => Promise.all([
+      fbGet(classPath(classId, "hwProgress")).catch(() => undefined),
+      fbGet(classPath(classId, "submissions")).catch(() => undefined),
+    ]).then(([prog, subs]) => {
+      if (cancelled) return;
+      setProgress(prev => (prog === undefined ? (prev || {}) : (prog && typeof prog === "object" ? prog : {})));
+      if (subs !== undefined) setLiveSubs(flattenSubs(subs));
+    });
+    read();
+    const tick = setInterval(() => { if (document.visibilityState === "visible") read(); }, 60000);
+    return () => { cancelled = true; clearInterval(tick); };
   }, [classId]);
 
   // Per-student rows for one homework, merging the two sources of truth: a submitted student
@@ -319,8 +344,11 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   // fourteen and nothing handed in.
   // Indexed once per render rather than scanned per (student, homework) pair: the lookup runs
   // roster x homework times, and a mid-term submissions list is long.
+  // The freshly-read copy once it has arrived, the App.jsx prop until then, so the column is
+  // populated on the first paint and correct from the first read onwards.
+  const joinSubs = liveSubs || submissions;
   const subByKey = {};
-  (submissions || []).forEach(x => { subByKey[`${x.studentId}|${x.quizId}`] = x; });
+  (joinSubs || []).forEach(x => { subByKey[`${x.studentId}|${x.quizId}`] = x; });
 
   const progressRows = hwId => (roster || []).map(r => {
     const name = r.altName || r.fullName || r.studentId;
