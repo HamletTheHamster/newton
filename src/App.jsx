@@ -136,6 +136,18 @@ const INSTRUCTOR_SECTIONS = [
   { id: "settings",     label: "Settings" },
 ];
 
+// Seeded ONCE, onto a database that has never had a settings node. It is a first-run
+// bootstrap, NEVER a fallback: seeding it because a read failed would hand anyone who can
+// reach the login a publicly-known instructor password. See SETTINGS_UNREADABLE below.
+const DEFAULT_INSTRUCTOR_PW = "physics123";
+
+// The settings read failed, as distinct from the node being absent. They used to collapse to
+// the same `null`, so one transient hiccup reseeded the instructor password to the default:
+// the real password was then rejected on that machine while a still-open session elsewhere
+// kept working from its in-memory copy (nothing re-reads the node after load), which is what
+// made it look like a per-computer problem.
+const SETTINGS_UNREADABLE = Symbol("settings-unreadable");
+
 // A completed quiz whose save failed, held in localStorage until it lands. Unlike homework,
 // a quiz has no draft node: the sitting lives only in component state, so without this a
 // failed save plus a closed tab loses the whole attempt with nothing to redo it from. One
@@ -205,6 +217,9 @@ export default function App() {
   const [blackboard, setBlackboard] = useState(null);
   const [studentAvailableClasses, setStudentAvailableClasses] = useState([]);
   const [settings, setSettings] = useState({ passwordHash: null, passwordSalt: null });
+  // Startup could not read `settings`. Kept apart from "not loaded yet" so the instructor
+  // login can say which it is instead of spinning on "Settings still loading."
+  const [settingsUnreadable, setSettingsUnreadable] = useState(false);
   const [dataReady, setDataReady] = useState(false);
   const [showNoClasses, setShowNoClasses] = useState(false);
   const [classDataLoading, setClassDataLoading] = useState(false);
@@ -478,17 +493,25 @@ export default function App() {
       try {
         const [classesData, settingsData, bugsData, evalsData] = await Promise.all([
           fbGet('classes').catch(() => null),
-          fbGet('settings').catch(() => null),
+          // NOT `.catch(() => null)`: a failed read and an absent node must stay
+          // distinguishable, or the seeding branch below fires on a hiccup. It does not
+          // throw either — `settings` holds nothing a STUDENT needs, so a failure here
+          // must not take the portal down for a class; it is surfaced at the instructor
+          // login, which is the only place it means anything.
+          fbGet('settings').catch(() => SETTINGS_UNREADABLE),
           fbGet('bugReports').catch(() => null),
           fbGet('courseEvals').catch(() => null),
         ]);
         setFbConnStatus('ok');
         const loadedClasses = (classesData && typeof classesData === 'object') ? classesData : {};
         setClasses(loadedClasses);
-        if (settingsData?.passwordHash) {
+        if (settingsData === SETTINGS_UNREADABLE) {
+          setSettingsUnreadable(true);
+        } else if (settingsData?.passwordHash) {
           setSettings(settingsData);
         } else {
-          const h = await makeHash("physics123");
+          // Reached only on a SUCCESSFUL read of a genuinely unseeded node: first run.
+          const h = await makeHash(DEFAULT_INSTRUCTOR_PW);
           const ns = { passwordHash: h.hash, passwordSalt: h.salt };
           setSettings(ns);
           await fbSet('settings', ns);
@@ -1766,8 +1789,14 @@ export default function App() {
     setScreen("instructor");
   };
   const doLogin = async () => {
+    if (settingsUnreadable) { setInstErr("Could not load the instructor settings on this device. Check the connection and refresh the page."); return; }
     if (!settings.passwordHash) { setInstErr("Settings still loading."); return; }
-    const ok = await verifyPw(instPw, settings.passwordHash, settings.passwordSalt);
+    // `.trim()` mirrors the setter (Change Instructor Password trims before hashing).
+    // Without it a password saved with a stray space, or refilled with one by a
+    // browser password manager, hashes to something the stored hash can never match.
+    let ok;
+    try { ok = await verifyPw(instPw.trim(), settings.passwordHash, settings.passwordSalt); }
+    catch (e) { setInstErr(`Could not check the password on this browser: ${e.message}`); return; }
     if (!ok) { setInstErr("Incorrect password."); return; }
     if (!settings.totpSecret) { setInstErr(""); setEditPw(""); await enterInstructor(); return; }
     const deviceToken = localStorage.getItem('newton_device_token');
@@ -1823,8 +1852,9 @@ export default function App() {
   };
   const confirmDanger = (label, onConfirm) => { setDangerAction({ label, onConfirm }); setDangerPw(""); setDangerErr(""); };
   const executeDanger = async () => {
+    if (settingsUnreadable) { setDangerErr("Could not load the instructor settings on this device. Refresh and try again."); return; }
     if (!settings.passwordHash) { setDangerErr("Settings not loaded."); return; }
-    const ok = await verifyPw(dangerPw, settings.passwordHash, settings.passwordSalt);
+    const ok = await verifyPw(dangerPw.trim(), settings.passwordHash, settings.passwordSalt);
     if (!ok) { setDangerErr("Incorrect password."); return; }
     dangerAction.onConfirm(); setDangerAction(null); setDangerPw(""); setDangerErr("");
   };
@@ -2515,7 +2545,7 @@ export default function App() {
         </div>
         {instLoginStep === "password" ? (
           <>
-            <input type="password" style={{ ...s.input, marginBottom: 10 }} placeholder="Instructor password…" value={instPw} onChange={e => setInstPw(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} autoFocus />
+            <input type="password" name="newton-instructor-pw" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="Instructor password…" value={instPw} onChange={e => setInstPw(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} autoFocus />
             {instErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{instErr}</p>}
             <button onClick={doLogin} style={s.btnPri}>Login</button>
           </>
@@ -2768,8 +2798,9 @@ export default function App() {
                       <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
                         <button onClick={() => { setRemoveStudent(null); setRemovePw(""); setRemoveErr(""); }} style={{ ...s.btnSec, flex: 1 }}>Cancel</button>
                         <button onClick={async () => {
+                          if (settingsUnreadable) { setRemoveErr("Could not load the instructor settings on this device. Refresh and try again."); return; }
                           if (!settings.passwordHash) { setRemoveErr("Settings not loaded."); return; }
-                          const ok = await verifyPw(removePw, settings.passwordHash, settings.passwordSalt);
+                          const ok = await verifyPw(removePw.trim(), settings.passwordHash, settings.passwordSalt);
                           if (!ok) { setRemoveErr("Incorrect password."); return; }
                           try {
                             await removeStudentData(removeStudent.studentId);

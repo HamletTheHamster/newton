@@ -77,6 +77,12 @@ Auth helpers live in `src/auth.js` (`hashPw`, `makeHash`, `verifyPw`, TOTP helpe
 
 **Instructor:** single shared password verified against `settings.passwordHash/Salt`. Optionally protected by TOTP 2FA (RFC 6238, implemented with `crypto.subtle` HMAC-SHA1 — no library). Trusted devices are stored as SHA-256 hashes of a random token kept in `localStorage`; the raw token never goes to Firebase.
 
+**`DEFAULT_INSTRUCTOR_PW` is a first-run bootstrap, never a fallback.** The startup read of `settings` is the ONE `fbGet` in that `Promise.all` that does not catch to `null`: it catches to the `SETTINGS_UNREADABLE` sentinel, so "the read failed" and "the node is absent" stay distinguishable and only the second reaches the seeding branch. When both collapsed to `null`, any transient failure reseeded the shared password to the publicly-known default — the real password was then rejected *on that machine only*, while a still-open session elsewhere kept working from its in-memory `settings` (nothing re-reads the node after load), which is what made it look like a per-computer problem. If the reseeding `fbSet` also landed, the default became the live password for everyone.
+
+It deliberately does **not** throw. `settings` holds nothing a student needs, so a failure there must not put the whole class behind the "Cannot Reach Database" screen; it sets `settingsUnreadable`, and the three password gates (`doLogin`, `executeDanger`, roster removal) say so in words rather than spinning on "Settings still loading.".
+
+**Trim on both sides.** "Change Instructor Password" hashes `editPw.trim()`, so every verification site (`doLogin`, the Danger Zone, class removal) must trim too. It did not, so a password saved with stray whitespace — or refilled with it by a shared computer's password manager — hashed to something the stored hash could never match. The login field also sets `autoComplete="off"` so a public machine's saved credential cannot silently fill it.
+
 ### 2FA Setup Flow
 
 Enable in Settings tab → generates TOTP secret in browser → shows QR code (via `qrcode` npm package) → user confirms with a 6-digit code → secret saved to `settings.totpSecret` in Firebase. "Remember this device" writes the token hash to `settings.trustedDevices` and the raw token to `localStorage['newton_device_token']`. Disable/clear actions use the existing `confirmDanger` modal (requires password re-entry).
