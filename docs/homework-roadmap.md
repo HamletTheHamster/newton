@@ -14,6 +14,54 @@ the per-course docs: [courses/phy115.md](courses/phy115.md) · [courses/phy215.m
 
 ## Intended behavior NOT yet implemented
 
+### ⚠️ `clearDraft()` races the draft saves, and the draft survives the submission
+**Open. Found 2026-09-07, on HW1's deadline night. Costs no marks today; fix before it does.**
+
+`clearDraft()` (`HomeworkRunner.jsx`) fires its three deletes — `hwDrafts/{sid}/{hwId}`,
+`hwProgress/{sid}/{hwId}`, `hwTelemetry/{sid}/{hwId}` — as **fire-and-forget** `fbSet(…, null)`
+calls with `.catch(() => {})`, and nothing awaits them. Meanwhile a `fbUpdate(draftPath, patch)`
+from the debounced typed-answers save, the visibility/pagehide flush, or a **second session of
+the same student** (a phone, or a laptop tab opened before they submitted, whose `submittedRef`
+is a different component instance and therefore still `false`) can be in flight. RTDB has no
+ordering guarantee across separate requests, so a PATCH that lands after the DELETE **recreates
+the node** — and a PATCH creates the whole path, so the draft comes back complete.
+
+Observed in production, both on the same night:
+
+| student | submitted at | node re-written at | result |
+|---|---|---|---|
+| Nnenna Nnebe `0429154` | `02:48:43Z` | draft `savedAt` = `02:57:18Z` | draft resurrected (35/35 items `correct`), `hwProgress` and `hwAttempts` gone |
+| Tony Vanco `0432369` | `2026-09-06T20:01:29Z` | `hwProgress.updatedAt` = `20:01:36Z` | progress record resurrected at 100%, draft intact |
+
+Note the two land on **different** nodes each time — that is the signature of a race between
+independent requests rather than a single bug in one write path.
+
+**Why it costs nothing today.** `closesAssignment` reads the submission, not the draft, so the
+module list still ticks, the To Do rail still drops the assignment, and re-opening still launches
+in practice mode. The student sees a finished assignment and the correct grade.
+
+**Why it must still be fixed.** A resurrected `hwProgress` record with `done > 0` is exactly the
+prefilter `auto-submit-sweep.js` uses to pick sweep candidates, and a resurrected draft is what
+`draftHasCompletedWork` then confirms. Both guards that stop a phantom `auto_*` record being
+written for a student who already handed in — the `submitted` set in `pendingAutoSubmissions`, and
+`sweptRef`'s once-per-session gating — depend on the sweeping session holding a **fresh**
+submissions snapshot. That is the same staleness assumption that broke the Progress column (below),
+so it should not be the only thing standing between a submitted student and a second submission
+record worth `0` under `workPending`.
+
+**Direction when it is picked up** (deliberately not done an hour before a deadline):
+- `clearDraft` should **await** its deletes and run them **after** cancelling every pending save,
+  so the last write on each node is the delete.
+- `submittedRef` is per-component-instance and therefore cannot see another tab. The durable
+  version of that fact is the submission itself: a save path should refuse to write a draft for an
+  assignment that already has a submission which `closesAssignment`. That is a read per save, so
+  more likely a one-shot check on mount plus a re-check in the flush.
+- Consider whether `clearDraft` should null `hwProgress` at all, or write a **terminal** record
+  (`{ done: total, total, pct: 100, submittedAt }`). That would make the Progress column
+  self-sufficient — one small live node, no join against `submissions` at all — but it also makes
+  `done > 0` true for a submitted student, so the sweep prefilter would need to exclude it
+  explicitly. Weigh the two together, not separately.
+
 ### ~~⚠️ Retakes must be practice-only (no re-grade)~~ ✅ Done
 Implemented in commit after `dd07c4c`. `startHomework(hw, isPractice)` now mirrors the
 quiz pattern: `Home.jsx` passes `meta.completed`; `App.jsx` calls `setPracticeMode`;
@@ -112,12 +160,24 @@ find nothing, mark itself done for the session, and never run again once the dat
 silently take the extension away.
 
 ### Instructor progress view (Assignments hub)
-`Assignments.jsx` reads `classes/{classId}/hwProgress` in **one** small GET and renders a
+`Assignments.jsx` reads `classes/{classId}/hwProgress` **and `submissions` together**, on a 60s
+visible-only refresh (see the note on the join below), and renders a
 **Progress column** between Due Date and Actions: a 44px bar plus the class `N%` average, and
 nothing else. Clicking it opens a per-student breakdown sorted least-progress first; the
 started count and last-worked time live on the cell's `title` tooltip and in that modal, since
 printing them in the cell cost three lines of row height and the column width the title needs
 more.
+
+**The two nodes are read together because `progressRows` joins them.** A student's `hwProgress`
+record is deleted the moment they hand in, so "no progress record" means "finished and submitted"
+only if that submission is visible. App.jsx loads `submissions` once per class and never re-polls
+it (instructor writes there are optimistic), while this component re-read `hwProgress` on every
+mount — so on 2026-09-07, HW1's deadline night, an already-open instructor tab showed every student
+who submitted flip to **0% and "not started"**, indistinguishable from a student who did nothing,
+and dropped them from the started count and the class average. A join between a fresh source and a
+frozen one is always wrong. The copy read here is view-local and never written back, which is what
+makes fixing it in this component safe; a failed read keeps what is on screen rather than emptying
+the submission side of the join.
 
 That breakdown is a list, and stops there. Watching how ONE student worked the set, problem by
 problem, is `StudentWorkDetail.jsx` on the **Analytics** page (Students → a student → a homework
