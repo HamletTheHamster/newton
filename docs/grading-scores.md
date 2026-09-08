@@ -115,6 +115,30 @@ and comes out at exactly the number the old `pct * 10 * (late ? 0.5 : 1)` produc
 Halving part by part instead would have shifted a handful of existing grades by a hundredth
 through rounding. `src/auto-submit.test.mjs` pins that with a fractional-weight case.
 
+#### Reading the split off a submission
+
+`SubViewModal` labels every row of a **late** homework's breakdown, using `partIsOnTime` — the
+same predicate `scoreFromPartOverrides` buckets with, so a row's badge and the credit it
+contributes cannot drift apart:
+
+- `On time, full credit` (blue), or
+- `Late, counts X pt` (amber), where X is half the row's earned value.
+
+The second badge exists because the score badge beside it is the **raw** earned value. Since the
+penalty lives on a subtotal rather than on each part, a late part reading `1.00 / 1.00 pt`
+contributes 0.50 and nothing on the row said so — which is exactly the question the breakdown
+gets opened to answer. Where the record carries telemetry, the badge's `title` gives the moment
+that part was resolved. The header adds `Due …` beside the hand-in time on a late submission, so
+the deadline the parts are being judged against is on screen with them.
+
+Badges are rendered only when `submission.late` is true: on an on-time submission every part is
+on time, and a badge on every row would say nothing. A late record with no evidence either way
+(no `onTime` stamps, no telemetry) correctly labels every row late.
+
+The labels are **not** gated by `audience` - a student opening their own submission sees the same
+split. It is the per-part form of the `onTimeCredit` banner they already get, and it is the
+arithmetic behind their own score.
+
 #### Where "which parts were on time" comes from
 
 Two independent sources, **unioned** (`onTimeCreditIds`, `src/homework.js`) — they cover

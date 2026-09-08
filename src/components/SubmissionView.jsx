@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useTheme } from "../theme.js";
-import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore, onTimeCreditIds } from "../homework.js";
+import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore, onTimeCreditIds, partIsOnTime } from "../homework.js";
+import { dueToDate } from "../utils.js";
 import { ChatMessages } from "./ChatMessages.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
@@ -10,12 +11,17 @@ import { FBDField } from "./FBDField.jsx";
 // One gradable item (a whole problem or a part) in a homework submission breakdown.
 // When `onEditChange` is provided the earned value becomes an editable number input
 // (instructor-only); otherwise it renders as a read-only badge.
-function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }) {
+function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned, onTime = null, resolvedAt = null }) {
   const { s, muted, border, text } = useTheme();
   const correct = row.status === "correct";
   const color = correct ? "#4ade80" : row.status === "revealed" ? "#60a5fa" : "#f87171";
   const parsedEdit = editEarned !== undefined ? parseFloat(editEarned) : NaN;
   const isOverridden = !isNaN(parsedEdit) && Math.abs(parsedEdit - (row.earned ?? 0)) > 0.0001;
+  // What the row is worth as displayed, so an instructor editing a late part watches the
+  // half-credit figure move with the number they are typing.
+  const shownEarned = editEarned !== undefined
+    ? (isNaN(parsedEdit) ? (row.earned ?? 0) : Math.max(0, Math.min(row.max ?? 1, parsedEdit)))
+    : (displayEarned ?? row.earned ?? 0);
   const isGraph = row.answerType === "graph";
   const isVector = row.answerType === "vector";
   const isFBD = row.answerType === "fbd";
@@ -86,6 +92,17 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned }
         ) : (
           <span style={{ ...s.badge(color), fontSize: 11 }}>{(displayEarned ?? row.earned ?? 0).toFixed(2)} / {(row.max ?? 1).toFixed(2)} pt</span>
         )}
+        {/* Which side of the deadline THIS part fell on. The score badge beside it is the RAW
+            earned value: `scoreFromPartOverrides` buckets the parts and halves the late bucket at
+            the total, so a late part showing "1.00 / 1.00" contributes 0.50 and nothing on the row
+            said so. Only rendered for a late submission, where the distinction exists. */}
+        {onTime != null && (
+          <span
+            title={resolvedAt ? `Answered ${new Date(resolvedAt).toLocaleString()}` : undefined}
+            style={{ ...s.badge(onTime ? "#60a5fa" : "#fbbf24"), fontSize: 11 }}>
+            {onTime ? "On time, full credit" : `Late, counts ${(shownEarned * 0.5).toFixed(2)} pt`}
+          </span>
+        )}
         {!correct && !isPlot && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
       </div>
     </div>
@@ -119,6 +136,15 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
   const onTimeParts = onTimeIds
     ? (submission.problems || []).reduce((n, p) => n + (p.parts || [p]).filter(r => r?.id && onTimeIds.has(r.id)).length, 0)
     : 0;
+  // Per-part deadline labelling. Only meaningful on a LATE submission: on an on-time one every
+  // part is on time and a badge on every row would say nothing. `partIsOnTime` is the SAME
+  // predicate `scoreFromPartOverrides` buckets with, so a row's badge and the credit it
+  // contributes cannot drift apart. `resolvedAt` comes from the telemetry carried on the record,
+  // which is what dates a part in the first place; a record without it still labels correctly
+  // from the `onTime` stamps, just with no time to show.
+  const showPartDeadline = isHomework && !!submission.late;
+  const resolvedAtOf = id => (id ? submission.telemetry?.items?.[id]?.resolvedAt || null : null);
+  const dueAt = due ? dueToDate(due) : null;
   const hasOverrides = Object.keys(partOverrides).length > 0;
   // Per-item earned to display read-only (instructor edit mode uses the draft inputs instead).
   const earnedFor = row => (partOverrides[row.id] != null ? Number(partOverrides[row.id]) : (row.earned ?? 0));
@@ -185,7 +211,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
           <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
             Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
             {!resolved.excused && resolved.effective != null && Math.abs(resolved.effective - submission.score) > 0.0001 ? " · adjusted by instructor" : ""}
-            {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? (isHomework ? " (late)" : " (late, 50% penalty)") : ""} · {new Date(submission.timestamp).toLocaleString()}
+            {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? (isHomework ? " (late)" : " (late, 50% penalty)") : ""} · Handed in {new Date(submission.timestamp).toLocaleString()}{submission.late && dueAt && !isNaN(dueAt.getTime()) ? ` · Due ${dueAt.toLocaleString()}` : ""}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -327,6 +353,8 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
                     editEarned={canEdit ? (draftParts[row.id] !== undefined ? draftParts[row.id] : String(row.earned ?? 0)) : undefined}
                     onEditChange={canEdit ? val => setItemDraft(row.id, val) : undefined}
                     displayEarned={canEdit ? undefined : earnedFor(row)}
+                    onTime={showPartDeadline ? partIsOnTime(row, onTimeIds) : null}
+                    resolvedAt={showPartDeadline ? resolvedAtOf(row.id) : null}
                   />
                 ))}
               </div>
