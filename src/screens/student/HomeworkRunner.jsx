@@ -150,6 +150,21 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [preparing, setPreparing] = useState(null);      // { name, pct } while a file is being compressed
   const [workError, setWorkError] = useState("");        // why an attached file was refused
 
+  // The part being worked: on a multipart problem that is the first unresolved part, since parts
+  // are answered in order. This is what the post-submit scroll, the auto-focus and the telemetry
+  // attribution all target, so they cannot disagree.
+  const workingIndex = (problem, its) => {
+    if (!problem?.parts?.length) return its.length - 1;
+    const firstOpen = its.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
+    return firstOpen === -1 ? its.length - 1 : firstOpen;
+  };
+  // Sequential reveal: a part is rendered only once every earlier part is resolved, so the part
+  // being worked is also the deepest one shown. An INSTRUCTOR PREVIEW opts out and shows every
+  // part at once — the instructor is reading the problem, not working it, and gating them behind
+  // correct answers to their own key hides most of what they opened the preview to check. A
+  // student practice run keeps the gate, since practice is still the student doing the homework.
+  const lastVisibleIndex = (problem, its) => (preview ? its.length - 1 : workingIndex(problem, its));
+
   // Draft + attempt persistence (skipped in practice mode).
   // hwAttempts is a separate node from the draft: it is written on every submission attempt
   // and seeded into local state unconditionally on mount, so students cannot reset attempt
@@ -365,9 +380,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     // When a buildup illustration just appeared, scroll the whole body to the bottom so the full
     // animation + caption are in view; otherwise center the freshly revealed item.
     const its = itemsOf(problems[idx]);
-    const firstOpen = its.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
-    const lastVisible = (problems[idx]?.parts?.length ? (firstOpen === -1 ? its.length - 1 : firstOpen) : its.length - 1);
-    const deep = its[lastVisible];
+    const deep = its[workingIndex(problems[idx], its)];
     const showsBuildup = deep && deep.answerType === "vector" && deep.vector?.buildup && (status[deep.id] === "correct" || status[deep.id] === "revealed");
     if (showsBuildup && bodyRef.current) {
       bodyRef.current.scrollTo({ top: bodyRef.current.scrollHeight, behavior: "smooth" });
@@ -391,11 +404,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const deepestVisibleId = (() => {
     const its = itemsOf(problems[idx]);
     if (!its.length) return null;
-    const firstOpen = its.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
-    const lastVisible = problems[idx]?.parts?.length
-      ? (firstOpen === -1 ? its.length - 1 : firstOpen)
-      : its.length - 1;
-    return its[lastVisible]?.id || null;
+    return its[workingIndex(problems[idx], its)]?.id || null;
   })();
 
   useEffect(() => {
@@ -1340,16 +1349,16 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
             <FreeHint>{problem.freeHint}</FreeHint>
           )}
           {(() => {
-            // Sequential reveal: a part appears only once every earlier part is resolved
-            // (correct or revealed). The first unresolved part is the deepest one shown —
-            // no "Next" click needed; later parts surface on this same page as each resolves.
-            const firstOpen = items.findIndex(it => status[it.id] !== "correct" && status[it.id] !== "revealed");
-            const lastVisible = !partLabels ? items.length - 1 : (firstOpen === -1 ? items.length - 1 : firstOpen);
+            // Later parts surface on this same page as each resolves — no "Next" click needed.
+            // See lastVisibleIndex for the reveal rule and the instructor-preview exception.
+            const lastVisible = lastVisibleIndex(problem, items);
+            const working = workingIndex(problem, items);
             return items.map((it, i) => {
               if (partLabels && i > lastVisible) return null;
-              // Tag the deepest visible part so a freshly revealed one can be scrolled into view
-              // and auto-focused.
-              const isDeepest = i === lastVisible;
+              // Tag the part being worked so a freshly revealed one can be scrolled into view
+              // and auto-focused. In a preview every part is on screen, so this stays on the
+              // first unanswered one rather than jumping to the bottom of the problem.
+              const isDeepest = i === working;
               return renderItem(it, partLabels ? `${i + 1} of ${items.length}` : null, isDeepest ? revealRef : null, isDeepest);
             });
           })()}
