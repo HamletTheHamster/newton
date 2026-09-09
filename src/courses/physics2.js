@@ -1188,4 +1188,185 @@ export const HOMEWORKS_PHYSICS2 = [
       },
     ],
   },
+  {
+    id: "hw6",
+    title: "Homework 6: Direct-Current Circuits",
+    // WORDING: every prompt below is the Y&F problem text VERBATIM, with only the adaptations the
+    // app forces:
+    //   - "Fig. E26.24" / "Fig. P26.71" becomes "the figure" (the served crops carry no caption).
+    //   - A stem sentence that ends "Find (a) ...; (b) ...; (c) ..." is split so the shared clause
+    //     stays in the stem and each lettered clause becomes its own part, carrying the source's
+    //     own verb ("Find ...", "What is ...").
+    //   - A part asking one question about several objects ("the current in each resistor", "the
+    //     current through the battery and each resistor", "the current through each resistor")
+    //     becomes one blank per object, named by the source's own label.
+    //   - "polarity and emf" (26.34 b) and "including its polarity" / "including its direction"
+    //     (26.71 a/b) split into a numeric magnitude + a text part, since a numeric item holds one
+    //     value (same treatment as hw1 21.29 and hw5 25.38).
+    //   - 26.81's source bolds "The Wheatstone Bridge." and italicizes "Wheatstone bridge"; the
+    //     lead-in is kept as plain text (as hw5 kept "Light Bulbs.") and the emphasis dropped.
+    //   - Units live in `unit`, which renders beside the input box.
+    // 26.8 needs NO figure: the three resistances and the battery are fully given in words. The
+    // circuit that shares its screenshot in the source folder belongs to a neighbouring problem.
+    problems: [
+      // 26.8 — the definition of a parallel combination, run all the way through. R_eq = 0.800 ohm,
+      // and because every resistor sees the same 28.0 V, P = V^2/R makes the SMALLEST resistor the
+      // hottest. Parts (b), (d) and (e) each get one blank per resistor: for (d) the fact that all
+      // three read 28.0 V is precisely what the problem is testing, so a single blank plus a note
+      // that they agree would give the answer away.
+      {
+        id: "hw6_p1",
+        prompt: "Three resistors having resistances of $1.60\\ \\Omega$, $2.40\\ \\Omega$, and $4.80\\ \\Omega$ are connected in parallel to a $28.0\\text{-V}$ battery that has negligible internal resistance.",
+        parts: [
+          { id: "hw6_p1a", prompt: "(a) Find the equivalent resistance of the combination.", answerType: "numeric", unit: "Ω" },
+          { id: "hw6_p1b_160", prompt: "(b) Find the current in the $1.60\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p1b_240", prompt: "(b) Find the current in the $2.40\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p1b_480", prompt: "(b) Find the current in the $4.80\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p1c", prompt: "(c) Find the total current through the battery.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p1d_160", prompt: "(d) Find the voltage across the $1.60\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "V" },
+          { id: "hw6_p1d_240", prompt: "(d) Find the voltage across the $2.40\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "V" },
+          { id: "hw6_p1d_480", prompt: "(d) Find the voltage across the $4.80\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "V" },
+          { id: "hw6_p1e_160", prompt: "(e) Find the power dissipated in the $1.60\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "W" },
+          { id: "hw6_p1e_240", prompt: "(e) Find the power dissipated in the $2.40\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "W" },
+          { id: "hw6_p1e_480", prompt: "(e) Find the power dissipated in the $4.80\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "W" },
+          { id: "hw6_p1f", prompt: "(f) Which resistor dissipates the most power: the one with the greatest resistance or the least resistance? Explain why this should be.", answerType: "text" },
+        ],
+      },
+      // 26.24 — three parallel branches between one pair of nodes, so the 10.0-V battery fixes the
+      // node voltage outright and no simultaneous equations are needed. Both batteries have their
+      // + terminal at the top (verified against the figure), so the 5.00-V battery OPPOSES the
+      // 10.0-V one and the right branch carries (10.0 - 5.00)/20.0 = 0.250 A.
+      {
+        id: "hw6_p2",
+        figure: "/homeworkFigures/physics2/HW6/figE26-24.png", figureWidth: 400,  // natural 636x276
+        prompt: "The batteries shown in the circuit in the figure have negligibly small internal resistances.",
+        parts: [
+          { id: "hw6_p2a", prompt: "(a) Find the current through the $30.0\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p2b", prompt: "(b) Find the current through the $20.0\\text{-}\\Omega$ resistor.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p2c", prompt: "(c) Find the current through the $10.0\\text{-V}$ battery.", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 26.31 — the two meter readings are the whole point. With S open the voltmeter's 15.0 V
+      // fixes 0.300 A through the 30.0 + 50.0 series path, which back-solves the emf; with S
+      // closed the ideal 25.0-V battery CLAMPS the 50.0-ohm resistor at 25.0 V, so the ammeter
+      // reads 0.500 A and the rest of the circuit no longer matters. The instructor key notes on
+      // its own working that collapsing the circuit beats Kirchhoff here.
+      {
+        id: "hw6_p3",
+        figure: "/homeworkFigures/physics2/HW6/figE26-31.png", figureWidth: 480,  // natural 806x290 (two meters plus five labelled elements; needs the extra width)
+        prompt: "In the circuit shown in the figure the batteries have negligible internal resistance and the meters are both idealized. With the switch S open, the voltmeter reads $15.0\\text{ V}$.",
+        parts: [
+          { id: "hw6_p3a", prompt: "(a) Find the emf $\\mathcal{E}$ of the battery.", answerType: "numeric", unit: "V" },
+          { id: "hw6_p3b", prompt: "(b) What will the ammeter read when the switch is closed?", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 26.34 — a power rating is used as a current meter: 24 J/s in the 6.0-ohm resistor means
+      // 2.0 A up the middle branch, which fixes the 7.0-V node difference, which fixes the
+      // ammeter at 7.0/30 = 0.233 A, which leaves 1.767 A for the left branch. That last current
+      // is too big for the 7.0 V available, so the unknown battery must be turned around: the
+      // answer to (b) is 46.0 V with the polarity REVERSED from the figure.
+      {
+        id: "hw6_p4",
+        figure: "/homeworkFigures/physics2/HW6/figE26-34.png", figureWidth: 440,  // natural 766x496
+        prompt: "In the circuit shown in the figure, the $6.0\\text{-}\\Omega$ resistor is consuming energy at a rate of $24\\text{ J/s}$ when the current through it flows as shown.",
+        parts: [
+          { id: "hw6_p4a", prompt: "(a) Find the current through the ammeter A.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p4b_pol", prompt: "(b) What is the polarity of the battery, assuming it has negligible internal resistance?", answerType: "text" },
+          { id: "hw6_p4b_emf", prompt: "(b) What is the emf $\\mathcal{E}$ of the battery, assuming it has negligible internal resistance?", answerType: "numeric", unit: "V" },
+        ],
+      },
+      // 26.47 — the only R-C problem in the set. All three capacitors are in series (verified
+      // against the figure: traversing the loop, each is crossed from - to +), so C_eq = 60/13 pF
+      // and they share the 3.50-nC charge. Energy goes as q^2, so losing 80.0% of the energy
+      // leaves q = Q_0*sqrt(0.20), and i = q/(R C_eq) = 13.6 A. The trap is reading "80.0% of
+      // their energy" as "80.0% of their charge", which would give i = 6.07 A.
+      {
+        id: "hw6_p5",
+        figure: "/homeworkFigures/physics2/HW6/figE26-47.png", figureWidth: 360,  // natural 536x378
+        prompt: "In the circuit shown in the figure each capacitor initially has a charge of magnitude $3.50\\text{ nC}$ on its plates. After the switch S is closed, what will be the current in the circuit at the instant that the capacitors have lost $80.0\\%$ of their initial stored energy?",
+        answerType: "numeric", unit: "A",
+      },
+      // 26.63 — the set's one genuine three-unknown Kirchhoff problem. The arrows in the figure
+      // define the reference directions and all three answers come out POSITIVE, so a student who
+      // follows the figure never has to interpret a sign.
+      {
+        id: "hw6_p6",
+        figure: "/homeworkFigures/physics2/HW6/figP26-63.png", figureWidth: 400,  // natural 588x348
+        prompt: "Calculate the three currents $I_1$, $I_2$, and $I_3$ indicated in the circuit diagram shown in the figure.",
+        parts: [
+          { id: "hw6_p6_i1", prompt: "Calculate $I_1$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p6_i2", prompt: "Calculate $I_2$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p6_i3", prompt: "Calculate $I_3$.", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 26.66 — a bridge that does NOT collapse into series/parallel groups, because R_3 carries
+      // current (V_c = 8.00 V, V_d = 6.00 V, so 2.00 A crosses the bridge). That is why (b) asks
+      // for the equivalent resistance only AFTER the currents: it has to be back-computed as
+      // 14.0 V / 10.0 A = 1.40 ohm rather than reduced. The source names the resistors R_1..R_5,
+      // so "each resistor" becomes one blank per label plus one for the battery.
+      {
+        id: "hw6_p7",
+        figure: "/homeworkFigures/physics2/HW6/figP26-66.png", figureWidth: 440,  // natural 706x306
+        parts: [
+          { id: "hw6_p7a_bat", prompt: "(a) Find the current through the battery in the circuit shown in the figure.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p7a_r1", prompt: "(a) Find the current through $R_1$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p7a_r2", prompt: "(a) Find the current through $R_2$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p7a_r3", prompt: "(a) Find the current through $R_3$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p7a_r4", prompt: "(a) Find the current through $R_4$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p7a_r5", prompt: "(a) Find the current through $R_5$.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p7b", prompt: "(b) What is the equivalent resistance of the resistor network?", answerType: "numeric", unit: "Ω" },
+        ],
+      },
+      // 26.71 — the set's hardest problem, and the one that runs the circuit BACKWARD: two
+      // measurements are given and three circuit elements are unknown. Taking the bottom wire as
+      // 0 V walks straight to the answer: V(top of 18.0 ohm) = 110.0 V, V(top of the 8.00-ohm
+      // branch) = 170.0 V, so the point above X sits at 186.0 V and X = 186 V with its + terminal
+      // UP. KCL at the bottom then gives I = 5.00 - 2.00 = 3.00 A, and the 200.0-V rail closes on
+      // R/2 = 10.0 ohm, i.e. R = 20.0 ohm. Verified by power balance: 872 W in, 872 W out, with
+      // the 20.0-V battery ABSORBING 100 W (it is being charged).
+      {
+        id: "hw6_p8",
+        figure: "/homeworkFigures/physics2/HW6/figP26-71.png", figureWidth: 440,  // natural 696x438
+        prompt: "In the circuit shown in the figure, the current in the $20.0\\text{-V}$ battery is $5.00\\text{ A}$ in the direction shown and the voltage across the $8.00\\text{-}\\Omega$ resistor is $16.0\\text{ V}$, with the lower end of the resistor at higher potential.",
+        parts: [
+          { id: "hw6_p8a_emf", prompt: "(a) Find the emf of the battery X.", answerType: "numeric", unit: "V" },
+          { id: "hw6_p8a_pol", prompt: "(a) Find the polarity of the battery X.", answerType: "text" },
+          { id: "hw6_p8b_mag", prompt: "(b) Find the current $I$ through the $200.0\\text{-V}$ battery.", answerType: "numeric", unit: "A" },
+          { id: "hw6_p8b_dir", prompt: "(b) Find the direction of the current $I$ through the $200.0\\text{-V}$ battery.", answerType: "text" },
+          { id: "hw6_p8c", prompt: "(c) Find the resistance $R$.", answerType: "numeric", unit: "Ω" },
+        ],
+      },
+      // 26.74 — the two limits of an R-C circuit, with no exponential in sight. At t = 0 the
+      // uncharged capacitor is a SHORT, so R_2 and R_3 are in parallel; long after, the capacitor
+      // branch carries no current, so R_3 drops nothing and the capacitor sits at the R_2 voltage.
+      // The source names the resistors, so "each resistor" becomes one blank per label.
+      {
+        id: "hw6_p9",
+        figure: "/homeworkFigures/physics2/HW6/figP26-74.png", figureWidth: 400,  // natural 614x362
+        prompt: "The capacitor in the figure is initially uncharged. The switch is closed at $t = 0$.",
+        parts: [
+          { id: "hw6_p9a_r1", prompt: "(a) Immediately after the switch is closed, what is the current through $R_1$?", answerType: "numeric", unit: "A" },
+          { id: "hw6_p9a_r2", prompt: "(a) Immediately after the switch is closed, what is the current through $R_2$?", answerType: "numeric", unit: "A" },
+          { id: "hw6_p9a_r3", prompt: "(a) Immediately after the switch is closed, what is the current through $R_3$?", answerType: "numeric", unit: "A" },
+          { id: "hw6_p9b", prompt: "(b) What is the final charge on the capacitor?", answerType: "numeric", unit: "μC" },
+        ],
+      },
+      // 26.81 — the one derivation in the set. Part (a) is a "show that", so it is graded as text:
+      // the result X = MP/N is printed in the problem, and what is being assessed is the argument
+      // (zero galvanometer current => V_b = V_c => the two pairs of drops match => divide).
+      // The first source screenshot (Screenshot ... 12.14.20 PM.png) was cropped mid-sentence at
+      // "With switches K_1 and K_2 closed,"; the remainder was captured separately
+      // (Screenshot ... 12.46.42 PM.png) and the wording below is verbatim against BOTH crops.
+      // Part (a)'s closing parenthetical and part (b)'s "the galvanometer" came from the second.
+      {
+        id: "hw6_p10",
+        figure: "/homeworkFigures/physics2/HW6/figP26-81.png", figureWidth: 360,  // natural 550x454
+        prompt: "The Wheatstone Bridge. The circuit shown in the figure, called a Wheatstone bridge, is used to determine the value of an unknown resistor $X$ by comparison with three resistors $M$, $N$, and $P$ whose resistances can be varied. For each setting, the resistance of each resistor is precisely known. With switches $K_1$ and $K_2$ closed, these resistors are varied until the current in the galvanometer G is zero; the bridge is then said to be balanced.",
+        parts: [
+          { id: "hw6_p10a", prompt: "(a) Show that under this condition the unknown resistance is given by $X = MP/N$. (This method permits very high precision in comparing resistors.)", answerType: "text" },
+          { id: "hw6_p10b", prompt: "(b) If the galvanometer G shows zero deflection when $M = 850.0\\ \\Omega$, $N = 15.00\\ \\Omega$, and $P = 33.48\\ \\Omega$, what is the unknown resistance $X$?", answerType: "numeric", unit: "Ω" },
+        ],
+      },
+    ],
+  },
 ];

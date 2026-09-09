@@ -224,3 +224,42 @@ drift velocity), 25.14 (1.47×10⁻⁸ Ω·m, silver), 25.38(a) (0.47 A counterc
 25.68(b) (4.08 V) and (c) (0.257 A counterclockwise, 3.87 V), 25.73 (1.42 A), 25.77(b) (35 A →
 8-gauge) and (c) (0.0865 Ω, 106 W), 25.83 (4.00 V across the capacitor, 0.667 A, 6.67 V), and
 all of 25.84 (6.00 V across the parallel group, 36.0 μC, 3.00 A, 18.0 Ω).
+
+---
+
+## HW6 — Direct-Current Circuits (verified 2026-09-09)
+
+Every value independently re-derived from the problem statements before the key was opened, then
+each circuit confirmed a second way by **power balance** (which closed exactly on all eight
+resistive circuits) and 26.63 a third way by node voltages. Assigned problems: 26.8, 26.24, 26.31,
+26.34, 26.47, 26.63, 26.66, 26.71, 26.74, 26.81.
+
+**This key is numerically correct throughout** — the first PHY 215 key where every boxed *value*
+agrees with the verified value to the figures printed, with nothing to fix in the arithmetic. What
+is listed below is a wrong **unit**, a transcription slip that does not change its own printed sum,
+one rounded intermediate, and one **omission** of an answer the problem explicitly asks for. Only
+the last of these would cost a student anything if they worked from the key.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| **26.71 (a) / (b)** — polarity of X, direction of $I$ | **not stated** | **X: + terminal UP, on the $8.00\ \Omega$ side. $I$: upward through the battery, so the $200.0\text{-V}$ battery is discharging.** | n/a (omission, not a number) | The problem asks for "the emf **(including its polarity)**" and "the current **(including its direction)**". The key boxes 186 V and 3 A and stops. A student checking against it cannot tell whether they got the half of each part that is actually being tested. | ☐ |
+| **26.8 (e)** — power in each resistor | **490 J, 327 J, 163 J** | **490 W, 327 W, 163 W** | No (values identical) | Unit slip: the boxed quantity is a *rate* of energy dissipation. The key's own line reads $P = IV$, so this is transcription, not a physics error. Worth fixing because part (f) is about power and the joule labelling muddies it. | ☐ |
+| 26.24 (c) — current in the 10.0-V battery | 0.583 A, written as "0.333 A + 0.200 A" | **0.583 A** (0.58333) | No (sum is right) | The addend should be **0.250 A**, which is what the key's own part (b) boxes. The printed total is correct, so this is a slip in the working line only. | ☐ |
+| 26.47 — $C_{eq}$ (intermediate) | 4.6 pF | **4.62 pF** ($60/13 = 4.6154$) | No (0.33%) | Rounded to 2 sf in passing. The key carried enough precision downstream to box the correct 13.6 A, so nothing propagates; the printed intermediate is just below the data's 3 sf. | ☐ |
+
+**Not a key error, but noted for context — 26.71's part letters wander.** The key labels the
+$16.0/8.00 = 2$ A step "a", the KCL step "b", then labels the $X = 186$ V calculation "a" again and
+the $R = 20\ \Omega$ calculation "c". The net mapping is the textbook's (a) $X$, (b) $I$, (c) $R$,
+and every value is right, but the letters as printed do not read in order.
+
+**Not a key error, but noted for context — 26.34's reversed battery.** The key does catch this,
+writing "$\mathcal{E} = 46.0$ V, reverse polarity", and its working shows why (the guessed current
+direction comes out negative). This is the one polarity question in the set that the key answers
+properly, which makes the 26.71 omission above look like an oversight rather than a convention.
+
+**Confirmed correct (no discrepancy):** all of 26.8 (0.800 Ω; 17.5 / 11.67 / 5.83 A; 35 A; 28.0 V
+across each; 490 / 327 / 163 W; least resistance dissipates most), all of 26.24 (0.333 A, 0.250 A,
+0.583 A), both of 26.31 (36.4 V, 0.500 A), both of 26.34 (0.233 A, 46.0 V reversed), 26.47
+(1.57 nC remaining, 13.6 A), all of 26.63 (0.848 A, 2.14 A, 0.171 A), all of 26.66 (6.00 / 4.00 /
+2.00 / 4.00 / 6.00 A, 10.0 A through the battery, 1.40 Ω), the three values in 26.71 (186 V, 3.00 A,
+20.0 Ω), all of 26.74 (4.2 / 1.4 / 2.8 A, 72 μC), and both of 26.81 ($X = MP/N$, 1897 Ω).

@@ -554,13 +554,17 @@ date there.
      Per-assignment notes (problem numbers, figures, which parts are text/graph/vector/fbd and
      why): [courses/phy115.md](courses/phy115.md).
    - **PHY 215 (`physics2`)** — `hw1` (Ch. 21), `hw2` (Ch. 22, Gauss's law), `hw3` (Ch. 23,
-     electric potential) and `hw4` (Ch. 24, capacitance and dielectrics) are authored and
+     electric potential), `hw4` (Ch. 24, capacitance and dielectrics), `hw5` (Ch. 25, current,
+     resistance and emf) and `hw6` (Ch. 26, direct-current circuits) are authored and
      verified; later weeks are added as each is prepped.
      Per-assignment notes: [courses/phy215.md](courses/phy215.md). `hw4` is the first set in
      either course that is **entirely numeric** and has **no** graphical part — Ch. 24 has no field
      direction to draw and no free body to isolate, and no `answerType` can grade a network
      reduction, which is the real skill in its circuit problems. It is also the reference set for
-     **verbatim problem wording** (see below).
+     **verbatim problem wording** (see below). `hw5` and `hw6` are entirely numeric for the same
+     reason; `hw6` is the largest set so far at **42 items**, because Ch. 26 problems repeatedly ask
+     one question of several circuit elements at once and the "one blank per object" rule expands
+     each into a blank per resistor.
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into

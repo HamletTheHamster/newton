@@ -464,6 +464,134 @@ export const ANSWER_KEYS = {
       hw5_p10a: { answerType: "numeric", answer: 36.0, sigFigs: 3, unit: "μC", nonNegative: true },
       hw5_p10b: { answerType: "numeric", answer: 18.0, sigFigs: 3, unit: "Ω", nonNegative: true },
     },
+    hw6: {
+      // 26.8 — parallel combination. R_eq = (1/1.60 + 1/2.40 + 1/4.80)^-1 = (1.25)^-1 = 0.800 ohm.
+      // Each resistor sees the full 28.0 V, so I = V/R and P = VI = V^2/R.
+      // I: 17.5 / 11.667 / 5.833 A, summing to 35.0 A = V/R_eq (checked).
+      // P: 490 / 326.67 / 163.33 W, summing to 980 W = (28.0)(35.0) (checked).
+      hw6_p1a: { answerType: "numeric", answer: 0.8, sigFigs: 3, unit: "Ω", nonNegative: true },
+      hw6_p1b_160: { answerType: "numeric", answer: 17.5, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p1b_240: { answerType: "numeric", answer: 11.666667, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p1b_480: { answerType: "numeric", answer: 5.8333333, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p1c: { answerType: "numeric", answer: 35.0, sigFigs: 3, unit: "A", nonNegative: true },
+      // (d) all three read the full battery voltage: that is what being in parallel MEANS, and it
+      // is the reason each gets its own blank rather than one blank and a note that they agree.
+      hw6_p1d_160: { answerType: "numeric", answer: 28.0, sigFigs: 3, unit: "V", nonNegative: true },
+      hw6_p1d_240: { answerType: "numeric", answer: 28.0, sigFigs: 3, unit: "V", nonNegative: true },
+      hw6_p1d_480: { answerType: "numeric", answer: 28.0, sigFigs: 3, unit: "V", nonNegative: true },
+      hw6_p1e_160: { answerType: "numeric", answer: 490.0, sigFigs: 3, unit: "W", nonNegative: true },
+      hw6_p1e_240: { answerType: "numeric", answer: 326.66667, sigFigs: 3, unit: "W", nonNegative: true },
+      hw6_p1e_480: { answerType: "numeric", answer: 163.33333, sigFigs: 3, unit: "W", nonNegative: true },
+      hw6_p1f: { answerType: "text", answer: "The resistor with the LEAST resistance, the $1.60\\text{-}\\Omega$ one, dissipates the most power. The three resistors are in parallel, so every one of them has the same $28.0\\text{ V}$ across it. With the voltage held fixed, $P = V^2/R$, so the power is inversely proportional to the resistance and the smallest resistance dissipates the most: $490\\text{ W}$ in the $1.60\\text{-}\\Omega$ resistor against only $163\\text{ W}$ in the $4.80\\text{-}\\Omega$ one. Physically, the smallest resistance is the easiest path, so it carries the largest current, $I = V/R = 17.5\\text{ A}$; each of those charges falls through the same $28.0\\text{ V}$, so the branch that moves the most charge per second converts the most electrical energy per second into heat. Note that this is the opposite of what happens in SERIES, where the current is common and $P = I^2R$ makes the LARGEST resistance the hottest. What decides the comparison is which quantity the circuit holds fixed." },
+      // 26.24 — three branches between one pair of nodes. Both batteries have their + terminal at
+      // the top (verified against the figure), so the 10.0-V battery fixes V_top - V_bottom = 10.0 V
+      // outright and the 5.00-V battery OPPOSES it.
+      // (a) I = 10.0/30.0 = 0.333 A. (b) I = (10.0 - 5.00)/20.0 = 0.250 A.
+      // (c) the 10.0-V battery carries the sum, 0.583 A. (Power balance: 4.583 W in and out.)
+      hw6_p2a: { answerType: "numeric", answer: 0.33333333, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p2b: { answerType: "numeric", answer: 0.25, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p2c: { answerType: "numeric", answer: 0.58333333, sigFigs: 3, unit: "A", nonNegative: true },
+      // 26.31 — S OPEN: the ideal voltmeter draws nothing, so its 15.0 V across the 50.0 ohm means
+      // I = 0.300 A through the 30.0 + 50.0 = 80.0 ohm series path, i.e. 24.0 V across the parallel
+      // group. The 75.0 ohm then carries 24.0/75.0 = 0.320 A, so the emf branch carries 0.620 A and
+      // eps = 24.0 + (0.620)(20.0) = 36.4 V. (Power balance: 22.568 W in and out.)
+      // S CLOSED: the ideal 25.0-V battery is wired straight across the 50.0-ohm resistor, clamping
+      // it at 25.0 V, so the ammeter (which is in that branch only) reads 25.0/50.0 = 0.500 A. The
+      // emf, the 75.0 ohm and the 30.0 ohm become irrelevant to the reading.
+      hw6_p3a: { answerType: "numeric", answer: 36.4, sigFigs: 3, unit: "V", nonNegative: true },
+      hw6_p3b: { answerType: "numeric", answer: 0.5, sigFigs: 3, unit: "A", nonNegative: true },
+      // 26.34 — the 6.0-ohm rating is a current meter: I = sqrt(P/R) = sqrt(24/6.0) = 2.0 A up the
+      // middle branch. The 25-V battery (+ on top) then puts the top junction
+      // 25 - (2.0)(6.0 + 3.0) = 7.0 V above the bottom one. The right branch is
+      // 1.0 + 19 + (20.0 || 20.0) = 30 ohm, so the ammeter reads 7.0/30 = 0.233 A.
+      // KCL at the top junction: the left branch carries 2.0 - 0.233 = 1.767 A from top to bottom,
+      // and its 17 + 13 = 30 ohm alone would drop 53.0 V, versus the 7.0 V available. The battery
+      // must therefore RAISE the potential by 46.0 V along that path, which the polarity drawn in
+      // the figure (+ at the top) cannot do. So eps = 46.0 V with the polarity reversed.
+      // (Power balance: 131.267 W delivered, 131.267 W dissipated.)
+      hw6_p4a: { answerType: "numeric", answer: 0.23333333, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p4b_pol: { answerType: "text", answer: "The polarity is the REVERSE of the one drawn in the figure: the positive terminal of $\\mathcal{E}$ is the lower one, the terminal joined to the $13\\text{-}\\Omega$ resistor, not the upper one joined to the $17\\text{-}\\Omega$ resistor. Here is why. The $6.0\\text{-}\\Omega$ resistor dissipates $24\\text{ J/s}$, so the middle branch carries $I = \\sqrt{P/R} = \\sqrt{24/6.0} = 2.0\\text{ A}$ upward, as drawn. Going up that branch through the $25\\text{-V}$ battery, the top junction sits $25\\text{ V} - (2.0\\text{ A})(9.0\\ \\Omega) = 7.0\\text{ V}$ above the bottom junction. That $7.0\\text{ V}$ drives $7.0/30 = 0.233\\text{ A}$ down the right branch, so by the junction rule the left branch must carry $2.0 - 0.233 = 1.77\\text{ A}$ from the top junction to the bottom one. Its two resistors alone would drop $(1.77\\text{ A})(17\\ \\Omega + 13\\ \\Omega) = 53.0\\text{ V}$ along that path, but only $7.0\\text{ V}$ is available, so the battery has to supply a RISE of $46.0\\text{ V}$ as you travel from the $17\\text{-}\\Omega$ side to the $13\\text{-}\\Omega$ side. A battery with its positive terminal at the top, as drawn, would give a further drop instead. So the real battery is turned around, with its positive terminal at the bottom." },
+      hw6_p4b_emf: { answerType: "numeric", answer: 46.0, sigFigs: 3, unit: "V", nonNegative: true },
+      // 26.47 — the three capacitors are in SERIES (traversing the loop, each is crossed from - to
+      // +, verified against the figure), so C_eq = (1/10.0 + 1/20.0 + 1/15.0)^-1 = 60/13 =
+      // 4.615 pF and all three carry the same 3.50-nC charge. Stored energy goes as q^2, so losing
+      // 80.0% of it leaves q = Q_0*sqrt(0.20) = 1.565 nC, and the loop current at that instant is
+      // i = V/R = q/(R C_eq) = 1.5652e-9 / [(25.0)(4.6154e-12)] = 13.6 A.
+      // The trap: "lost 80.0% of their ENERGY" is not "lost 80.0% of their charge" (which would
+      // leave q = 0.700 nC and give 6.07 A). The instructor key rounds C_eq to "4.6 pF" in passing
+      // but carries enough precision to box the correct 13.6 A.
+      hw6_p5: { answerType: "numeric", answer: 13.565479, sigFigs: 3, unit: "A", nonNegative: true },
+      // 26.63 — three unknowns, three independent loops, with the figure's arrows as the reference
+      // directions. Writing V_L = 0 for the left rail and solving for the node voltages gives
+      // V_a = -9.8578 V and V_R = -1.7062 V, hence
+      //   I_1 = 179/211 = 0.848 A, I_2 = 452/211 = 2.14 A, I_3 = 36/211 = 0.171 A.
+      // Cross-checked three ways: node voltages, the Kirchhoff loop system
+      // (9 = 9I_1 + 8I_3, 12 = 6I_2 - 5I_3, 3 = 10I_3 + I_2 - I_1), and power balance
+      // (33.341 W delivered by the two batteries, 33.341 W dissipated by the five resistors).
+      // All three come out POSITIVE, so every current runs the way the figure's arrow points and
+      // no sign interpretation is needed. nonNegative therefore just nudges a student who picked
+      // their own reference direction, at no cost.
+      hw6_p6_i1: { answerType: "numeric", answer: 0.84834123, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p6_i2: { answerType: "numeric", answer: 2.1421801, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p6_i3: { answerType: "numeric", answer: 0.17061611, sigFigs: 3, unit: "A", nonNegative: true },
+      // 26.66 — a bridge network. R_3 bridges the midpoints of the two columns, and it is NOT
+      // balanced (R_1/R_4 = 1/2 but R_2/R_5 = 2/1), so R_3 carries current and the network does not
+      // reduce by series/parallel. With the bottom rail at 0 and the top at 14.0 V, the node
+      // voltages are V_c = 8.00 V (between R_1 and R_4) and V_d = 6.00 V (between R_2 and R_5).
+      //   I_1 = (14.0 - 8.00)/1.00 = 6.00 A      I_2 = (14.0 - 6.00)/2.00 = 4.00 A
+      //   I_3 = (8.00 - 6.00)/1.00 = 2.00 A      I_4 = 8.00/2.00 = 4.00 A
+      //   I_5 = 6.00/1.00 = 6.00 A               I_battery = I_1 + I_2 = 10.0 A
+      // (b) has to be back-computed, since the network never collapses: R_eq = 14.0/10.0 = 1.40 ohm.
+      // (Power balance: 140 W delivered, 140 W dissipated. KCL at c and d both close exactly.)
+      hw6_p7a_bat: { answerType: "numeric", answer: 10.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p7a_r1: { answerType: "numeric", answer: 6.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p7a_r2: { answerType: "numeric", answer: 4.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p7a_r3: { answerType: "numeric", answer: 2.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p7a_r4: { answerType: "numeric", answer: 4.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p7a_r5: { answerType: "numeric", answer: 6.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p7b: { answerType: "numeric", answer: 1.4, sigFigs: 3, unit: "Ω", nonNegative: true },
+      // 26.71 — worked backwards from two measurements. Take the bottom wire as 0 V.
+      //   The 8.00-ohm resistor has its LOWER end at the higher potential, so 16.0/8.00 = 2.00 A
+      //   flows UP that branch, out of X.
+      //   Left branch (20.0-V battery, + at top, verified against the figure): the top of the
+      //   18.0 ohm is at (5.00)(18.0) + 20.0 = 110.0 V.
+      //   20.0 || 30.0 = 12.0 ohm, and the 5.00 A reaches the left branch through it, so the
+      //   junction above the 8.00 ohm is at 110.0 + (5.00)(12.0) = 170.0 V.
+      //   The point above X is 16.0 V higher still: 186.0 V. So X = 186 V, + terminal UP.
+      //   KCL at the bottom junction: 5.00 - 2.00 = 3.00 A continues right and up through the
+      //   200.0-V battery, so that battery is DISCHARGING.
+      //   Its + terminal is at the top (verified against the figure), so the top-right node is at
+      //   200.0 V and the two R's in parallel drop 200.0 - 170.0 = 30.0 V on 3.00 A:
+      //   R/2 = 10.0 ohm, hence R = 20.0 ohm.
+      // Power balance closes exactly at 872 W, with the 20.0-V battery ABSORBING 100 W (current
+      // enters its + terminal, so it is being charged) while X supplies 372 W and the 200.0-V
+      // battery supplies 600 W.
+      hw6_p8a_emf: { answerType: "numeric", answer: 186.0, sigFigs: 3, unit: "V", nonNegative: true },
+      hw6_p8a_pol: { answerType: "text", answer: "The positive terminal of X is the UPPER one, the terminal joined to the $8.00\\text{-}\\Omega$ resistor; the lower terminal, on the bottom wire, is negative. So X drives current up out of the bottom wire and into the $8.00\\text{-}\\Omega$ resistor, and it is supplying energy to the circuit. Here is why. Take the bottom wire as the zero of potential. The left branch carries $5.00\\text{ A}$ upward through the $20.0\\text{-V}$ battery and the $18.0\\text{-}\\Omega$ resistor, so the top of that resistor is at $(5.00\\text{ A})(18.0\\ \\Omega) + 20.0\\text{ V} = 110.0\\text{ V}$. That same $5.00\\text{ A}$ arrives there through the $20.0\\ \\Omega$ and $30.0\\ \\Omega$ in parallel, which is $12.0\\ \\Omega$, so the junction at the top of the $8.00\\text{-}\\Omega$ branch is at $110.0 + (5.00)(12.0) = 170.0\\text{ V}$. The problem says the lower end of the $8.00\\text{-}\\Omega$ resistor is $16.0\\text{ V}$ HIGHER than its upper end, so the point just above X sits at $170.0 + 16.0 = 186.0\\text{ V}$, while X's other terminal is on the $0\\text{ V}$ wire. The terminal that is $186\\text{ V}$ above the other is the positive one, so X is oriented with its positive terminal upward, toward the $8.00\\text{-}\\Omega$ resistor." },
+      hw6_p8b_mag: { answerType: "numeric", answer: 3.0, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p8b_dir: { answerType: "text", answer: "The current $I$ flows UPWARD through the $200.0\\text{-V}$ battery: from the bottom wire of the circuit, up through the battery, and on into the top-right corner of the network. It therefore leaves the battery at the positive terminal, which means the $200.0\\text{-V}$ battery is discharging (supplying energy), not being charged. The reason is the junction rule at the bottom of the $8.00\\text{-}\\Omega$ branch. The $5.00\\text{ A}$ from the $20.0\\text{-V}$ battery arrives at that junction from the left. The $8.00\\text{-}\\Omega$ resistor has $16.0\\text{ V}$ across it with its lower end at the higher potential, so $16.0/8.00 = 2.00\\text{ A}$ leaves the junction upward through that branch. The remaining $5.00 - 2.00 = 3.00\\text{ A}$ has nowhere else to go: it continues to the right along the bottom wire and up through the $200.0\\text{-V}$ battery. (By contrast the $20.0\\text{-V}$ battery has current entering its positive terminal, so that one is being charged.)" },
+      hw6_p8c: { answerType: "numeric", answer: 20.0, sigFigs: 3, unit: "Ω", nonNegative: true },
+      // 26.74 — the two limiting cases of an R-C circuit; no exponential is needed.
+      // t = 0: the capacitor is uncharged, so it holds 0 V across itself and the R_3 branch behaves
+      //   as a plain 3.00-ohm path. R_2 || R_3 = 2.00 ohm, so I_1 = 42.0/(8.00 + 2.00) = 4.20 A,
+      //   the parallel group holds (4.20)(2.00) = 8.40 V, and I_2 = 8.40/6.00 = 1.40 A while
+      //   I_3 = 8.40/3.00 = 2.80 A. (1.40 + 2.80 = 4.20, checked; power balance 176.4 W.)
+      // final: the capacitor branch carries no current, so R_3 drops NOTHING and the capacitor sits
+      //   at the full R_2 voltage. I = 42.0/(8.00 + 6.00) = 3.00 A, V_C = (3.00)(6.00) = 18.0 V,
+      //   Q = CV = (4.00 uF)(18.0 V) = 72.0 uC.
+      // The R_3 = 3.00 ohm is a decoy in part (b): it changes nothing once the current stops.
+      hw6_p9a_r1: { answerType: "numeric", answer: 4.2, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p9a_r2: { answerType: "numeric", answer: 1.4, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p9a_r3: { answerType: "numeric", answer: 2.8, sigFigs: 3, unit: "A", nonNegative: true },
+      hw6_p9b: { answerType: "numeric", answer: 72.0, sigFigs: 3, unit: "μC", nonNegative: true },
+      // 26.81 — (a) is a derivation, so it is graded as text: the RESULT is printed in the problem,
+      // and the argument is what is being assessed. Balanced means zero galvanometer current, hence
+      // V_b = V_c, hence one current I_1 through N and M and another I_2 through P and X.
+      // Equal drops from a: I_1 N = I_2 P. Equal drops to d: I_1 M = I_2 X. Divide: X = MP/N.
+      // (b) X = (850.0)(33.48)/15.00 = 1897.2 ohm, i.e. 1897 ohm at the data's four figures.
+      hw6_p10a: { answerType: "text", answer: "Balanced means the galvanometer carries no current, and that is the only fact needed. First, with no current in the branch containing G, points $b$ and $c$ are at the same potential: $V_b = V_c$. Second, with nothing drawn off at $b$, the whole of the current down the left arm passes through $N$ and then through $M$; call it $I_1$. Likewise the whole of the current down the right arm passes through $P$ and then through $X$; call it $I_2$. Now compare the two arms between the same pairs of points. From $a$ down to $b$ and from $a$ down to $c$: since $V_b = V_c$, the two drops must be equal, so $I_1N = I_2P$. From $b$ down to $d$ and from $c$ down to $d$: both arms start at the same potential and end at the same point $d$, so those drops must be equal too, giving $I_1M = I_2X$. Dividing the second relation by the first eliminates both unknown currents: $\\dfrac{I_1M}{I_1N} = \\dfrac{I_2X}{I_2P}$, that is $\\dfrac{M}{N} = \\dfrac{X}{P}$, and therefore $X = \\dfrac{MP}{N}$. Notice that the emf and the resistance of the battery never enter, which is what makes the bridge a precise comparison instrument: it measures a RATIO of resistances, and only the null reading of the galvanometer has to be trusted." },
+      hw6_p10b: { answerType: "numeric", answer: 1897.2, sigFigs: 4, unit: "Ω", nonNegative: true },
+    },
   },
 };
 
