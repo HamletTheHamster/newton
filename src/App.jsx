@@ -136,10 +136,22 @@ const INSTRUCTOR_SECTIONS = [
   { id: "settings",     label: "Settings" },
 ];
 
-// Seeded ONCE, onto a database that has never had a settings node. It is a first-run
-// bootstrap, NEVER a fallback: seeding it because a read failed would hand anyone who can
-// reach the login a publicly-known instructor password. See SETTINGS_UNREADABLE below.
-const DEFAULT_INSTRUCTOR_PW = "physics123";
+// This app NEVER writes a default instructor password. It used to seed one on first run,
+// which put the live credential of a public repo's database in the repo — and a whole-node
+// PUT of it was one transient read failure away from becoming the live password for everyone.
+// An unseeded `settings` node now takes the instructor through "Set the instructor password"
+// at the login instead (`settingsUnseeded` → `instLoginStep === "claim"`), so the only hash
+// the database ever holds is one the instructor chose.
+//
+// The constant survives ONLY so a database still carrying the old seeded hash is detected and
+// forced to replace it: a password published in a public repo is not a password. It is never
+// hashed into a write. Once no database answers to it, this can go.
+const LEGACY_SEEDED_PW = "physics123";
+
+// One rule for the one instructor credential, applied at both the places that set it (the
+// login's claim step and Settings → Change Instructor Password). It was 4 at the second and
+// unstated at the first, for a password that guards every student's grades behind a public URL.
+const MIN_INSTRUCTOR_PW = 8;
 
 // The settings read failed, as distinct from the node being absent. They used to collapse to
 // the same `null`, so one transient hiccup reseeded the instructor password to the default:
@@ -220,6 +232,10 @@ export default function App() {
   // Startup could not read `settings`. Kept apart from "not loaded yet" so the instructor
   // login can say which it is instead of spinning on "Settings still loading."
   const [settingsUnreadable, setSettingsUnreadable] = useState(false);
+  // The read SUCCEEDED and there is no password hash: a genuinely first-run database (or one
+  // whose hash was destroyed). Nothing is written on that discovery — the login asks the
+  // instructor to set the password, which is the only thing that ever writes one.
+  const [settingsUnseeded, setSettingsUnseeded] = useState(false);
   const [dataReady, setDataReady] = useState(false);
   const [showNoClasses, setShowNoClasses] = useState(false);
   const [classDataLoading, setClassDataLoading] = useState(false);
@@ -281,7 +297,18 @@ export default function App() {
 
   // ── Instructor state ────────────────────────────────────────────────────────
   const [instPw, setInstPw] = useState(""); const [instErr, setInstErr] = useState("");
+  // "password" | "totp" | "claim". The claim step sets the instructor password: it is the only
+  // thing that ever writes one, reached on a first-run database and on one still answering to
+  // the old seeded default.
   const [instLoginStep, setInstLoginStep] = useState("password");
+  const [mustReplacePw, setMustReplacePw] = useState(false);
+  const [claimPw, setClaimPw] = useState(""); const [claimPw2, setClaimPw2] = useState(""); const [claimErr, setClaimErr] = useState(""); const [claimBusy, setClaimBusy] = useState(false);
+  // Emailed reset. `resetChallenge` is the server's signed expiry+HMAC (never the code, which
+  // only exists in the instructor's inbox) and lives in state ON PURPOSE: it dies with the tab,
+  // so a code is only usable where it was asked for.
+  const [instMsg, setInstMsg] = useState("");
+  const [resetCode, setResetCode] = useState(""); const [resetChallenge, setResetChallenge] = useState(null);
+  const [resetSentTo, setResetSentTo] = useState(""); const [resetMinutes, setResetMinutes] = useState(15);
   const [totpInput, setTotpInput] = useState(""); const [totpErr, setTotpErr] = useState(""); const [rememberDevice, setRememberDevice] = useState(false);
   const [totpSetupState, setTotpSetupState] = useState(null); const [totpSetupCode, setTotpSetupCode] = useState(""); const [totpSetupErr, setTotpSetupErr] = useState("");
   const [clearDevicesMsg, setClearDevicesMsg] = useState("");
@@ -510,11 +537,13 @@ export default function App() {
         } else if (settingsData?.passwordHash) {
           setSettings(settingsData);
         } else {
-          // Reached only on a SUCCESSFUL read of a genuinely unseeded node: first run.
-          const h = await makeHash(DEFAULT_INSTRUCTOR_PW);
-          const ns = { passwordHash: h.hash, passwordSalt: h.salt };
-          setSettings(ns);
-          await fbSet('settings', ns);
+          // A SUCCESSFUL read of a node with no password hash. Write NOTHING: the old code
+          // seeded a published default here and PUT it, which both handed out a known
+          // credential and took `totpSecret`/`trustedDevices` with it. Keep whatever the node
+          // does hold (a 2FA secret outlives a lost password) and let the login ask for a new
+          // password, which `claimInstructorPw` PATCHes in.
+          if (settingsData && typeof settingsData === 'object') setSettings(settingsData);
+          setSettingsUnseeded(true);
         }
         if (bugsData && typeof bugsData === 'object') setBugReports(bugsData);
         if (evalsData && typeof evalsData === 'object') setCourseEvals(evalsData);
@@ -1150,7 +1179,40 @@ export default function App() {
     updateClassCache(cid, 'homeworkSettings', next);
     await fbSave(classPath(cid, 'homeworkSettings'), Object.keys(next).length ? next : null, 'hw settings');
   };
-  const saveSettings = async ns => { setSettings(ns); await fbSave('settings', ns); };
+  // Two rules, both learned the hard way on the one node that gates instructor access.
+  //
+  // It PATCHES the keys it is given, never PUTs a whole object rebuilt from local state:
+  // `settings` here is a snapshot from load, so a PUT of `{ ...settings, oneChangedKey }`
+  // rewrites the password hash and the 2FA secret out of possibly-stale memory every time
+  // anyone clears a trusted device.
+  //
+  // And it adopts into state only AFTER the write lands. It used to `setSettings` first, so a
+  // failed write left the session believing a new password that the database had never
+  // accepted: it worked until the tab was reloaded, and the OLD password was still the live
+  // one everywhere else. Callers pass only the keys they are changing; `null` deletes one.
+  const saveSettings = async patch => {
+    await fbSave('settings', patch, 'settings', { merge: true });
+    setSettings(prev => {
+      const next = { ...prev };
+      for (const [k, v] of Object.entries(patch)) {
+        // A patch key may be a deep path (`trustedDevices/<hash>`), which is what lets one
+        // device be added without rewriting the map. Mirror it the same way locally.
+        const segs = k.split('/').filter(Boolean);
+        let node = next;
+        for (const seg of segs.slice(0, -1)) { node[seg] = { ...(node[seg] || {}) }; node = node[seg]; }
+        const leaf = segs[segs.length - 1];
+        if (v === null) delete node[leaf]; else node[leaf] = v;
+      }
+      return next;
+    });
+  };
+  // The ONE place an instructor password is written. `settingsUnseeded` (first run, or a
+  // destroyed hash) and a database still answering to `LEGACY_SEEDED_PW` both land here.
+  const claimInstructorPw = async pw => {
+    const h = await makeHash(pw.trim());
+    await saveSettings({ passwordHash: h.hash, passwordSalt: h.salt });
+    setSettingsUnseeded(false); setMustReplacePw(false);
+  };
   const saveChecked = async c => { const cid = requireClass(); setCheckedSubs(c); updateClassCache(cid, 'checkedSubs', c); await fbSave(classPath(cid, 'checkedSubs'), c); };
   const saveModules = async nextArr => {
     const cid = requireClass();
@@ -1706,7 +1768,17 @@ export default function App() {
           const cids = new Set(Object.keys(data.checkedSubs));
           data.submissions = data.submissions.map(sub => cids.has(sub.id) ? { ...sub, dialogue: null } : sub);
         }
-        if (data.settings) await saveSettings(data.settings);
+        // A restore must never overwrite the credential that is currently letting the
+        // instructor in: the backup's hash, 2FA secret and trusted devices are all older than
+        // the live ones, and a restore that rolls them back locks the instructor out of the
+        // app with no way in from inside it. The one exception is a database with no live
+        // password, where restoring the auth keys is the recovery.
+        if (data.settings) {
+          const restorable = settings.passwordHash
+            ? Object.fromEntries(Object.entries(data.settings).filter(([k]) => !["passwordHash", "passwordSalt", "totpSecret", "trustedDevices"].includes(k)))
+            : data.settings;
+          if (Object.keys(restorable).length) await saveSettings(restorable);
+        }
         if (data.roster) await saveRoster(data.roster);
         if (data.studentPws) await saveStudentPws(data.studentPws);
         if (data.dueDates) await saveDueDates(data.dueDates);
@@ -1788,6 +1860,16 @@ export default function App() {
     setInstructorSection("modules");
     setScreen("instructor");
   };
+  // Every route into the portal funnels through here, so a password that must be replaced
+  // cannot be walked past: the claim form stands between the last gate and the portal.
+  // `mustReplace` is passed rather than read off state at the two call sites inside the same
+  // click as `setMustReplacePw` — that state has not re-rendered yet, so the flag would read
+  // false and the claim form would be skipped.
+  const finishLogin = async (mustReplace = mustReplacePw) => {
+    setInstErr(""); setEditPw("");
+    if (mustReplace || settingsUnseeded) { setClaimPw(""); setClaimPw2(""); setClaimErr(""); setInstLoginStep("claim"); return; }
+    await enterInstructor();
+  };
   const doLogin = async () => {
     if (settingsUnreadable) { setInstErr("Could not load the instructor settings on this device. Check the connection and refresh the page."); return; }
     if (!settings.passwordHash) { setInstErr("Settings still loading."); return; }
@@ -1798,10 +1880,78 @@ export default function App() {
     try { ok = await verifyPw(instPw.trim(), settings.passwordHash, settings.passwordSalt); }
     catch (e) { setInstErr(`Could not check the password on this browser: ${e.message}`); return; }
     if (!ok) { setInstErr("Incorrect password."); return; }
-    if (!settings.totpSecret) { setInstErr(""); setEditPw(""); await enterInstructor(); return; }
+    // A password that is published in this repo is not a password. If the stored hash still
+    // answers to the old seeded default, the login is honoured and then spends itself on
+    // setting a real one — 2FA first, if it is configured, since that gate still applies.
+    let legacy = false;
+    try { legacy = await verifyPw(LEGACY_SEEDED_PW, settings.passwordHash, settings.passwordSalt); }
+    catch { /* the check above already proved crypto.subtle works; nothing to recover from */ }
+    if (legacy) setMustReplacePw(true);
+    if (!settings.totpSecret) { await finishLogin(legacy); return; }
     const deviceToken = localStorage.getItem('newton_device_token');
-    if (deviceToken) { const tokenHash = await hashToken(deviceToken); if (settings.trustedDevices?.[tokenHash]) { setInstErr(""); setEditPw(""); await enterInstructor(); return; } }
+    if (deviceToken) { const tokenHash = await hashToken(deviceToken); if (settings.trustedDevices?.[tokenHash]) { await finishLogin(legacy); return; } }
     setInstErr(""); setTotpInput(""); setTotpErr(""); setInstLoginStep("totp");
+  };
+  // One rule for the new password, wherever it is being set (first run, replacing the old
+  // seeded default, or an emailed reset). Returns the sentence to show, or null.
+  const newPwProblem = () => {
+    const pw = claimPw.trim();
+    if (!pw) return "Enter a password.";
+    if (pw.length < MIN_INSTRUCTOR_PW) return `Use at least ${MIN_INSTRUCTOR_PW} characters.`;
+    if (pw !== claimPw2.trim()) return "The two passwords do not match.";
+    if (pw === LEGACY_SEEDED_PW) return "That is the setup password this replaces. Choose a different one.";
+    return null;
+  };
+  const doClaim = async () => {
+    const problem = newPwProblem();
+    if (problem) { setClaimErr(problem); return; }
+    setClaimBusy(true);
+    try { await claimInstructorPw(claimPw); }
+    catch (e) { setClaimErr(`Could not save the password: ${e.message}. Nothing was changed.`); setClaimBusy(false); return; }
+    setClaimBusy(false); setClaimPw(""); setClaimPw2(""); setClaimErr("");
+    setInstLoginStep("password");
+    // The two claim routes are already through the gates: a first-run database has none, and
+    // replacing the legacy default happens after the password and 2FA both passed.
+    await enterInstructor();
+  };
+  const requestResetCode = async () => {
+    setClaimBusy(true); setClaimErr("");
+    let data;
+    try {
+      const res = await fetch("/.netlify/functions/instructor-reset", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "request", secret: import.meta.env.VITE_EMAIL_SEND_SECRET }),
+      });
+      data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (e) { setClaimErr(e.message); setClaimBusy(false); return; }
+    setResetChallenge(data.challenge); setResetSentTo(data.sentTo || "the instructor email");
+    setResetMinutes(data.minutes || 15);
+    // Only the code is cleared: "Email another code" must not throw away a new password the
+    // instructor has already typed beside it.
+    setResetCode(""); setClaimBusy(false); setInstLoginStep("reset-verify");
+  };
+  const doReset = async () => {
+    const problem = newPwProblem();
+    if (problem) { setClaimErr(problem); return; }
+    if (!resetCode.trim()) { setClaimErr("Enter the code from the email."); return; }
+    setClaimBusy(true); setClaimErr("");
+    // The code is checked SERVER-side (the signing secret never reaches the browser), and only
+    // then does the password get written.
+    try {
+      const res = await fetch("/.netlify/functions/instructor-reset", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "verify", secret: import.meta.env.VITE_EMAIL_SEND_SECRET, code: resetCode, challenge: resetChallenge }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) throw new Error(data.error || `HTTP ${res.status}`);
+    } catch (e) { setClaimErr(e.message); setClaimBusy(false); return; }
+    try { await claimInstructorPw(claimPw); }
+    catch (e) { setClaimErr(`The code was accepted but the password could not be saved: ${e.message}. Nothing was changed.`); setClaimBusy(false); return; }
+    setClaimBusy(false); setClaimPw(""); setClaimPw2(""); setClaimErr(""); setResetCode(""); setResetChallenge(null);
+    // Back to the login, NOT into the portal: an emailed code has passed neither the password
+    // gate nor 2FA, and logging in normally is what makes the authenticator still count.
+    setInstPw(""); setInstMsg("Password updated. Log in with it now."); setInstLoginStep("password");
   };
   const doTotpVerify = async () => {
     const code = totpInput.trim();
@@ -1811,9 +1961,14 @@ export default function App() {
     if (rememberDevice) {
       const token = genDeviceToken(); const tokenHash = await hashToken(token);
       localStorage.setItem('newton_device_token', token);
-      await saveSettings({ ...settings, trustedDevices: { ...(settings.trustedDevices || {}), [tokenHash]: { created: new Date().toISOString() } } });
+      // A deep-path key, so this adds ONE device without rewriting the map: two browsers
+      // remembered in the same window used to leave whichever wrote first untrusted.
+      // Best-effort: the code was correct, so a failed convenience write must not become a
+      // failed login. The device simply is not remembered and the next login asks again.
+      try { await saveSettings({ [`trustedDevices/${tokenHash}`]: { created: new Date().toISOString() } }); }
+      catch { localStorage.removeItem('newton_device_token'); }
     }
-    setTotpErr(""); setTotpInput(""); setInstLoginStep("password"); setRememberDevice(false); await enterInstructor();
+    setTotpErr(""); setTotpInput(""); setInstLoginStep("password"); setRememberDevice(false); await finishLogin();
   };
   const startTotpSetup = async () => {
     const secret = genTotpSecret();
@@ -1826,17 +1981,21 @@ export default function App() {
     if (!/^\d{6}$/.test(totpSetupCode.trim())) { setTotpSetupErr("Enter the 6-digit code."); return; }
     const valid = await verifyTotp(totpSetupState.secret, totpSetupCode);
     if (!valid) { setTotpSetupErr("Code didn't match. Check you scanned the right QR code and try again."); return; }
-    await saveSettings({ ...settings, totpSecret: totpSetupState.secret });
+    // Reported, not assumed: the secret is only in this browser until the write lands, so a
+    // silent failure here would leave an authenticator app holding a code nothing checks.
+    try { await saveSettings({ totpSecret: totpSetupState.secret }); }
+    catch (e) { setTotpSetupErr(`Could not save the secret: ${e.message}. 2FA is not enabled.`); return; }
     setTotpSetupState(null); setTotpSetupCode(""); setTotpSetupErr("");
   };
   const disableTotp = () => {
     confirmDanger("disable two-factor authentication", async () => {
-      await saveSettings({ ...settings, totpSecret: null, trustedDevices: {} });
+      // Deliberate removal, which is what a `null` in a PATCH is for.
+      await saveSettings({ totpSecret: null, trustedDevices: null });
       localStorage.removeItem('newton_device_token');
     });
   };
   const clearTrustedDevices = async () => {
-    await saveSettings({ ...settings, trustedDevices: {} });
+    await saveSettings({ trustedDevices: null });
     localStorage.removeItem('newton_device_token');
     setClearDevicesMsg("✅ All trusted devices cleared."); setTimeout(() => setClearDevicesMsg(""), 3000);
   };
@@ -2535,6 +2694,9 @@ export default function App() {
   if (screen === "inst-login") {
     // eslint-disable-next-line no-shadow
     const s = appTh.s; const MUTED = appTh.muted;
+    // An unseeded database has no password to type, so the login opens ON the claim form
+    // rather than offering a field nothing can satisfy.
+    const loginStep = settingsUnseeded && instLoginStep === "password" ? "claim" : instLoginStep;
     return (
     <ThemeContext.Provider value={appTh}>
     <div style={{ ...s.page, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: 24 }}>
@@ -2543,11 +2705,47 @@ export default function App() {
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <Wordmark size={72} />
         </div>
-        {instLoginStep === "password" ? (
+        {loginStep === "claim" ? (
           <>
-            <input type="password" name="newton-instructor-pw" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="Instructor password…" value={instPw} onChange={e => setInstPw(e.target.value)} onKeyDown={e => e.key === "Enter" && doLogin()} autoFocus />
+            <p style={{ color: MUTED, fontSize: 13, textAlign: "center", margin: "0 0 16px", lineHeight: 1.5 }}>
+              {settingsUnseeded
+                ? "No instructor password is set on this database yet. Choose one now."
+                : "That is the setup password from this app's public source, so it is not a password. Choose a new one to continue."}
+            </p>
+            <input type="password" name="newton-claim-pw" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="New instructor password…" value={claimPw} onChange={e => { setClaimPw(e.target.value); setClaimErr(""); }} autoFocus />
+            <input type="password" name="newton-claim-pw2" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="Confirm new password…" value={claimPw2} onChange={e => { setClaimPw2(e.target.value); setClaimErr(""); }} onKeyDown={e => e.key === "Enter" && !claimBusy && doClaim()} />
+            {claimErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{claimErr}</p>}
+            <button onClick={doClaim} disabled={claimBusy} style={{ ...s.btnPri, opacity: claimBusy ? 0.6 : 1, cursor: claimBusy ? "not-allowed" : "pointer" }}>{claimBusy ? "Saving…" : "Set password"}</button>
+          </>
+        ) : loginStep === "reset-send" ? (
+          <>
+            <p style={{ color: MUTED, fontSize: 13, textAlign: "center", margin: "0 0 16px", lineHeight: 1.5 }}>
+              A one-time code will be emailed to the instructor address on file. You will enter it here, in this tab, along with a new password.
+            </p>
+            {claimErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{claimErr}</p>}
+            <button onClick={requestResetCode} disabled={claimBusy} style={{ ...s.btnPri, opacity: claimBusy ? 0.6 : 1, cursor: claimBusy ? "not-allowed" : "pointer" }}>{claimBusy ? "Sending…" : "Email me a code"}</button>
+            <button onClick={() => { setInstLoginStep("password"); setClaimErr(""); }} style={{ ...s.btnSec, marginTop: 10 }}>← Back</button>
+          </>
+        ) : loginStep === "reset-verify" ? (
+          <>
+            <p style={{ color: MUTED, fontSize: 13, textAlign: "center", margin: "0 0 16px", lineHeight: 1.5 }}>
+              A code is on its way to {resetSentTo}. It works in this tab for {resetMinutes} minutes.
+            </p>
+            <input type="text" name="newton-reset-code" autoComplete="one-time-code" autoCorrect="off" autoCapitalize="characters" spellCheck={false} style={{ ...s.input, marginBottom: 10, textAlign: "center", letterSpacing: "0.18em", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }} placeholder="Code from the email" value={resetCode} onChange={e => { setResetCode(e.target.value); setClaimErr(""); }} autoFocus />
+            <input type="password" name="newton-reset-pw" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="New instructor password…" value={claimPw} onChange={e => { setClaimPw(e.target.value); setClaimErr(""); }} />
+            <input type="password" name="newton-reset-pw2" autoComplete="new-password" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="Confirm new password…" value={claimPw2} onChange={e => { setClaimPw2(e.target.value); setClaimErr(""); }} onKeyDown={e => e.key === "Enter" && !claimBusy && doReset()} />
+            {claimErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{claimErr}</p>}
+            <button onClick={doReset} disabled={claimBusy} style={{ ...s.btnPri, opacity: claimBusy ? 0.6 : 1, cursor: claimBusy ? "not-allowed" : "pointer" }}>{claimBusy ? "Saving…" : "Set new password"}</button>
+            <button onClick={requestResetCode} disabled={claimBusy} style={{ ...s.btnSec, marginTop: 10 }}>Email another code</button>
+            <button onClick={() => { setInstLoginStep("password"); setClaimErr(""); setResetCode(""); setResetChallenge(null); }} style={{ ...s.btnGhost, marginTop: 10 }}>← Back</button>
+          </>
+        ) : loginStep === "password" ? (
+          <>
+            <input type="password" name="newton-instructor-pw" autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} style={{ ...s.input, marginBottom: 10 }} placeholder="Instructor password…" value={instPw} onChange={e => { setInstPw(e.target.value); setInstMsg(""); }} onKeyDown={e => e.key === "Enter" && doLogin()} autoFocus />
             {instErr && <p style={{ color: "#f87171", fontSize: 13, margin: "0 0 10px" }}>{instErr}</p>}
+            {instMsg && <p style={{ color: "#4ade80", fontSize: 13, margin: "0 0 10px" }}>{instMsg}</p>}
             <button onClick={doLogin} style={s.btnPri}>Login</button>
+            <button onClick={() => { setInstLoginStep("reset-send"); setInstErr(""); setInstMsg(""); setClaimErr(""); setClaimPw(""); setClaimPw2(""); }} style={{ background: "transparent", border: "none", color: MUTED, fontSize: 12, cursor: "pointer", padding: "10px 8px 0", width: "100%" }}>Forgot the password?</button>
           </>
         ) : (
           <>
@@ -3138,8 +3336,14 @@ export default function App() {
                   <button onClick={async () => {
                     if (!editPw.trim()) { setEditPwMsg("Password cannot be empty."); return; }
                     if (editPw !== editPw2) { setEditPwMsg("Passwords do not match."); return; }
-                    if (editPw.length < 4) { setEditPwMsg("Password must be at least 4 characters."); return; }
-                    const h = await makeHash(editPw.trim()); await saveSettings({ ...settings, passwordHash: h.hash, passwordSalt: h.salt });
+                    if (editPw.trim().length < MIN_INSTRUCTOR_PW) { setEditPwMsg(`Password must be at least ${MIN_INSTRUCTOR_PW} characters.`); return; }
+                    if (editPw.trim() === LEGACY_SEEDED_PW) { setEditPwMsg("That password is published in this app's source. Choose a different one."); return; }
+                    // The write is reported. It used to adopt the new password into local state
+                    // and then await the save, so a failed write left this session logging in
+                    // with a password the database had never accepted, while every other device
+                    // still needed the old one.
+                    try { await claimInstructorPw(editPw); }
+                    catch (e) { setEditPwMsg(`Could not save the new password: ${e.message}. The old one is still in effect.`); return; }
                     setEditPw(""); setEditPw2(""); setEditPwMsg("✅ Password updated!");
                   }} style={s.btnPri}>Update Password</button>
                 </div>
