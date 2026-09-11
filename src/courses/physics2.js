@@ -217,6 +217,29 @@ export const QUIZZES_PHYSICS2 = [
       },
     ],
   },
+  // Week 8 quiz — covers week 7 (Ch. 27): magnetic field and magnetic forces. Both free response,
+  // for the same reason as q3–q7: Q1 asks "if so, how? if not, why not?" and Q2 asks "how", so the
+  // prose is the entire answer. Q1 is one argument and stays whole (its "how" IS the justification
+  // of its verdict, the case argued under q4_2); Q2 is split (a)/(b) because its two questions have
+  // unrelated answers (see docs/courses/phy215.md).
+  {
+    id: "q8",
+    title: "Quiz 8: Magnetic Field & Magnetic Forces",
+    questions: [
+      {
+        id: "q8_1",
+        text: "Can a charged particle move through a magnetic field without experiencing any force? If so, how? If not, why not?",
+      },
+      {
+        id: "q8_2",
+        // The source asks these as two consecutive sentences with no labels; (a)/(b) are added so
+        // detectParts (utils.js) grades them separately. The source's "hoe" is corrected to "how",
+        // and (b)'s "Are there other examples ...?" is reworded so it cannot be answered "yes"
+        // (instructor's call, 2026-09-11).
+        text: "(a) If the magnetic force does no work on a charged particle, how can it have any effect on the particle's motion?\n\n(b) Give another example of a force that does no work but has a significant effect on a particle's motion, and explain why it does no work.",
+      },
+    ],
+  },
 ];
 
 // ── Modules ──────────────────────────────────────────────────────────────────────────────────
