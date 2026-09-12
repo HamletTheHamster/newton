@@ -33,7 +33,14 @@ const BORDER = "#e2ddd6";
 const TEAL = "#00828c";
 const FONT = "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
-const renderEmail = ({ title, body, courseLabel, postedAt, url }) => {
+// The footer says why the reader got the mail. A student is enrolled; someone auditing the
+// course is not, and telling them they are is the one line of the template that would be
+// wrong for them, so it is the one line that varies by recipient.
+const reasonLine = auditing => auditing
+  ? "You are receiving this because you are auditing this course."
+  : "You are receiving this because you are enrolled in this course.";
+
+const renderEmail = ({ title, body, courseLabel, postedAt, url, auditing = false }) => {
   const stamp = postedAt ? new Date(postedAt).toLocaleString("en-US", {
     dateStyle: "long", timeStyle: "short", timeZone: "America/New_York",
   }) : "";
@@ -60,7 +67,7 @@ const renderEmail = ({ title, body, courseLabel, postedAt, url }) => {
 
   <tr><td align="center" style="padding:16px 4px 0;font-family:${FONT};font-size:12px;line-height:18px;color:${MUTED};">
     ${url ? `<a href="${esc(url)}" style="color:${TEAL};text-decoration:none;font-weight:600;">Open Newton</a><br>` : ""}
-    You are receiving this because you are enrolled in this course.
+    ${reasonLine(auditing)}
   </td></tr>
 
 </table>
@@ -115,15 +122,17 @@ export default async (req) => {
     const key = email.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    addresses.push(formatAddress(r?.name, email));
+    addresses.push({ to: formatAddress(r?.name, email), auditing: !!r?.auditing });
   }
   if (!addresses.length)
     return new Response(JSON.stringify({ error: "No valid recipient addresses" }), { status: 400, headers: { "Content-Type": "application/json" } });
 
   const opts = { title, body: text, courseLabel, postedAt, url };
-  // Same rendered announcement for everyone; only the addressee differs.
-  const html = renderEmail(opts), plain = renderText(opts);
-  const message = to => ({ from: process.env.EMAIL_FROM_ADDRESS, to: [to], subject, html, text: plain });
+  // Same rendered announcement for everyone bar the footer's reason line, so there are two
+  // renderings, not one per recipient. The plain-text alternative carries no reason line.
+  const html = { enrolled: renderEmail(opts), auditing: renderEmail({ ...opts, auditing: true }) };
+  const plain = renderText(opts);
+  const message = ({ to, auditing }) => ({ from: process.env.EMAIL_FROM_ADDRESS, to: [to], subject, html: auditing ? html.auditing : html.enrolled, text: plain });
 
   let sent = 0;
   const errors = [];

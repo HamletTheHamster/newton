@@ -25,6 +25,7 @@ import { partitionModules, visibleShelves, normalizeGuide, guideHasContent } fro
 
 import { SyncBadge } from "./components/SyncBadge.jsx";
 import { CustomSelect } from "./components/CustomSelect.jsx";
+import { MultiSelect } from "./components/MultiSelect.jsx";
 import { ChatMessages } from "./components/ChatMessages.jsx";
 import { DragDropQuestion } from "./components/DragDropQuestion.jsx";
 import { ChoiceQuestion } from "./components/ChoiceQuestion.jsx";
@@ -1105,10 +1106,11 @@ export default function App() {
 
   // Whether a student is AUDITING the course - following it unofficially, with no grade to earn
   // and no attendance to keep. Unlike the instructor's own account this is a property of the
-  // entry, so any number can carry it and it is toggled on the student's own row. It leaves them
-  // out of the same four views (gradebook, analytics, progress column, attendance roll) while
-  // they keep logging in, doing the work and seeing their own grades. `null` rather than `false`
-  // clears it, so an entry that is not auditing carries no field at all.
+  // entry, so any number can carry it: the "Auditing" multi-select beside the account picker
+  // ticks any number of names, and each tick writes ONE entry's leaf. It leaves them out of the
+  // same four views (gradebook, analytics, progress column, attendance roll) while they keep
+  // logging in, doing the work and seeing their own grades. `null` rather than `false` clears
+  // it, so an entry that is not auditing carries no field at all.
   const setAuditing = async (studentId, on) => {
     await saveRosterFields(studentId, { auditing: on ? true : null });
   };
@@ -1348,7 +1350,8 @@ export default function App() {
     updateClassCache(cid, 'announcements', updated);
     await fbSave(classPath(cid, `announcements/${annId}`), record);
     if (ann.sendEmail) {
-      const recipients = roster.filter(s => s.email).map(s => ({ name: s.fullName, email: s.email }));
+      // `auditing` rides along so the footer does not tell an auditor they are enrolled.
+      const recipients = roster.filter(s => s.email).map(s => ({ name: s.fullName, email: s.email, auditing: isAuditing(s) }));
       if (recipients.length > 0) {
         const c = syllabus?.fields?.course;
         const prefix = [c?.term, c?.number].filter(Boolean).join(" ");
@@ -3016,11 +3019,21 @@ export default function App() {
                   {roster.map(stu => <option key={stu.studentId} value={stu.studentId}>{stu.altName || stu.fullName} ({stu.studentId})</option>)}
                 </select>
               </label>
-              {auditors(roster).length > 0 && (
-                <span style={{ ...s.badge("#8b5cf6"), fontSize: 11 }} title={`${auditors(roster).map(a => a.altName || a.fullName).join(", ")} - auditing, so left out of the gradebook, the analytics, the progress columns and the attendance roll`}>
-                  {auditors(roster).length} auditing
-                </span>
-              )}
+              {/* Auditing is a property any number of entries can carry, so it is a multi-select
+                  rather than a second single picker, and it lives up here rather than as a
+                  button on every row so the table stays a roster. The instructor's own entry is
+                  already out of every class view, so it is not listed. Each tick writes one
+                  entry's own `auditing` leaf; see `src/roster-scope.js`. */}
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: MUTED }}>
+                <span>Auditing:</span>
+                <MultiSelect
+                  values={auditors(roster).map(a => a.studentId)}
+                  onToggle={(studentId, on) => setAuditing(studentId, on)}
+                  options={roster.filter(stu => !isInstructorAccount(stu)).map(stu => ({ value: stu.studentId, label: `${stu.altName || stu.fullName} (${stu.studentId})` }))}
+                  placeholder="Nobody"
+                  title="Tick anyone auditing the course. They keep logging in and doing the work, and keep seeing their own grades, but they leave the gradebook, the analytics, the progress columns and the attendance roll."
+                />
+              </label>
               <span style={{ ...s.muted, fontSize: 12, marginLeft: "auto" }}>(MyMercer roster export file)</span>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
                 <label style={{ ...s.btnGhost, cursor: "pointer", display: "inline-block", padding: "8px 16px", fontSize: 13 }}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{ display: "none" }} /></label>
@@ -3084,6 +3097,11 @@ export default function App() {
                             {isInstructorAccount(stu) && (
                               <span title="Your own account. Left out of the gradebook, the analytics and the attendance roll." style={{ color: TEAL, background: "rgba(0,130,140,0.14)", border: `1px solid ${TEAL}`, borderRadius: 5, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>your account</span>
                             )}
+                            {/* Same shape as "your account": read-only here, set by the Auditing
+                                picker above the table. */}
+                            {isAuditing(stu) && !isInstructorAccount(stu) && (
+                              <span title="Auditing the course. Left out of the gradebook, the analytics, the progress columns and the attendance roll. The Auditing picker above the table is what sets this." style={{ color: isLight ? "#6d28d9" : "#c4b5fd", background: isLight ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.18)", border: "1px solid rgba(139,92,246,0.55)", borderRadius: 5, padding: "1px 6px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" }}>auditing</span>
+                            )}
                             <button onClick={() => { setEditingAltName(stu.studentId); setAltNameInput(stu.altName || ""); }} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title="Set preferred name">✎</button>
                             {stu.altName && (
                               <button onClick={() => resetAltName(stu)} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 13, padding: "2px 4px", lineHeight: 1 }} title={`Reset to ${stu.fullName}`}>↺</button>
@@ -3114,20 +3132,6 @@ export default function App() {
                               nothing to reset, so the button is simply dead for them, and a dead
                               button is the same fact at the point of action. */}
                           <button disabled={!studentPws[stu.studentId]} onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; await saveStudentPw(stu.studentId, null); }} title={studentPws[stu.studentId] ? `Reset ${stu.fullName}'s password back to their Student ID` : `${stu.fullName} has not set a password, so there is nothing to reset. They log in with their Student ID.`} style={{ background: studentPws[stu.studentId] ? (isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)") : "none", border: `1px solid ${studentPws[stu.studentId] ? "rgba(202,138,4,0.5)" : BORDER}`, color: studentPws[stu.studentId] ? (isLight ? "#92640a" : "#fde047") : MUTED, opacity: studentPws[stu.studentId] ? 1 : 0.5, borderRadius: 6, padding: "4px 12px", cursor: studentPws[stu.studentId] ? "pointer" : "default", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>Reset PW</button>
-                          {/* Auditing is a property of this entry, so it is toggled here rather
-                              than from the single per-class picker above, which answers a
-                              different question ("which of these is me"). The instructor's own
-                              account is already out of every class view, so offering it there too
-                              would be a second switch for the same effect. */}
-                          {!isInstructorAccount(stu) && (
-                            <button onClick={() => setAuditing(stu.studentId, !isAuditing(stu))}
-                                    title={isAuditing(stu)
-                                      ? `${stu.altName || stu.fullName} is auditing: left out of the gradebook, the analytics, the progress columns and the attendance roll. Click to count them as an enrolled student again.`
-                                      : `Mark ${stu.altName || stu.fullName} as auditing the course. They keep logging in and doing the work, and keep seeing their own grades, but they leave the gradebook, the analytics, the progress columns and the attendance roll.`}
-                                    style={{ background: isAuditing(stu) ? (isLight ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.18)") : "none", border: `1px solid ${isAuditing(stu) ? "rgba(139,92,246,0.55)" : BORDER}`, color: isAuditing(stu) ? (isLight ? "#6d28d9" : "#c4b5fd") : MUTED, borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>
-                              {isAuditing(stu) ? "Auditing" : "Audit"}
-                            </button>
-                          )}
                           <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>Remove</button>
                         </td>
                       </tr>

@@ -211,16 +211,20 @@ of the same four views, so it shares that machinery rather than growing a parall
 leave someone out would be added there and nowhere else.
 
 Two things differ, and both follow from what is being recorded. **Auditing is a property each entry
-can have**, so any number of students may audit, and it is a toggle on the student's own row rather
-than a per-class picker — a picker is the right shape only for "which one of these is me". And the
-roster header shows an "N auditing" badge naming them, since a per-row toggle is otherwise
-invisible until you scan every row. The instructor's own entry is already out of every class view,
-so it is not offered the toggle.
+can have**, so any number of students may audit, and it is set from an "Auditing" **multi-select**
+beside the account picker — not a second single picker (that shape is right only for "which one of
+these is me"), and not a button on every row, which cluttered a table whose job is to be a roster.
+Each tick writes that one entry's `auditing` leaf. The marked rows carry a read-only "auditing"
+badge, the same shape as "your account", so the fact is visible in the table without a control
+there. The instructor's own entry is already out of every class view, so it is not listed.
 
 Everything `instructorAccount` deliberately is **not**, an auditor's flag is not either: an auditor
 still writes submissions, drafts, telemetry and material views, still sits their homework, still
 sees their own grades and their own submitted work, and is still on the roster where it means "who
-can log in" or "who to email".
+can log in" or "who to email". The one place the flag reaches the email path is the announcement
+footer: an auditor's copy says they are receiving it because they are auditing the course, not
+because they are enrolled in it (`send-email.js` renders the two footers once each and picks per
+recipient).
 
 **Where it applies.** App.jsx derives `classStudents` once and passes it as the `roster` prop to
 the four views where the roster means "the students I am assessing": the Gradebook (so no row, and
@@ -417,6 +421,13 @@ paragraph, per [The panels explain themselves](#the-panels-explain-themselves-or
 
 Overall goes through the same `calcGrades` the Gradebook uses, on the same `countsTowardGrade`
 filter, so this column can never disagree with the gradebook's Overall.
+
+The drill-down's assignment table is filtered by **category pills**, the same colored pills as the
+Assignments hub (`categoryColor`; any number lit, none lit means everything). Only categories that
+have an assignment this term are offered, in the gradebook's own order, so no pill can filter to an
+empty table. The Scored / Missing / Time-on-task stats above the table follow the filter, so the
+numbers above the table are always the numbers of the table; Absences does not, because it is a
+fact about lectures rather than about any assignment.
 
 The drill-down has a third level: a homework row with recorded engagement opens
 `StudentWorkDetail`, the per-problem "how they worked through it" panel described under

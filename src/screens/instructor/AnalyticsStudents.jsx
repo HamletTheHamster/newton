@@ -27,11 +27,28 @@ const overallColor = pct => {
 
 const STALE_DAYS = 14;
 
-function StudentDetail({ student, assignments, matrix, telemetryAll, absenceMap, onOpenWork, onBack }) {
+function StudentDetail({ student, assignments, matrix, telemetryAll, absenceMap, gradeCategories, onOpenWork, onBack }) {
   const { s, text, muted, border, isLight } = useTheme();
   const sid = student.studentId;
 
-  const rows = assignments.map(a => {
+  // Category filter, the same pills as the Assignments hub: any number lit, none lit means
+  // everything. Only categories this term actually has assignments in are offered, in the
+  // gradebook's own order, so the bar cannot show a pill that filters to nothing.
+  const [cats, setCats] = useState(new Set());
+  const catPills = useMemo(() => {
+    const present = new Set(assignments.map(a => a.catId));
+    return [...present]
+      .map(id => ({ id, label: gradeCategories?.[id]?.name || id.replace(/^cat_/, ""), color: categoryColor(id, muted), order: gradeCategories?.[id]?.order ?? 99 }))
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+  }, [assignments, gradeCategories, muted]);
+  const toggleCat = id => setCats(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const shown = cats.size ? assignments.filter(a => cats.has(a.catId)) : assignments;
+
+  const rows = shown.map(a => {
     const raw = matrix.scoreMap[sid]?.[a.id];
     const excused = !!matrix.excusedMap[sid]?.[a.id];
     const sub = matrix.subsByStudent[sid]?.[a.id] || null;
@@ -56,12 +73,41 @@ function StudentDetail({ student, assignments, matrix, telemetryAll, absenceMap,
         ‹ All students
       </button>
 
+      {/* The three assignment stats follow the filter, so the numbers above the table are
+          always the numbers OF the table. Absences is a fact about lectures, not about any
+          assignment, so it does not. */}
       <StatRow>
         <Stat label="Scored" value={`${graded.length}`} hint={`of ${rows.filter(r => r.counted).length} counted`} />
         <Stat label="Missing" value={rows.filter(r => r.missing).length || "0"} hint="past due, nothing handed in" />
-        <Stat label="Time on task" value={formatDuration(totalMs)} hint="homework, all assignments" />
+        <Stat label="Time on task" value={formatDuration(totalMs)} hint={cats.size ? "homework, shown assignments" : "homework, all assignments"} />
         <Stat label="Absences" value={Object.keys(absenceMap[sid] || {}).length || "0"} hint="lectures with a linked lab" />
       </StatRow>
+
+      {catPills.length > 1 && (
+        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", alignItems: "center" }}>
+          {catPills.map(c => (
+            <button
+              key={c.id}
+              onClick={() => toggleCat(c.id)}
+              title={cats.has(c.id) ? `Hide ${c.label}` : `Show only ${c.label}`}
+              style={{
+                ...s.badge(c.color),
+                cursor: "pointer",
+                padding: "3px 10px",
+                fontSize: 11,
+                border: cats.has(c.id) ? `1px solid ${c.color}` : `1px solid ${c.color}44`,
+                opacity: cats.has(c.id) || cats.size === 0 ? 1 : 0.4,
+                background: "none",
+              }}
+            >
+              {c.label}
+            </button>
+          ))}
+          {cats.size > 0 && (
+            <button onClick={() => setCats(new Set())} style={{ ...s.btnGhost, width: "auto", padding: "3px 10px", fontSize: 11 }}>Clear</button>
+          )}
+        </div>
+      )}
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 520 }}>
@@ -200,7 +246,7 @@ export function AnalyticsStudents({
       <Panel title={`${name} · every assignment this term`}>
         <StudentDetail
           student={student} assignments={assignments} matrix={matrix}
-          telemetryAll={telemetryAll} absenceMap={absenceMap}
+          telemetryAll={telemetryAll} absenceMap={absenceMap} gradeCategories={gradeCategories}
           onOpenWork={a => setOpenWorkId(a.id)}
           onBack={() => { setOpenWorkId(null); setOpenId(null); }}
         />

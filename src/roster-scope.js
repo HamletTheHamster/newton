@@ -45,10 +45,11 @@ export function isInstructorAccount(entry) {
 // It is the same KIND of fact as `instructorAccount` and scopes out of the same four views, so it
 // shares that machinery rather than growing a parallel one. Two things differ, and both follow
 // from what is being recorded. Auditing is a property each entry can have, so any number of
-// students may be auditing and it is a control on the student's own row - not a single per-class
-// picker, which is the right shape only for "which one of these is me". And it is the audited
-// student's own status rather than a fact about the instructor, so the wording on the row says
-// what it does to the class views and nothing about who set it.
+// students may be auditing and it is set from a MULTI-select beside the account picker - not a
+// second single picker, which is the right shape only for "which one of these is me", and not a
+// button on every row, which would clutter a table whose job is to be a roster. And it is the
+// audited student's own status rather than a fact about the instructor, so the wording says what
+// it does to the class views and nothing about who set it.
 //
 // The three things `instructorAccount` deliberately is NOT all hold here too: it is not a
 // write-side switch (an auditor still writes submissions, drafts, telemetry and material views,
@@ -71,7 +72,7 @@ export function studentRoster(roster = []) {
   return (roster || []).filter(isCountedStudent);
 }
 
-// Everyone auditing, for the roster UI's own count.
+// Everyone auditing: the multi-select's selected values, and each marked row's badge.
 export function auditors(roster = []) {
   return (roster || []).filter(isAuditing);
 }
