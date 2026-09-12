@@ -69,6 +69,36 @@ CSS on `<option>` elements doesn't control the OS-rendered dropdown popup. Set `
 
 Applied to: instructor class picker, student class picker, and the Settings course picker in `App.jsx`.
 
+### Range sliders — drawn by us, not tinted
+
+`colorScheme` is the right lever for a `<select>` popup or a date picker panel, where the native
+widget is the whole point. It is **not** enough for `<input type="range">`, and the grade-scenario
+sliders are the worked example of why: `accent-color` paints only the FILLED side of the track, and
+the unfilled trough takes its color from the used color-scheme alone, which rendered as a black
+trough under a colored fill in light mode. `colorScheme: "light"` did not fix it - it is a hint
+about how to render chrome, not a guarantee about what that chrome looks like.
+
+So the slider is drawn entirely in CSS. `.gs-slider` in [`src/index.css`](../src/index.css) sets
+`appearance: none` and then styles every piece itself (`::-webkit-slider-runnable-track` +
+`::-webkit-slider-thumb`, `::-moz-range-track` / `-progress` / `-thumb`), driven by three custom
+properties the component sets inline per row:
+
+```js
+<input className="gs-slider" type="range" style={{
+  "--gs-accent": cc,                                                  // the category color
+  "--gs-track": isLight ? "rgba(0,0,0,0.13)" : "rgba(255,255,255,0.16)",
+  "--gs-pct": `${value}%`,                                            // where the fill stops
+}} />
+```
+
+The fill is a `linear-gradient` **on the WebKit track** (one rule covers both sides of the thumb);
+Firefox draws the filled side itself via `::-moz-range-progress`. `appearance: none` also removes
+the focus ring, so `.gs-slider:focus-visible` puts one back - a control whose whole purpose is
+being dragged needs a keyboard affordance.
+
+**This is the pattern for any new slider.** Reach for `colorScheme` only where the native widget
+is what you actually want on screen.
+
 ### Badge opacity in light mode
 
 `s.badge(color)` uses stronger alpha in light mode so badges are visible on a light background:

@@ -15,7 +15,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - **Dev & deploy:** see [docs/environment.md](docs/environment.md)
 - **System design, Firebase, auth, Claude API:** see [docs/architecture.md](docs/architecture.md)
-- **Inline styles and theme constants:** see [docs/styling.md](docs/styling.md)
+- **Inline styles, theme constants, and the few global CSS classes (`src/index.css`):** see [docs/styling.md](docs/styling.md)
 - **End-to-end testing, local-dev gotchas:** see [docs/testing.md](docs/testing.md)
 - **LMS-style redesign (multi-session plan):** see [docs/lms-redesign.md](docs/lms-redesign.md)
 - **Homework — process, engine & remaining buildout (course-agnostic):** see [docs/homework-roadmap.md](docs/homework-roadmap.md)

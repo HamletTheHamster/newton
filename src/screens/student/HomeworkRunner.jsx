@@ -136,7 +136,11 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [showLeave, setShowLeave] = useState(false);
   const [navWarn, setNavWarn] = useState(null);    // { go } — pending Next/Finish while a diagram is unfinished
   const [confirmReveal, setConfirmReveal] = useState(null); // graphical item pending a "Show answer" confirm
-  const [showGrading, setShowGrading] = useState(true);  // grading-policy explainer, expanded by default
+  // Collapsed by default. The policy has to be available on every set - it decides how many
+  // tries an answer is worth - but a student who has read it once does not need it standing
+  // between them and problem 1 on every later set, and expanded it pushed the first problem
+  // down the page.
+  const [showGrading, setShowGrading] = useState(false);
   // Written-work acknowledgment gate (non-practice). Session-only (not persisted), so the
   // student must re-confirm every time they begin or resume — see the gate screen below.
   const [acked, setAcked] = useState(false);

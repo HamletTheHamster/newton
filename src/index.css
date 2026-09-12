@@ -30,3 +30,32 @@ button, input, select, textarea { font-family: inherit; }
    the text is still in the DOM for anyone who opens dev tools. */
 .hw-no-copy { -webkit-user-select: none; -webkit-touch-callout: none; user-select: none; }
 .hide-scrollbar::-webkit-scrollbar { display: none; }
+/* Grade-scenario percent sliders (src/screens/student/GradeScenario.jsx).
+   Fully hand-drawn rather than a native range input with `accent-color`, because the parts of a
+   native slider that matter here are browser chrome we cannot reach: the UNFILLED track takes its
+   color from the used color-scheme alone, which left it a black trough under a colored fill in
+   light mode. `accent-color` only ever paints the filled side, and `color-scheme` is a hint, not
+   a guarantee. With `appearance: none` every piece is ours, so both themes are deterministic.
+   Driven by three custom properties set inline per slider: --gs-accent (the category color),
+   --gs-track (the unfilled trough) and --gs-pct (how far along the value is). */
+.gs-slider { -webkit-appearance: none; appearance: none; background: transparent; height: 18px; cursor: pointer; margin: 0; }
+.gs-slider:disabled { cursor: default; }
+/* The fill is a gradient ON the track, so one rule covers both sides of the thumb. */
+.gs-slider::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 999px;
+  background: linear-gradient(to right, var(--gs-accent) 0 var(--gs-pct), var(--gs-track) var(--gs-pct) 100%);
+}
+.gs-slider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 14px; height: 14px; border-radius: 50%; border: none;
+  background: var(--gs-accent);
+  margin-top: -4px;   /* centers the 14px thumb on the 6px track */
+}
+/* Firefox draws the filled side itself, so it needs no gradient. */
+.gs-slider::-moz-range-track { height: 6px; border-radius: 999px; background: var(--gs-track); }
+.gs-slider::-moz-range-progress { height: 6px; border-radius: 999px; background: var(--gs-accent); }
+.gs-slider::-moz-range-thumb { width: 14px; height: 14px; border-radius: 50%; border: none; background: var(--gs-accent); }
+/* `appearance: none` also removes the focus ring, which a keyboard user needs on a control whose
+   whole purpose is being dragged. Only on :focus-visible, so a mouse drag stays quiet. */
+.gs-slider:focus { outline: none; }
+.gs-slider:focus-visible { outline: 2px solid var(--gs-accent); outline-offset: 3px; border-radius: 999px; }

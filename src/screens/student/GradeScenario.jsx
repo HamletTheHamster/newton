@@ -87,16 +87,24 @@ export function GradeScenario({ assignments, remaining, categories, scores, excu
                     <span style={{ color: text, fontSize: 14 }}>{g.name}</span>
                     <span style={{ color: muted, fontSize: 12 }}>{g.count} left</span>
                   </span>
+                  {/* Hand-drawn, not a native slider tinted with `accentColor`: the unfilled
+                      track of a native range input is browser chrome no CSS of ours reaches, and
+                      it took its color from the used color-scheme alone, which left a black
+                      trough under a colored fill in light mode. `.gs-slider` (index.css) draws
+                      every piece from these three custom properties instead, so both themes are
+                      deterministic. `--gs-pct` is where the fill has to stop. */}
                   <input
+                    className="gs-slider"
                     type="range" min="0" max="100" step="1"
                     value={pcts[g.id] ?? 100}
                     onChange={e => setOne(g.id, Number(e.target.value))}
                     aria-label={`Percent on the ${g.count} remaining ${g.name} assignment${g.count !== 1 ? "s" : ""}`}
-                    /* `colorScheme` is required, not cosmetic: a range input's TRACK is native
-                       browser chrome, not our DOM, so no CSS of ours reaches it and it follows
-                       the color scheme alone. Without this it stays dark in light mode - a black
-                       trough under a colored fill. `accentColor` only paints the filled side. */
-                    style={{ flex: "1 1 150px", minWidth: 130, accentColor: cc, colorScheme: isLight ? "light" : "dark", cursor: "pointer" }}
+                    style={{
+                      flex: "1 1 150px", minWidth: 130,
+                      "--gs-accent": cc,
+                      "--gs-track": isLight ? "rgba(0,0,0,0.13)" : "rgba(255,255,255,0.16)",
+                      "--gs-pct": `${pcts[g.id] ?? 100}%`,
+                    }}
                   />
                   <span style={{ width: 46, textAlign: "right", fontFamily: "monospace", fontSize: 14, fontWeight: 600, color: cc }}>
                     {pcts[g.id] ?? 100}%
