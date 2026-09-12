@@ -197,6 +197,31 @@ select above the roster table; the marked row then shows a read-only "your accou
 the difference is invisible from that table and shows up two tabs away. Setting it clears the
 previous holder first, so the at-most-one invariant lives at the only place that can write it.
 
+### Auditors
+
+A second kind of entry is not one of the students being assessed: someone **auditing** the course,
+following it unofficially with no grade to earn and no attendance to keep. They want the
+coursework, so they log in and submit exactly like anyone else, and that is precisely why the flag
+is needed — their work would otherwise land in every class statistic, the gradebook, the
+attendance roll and the Blackboard export.
+
+`auditing: true` on the roster entry is the same kind of fact as `instructorAccount` and scopes out
+of the same four views, so it shares that machinery rather than growing a parallel one:
+**`isCountedStudent`** is now the single predicate `studentRoster` filters by, and a third reason to
+leave someone out would be added there and nowhere else.
+
+Two things differ, and both follow from what is being recorded. **Auditing is a property each entry
+can have**, so any number of students may audit, and it is a toggle on the student's own row rather
+than a per-class picker — a picker is the right shape only for "which one of these is me". And the
+roster header shows an "N auditing" badge naming them, since a per-row toggle is otherwise
+invisible until you scan every row. The instructor's own entry is already out of every class view,
+so it is not offered the toggle.
+
+Everything `instructorAccount` deliberately is **not**, an auditor's flag is not either: an auditor
+still writes submissions, drafts, telemetry and material views, still sits their homework, still
+sees their own grades and their own submitted work, and is still on the roster where it means "who
+can log in" or "who to email".
+
 **Where it applies.** App.jsx derives `classStudents` once and passes it as the `roster` prop to
 the four views where the roster means "the students I am assessing": the Gradebook (so no row, and
 nothing in the CSV or Blackboard export), this tab, the Assignments hub's progress column, and the

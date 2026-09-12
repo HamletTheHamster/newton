@@ -1,5 +1,9 @@
 // Which roster entries are actually STUDENTS — pure and env-agnostic, like `material-views.js`.
 //
+// There are two reasons an entry is not one: it is the INSTRUCTOR'S OWN account, or the person is
+// AUDITING the course. Both behave like students on the write side and both must be kept out of
+// the four instructor-facing class views; `isCountedStudent` is the single predicate that decides.
+//
 // An instructor sits on their own roster. It is the only way to walk an assignment the way a
 // student walks it (the homework runner reads `loggedInStudent` for drafts, attempt counts, the
 // work upload and the submission), and it is how a new set gets checked before a class opens it.
@@ -32,10 +36,44 @@ export function isInstructorAccount(entry) {
   return !!(entry && entry.instructorAccount);
 }
 
+// An AUDITOR is the second way a roster entry is not one of the students being assessed: someone
+// following the course unofficially, who is not on the registrar's list, has no grade to earn and
+// no attendance to keep. They want the coursework, so they log in and submit exactly like anyone
+// else - and that is precisely why the flag is needed, since their work would otherwise land in
+// every class statistic, the gradebook, the attendance roll and the Blackboard export.
+//
+// It is the same KIND of fact as `instructorAccount` and scopes out of the same four views, so it
+// shares that machinery rather than growing a parallel one. Two things differ, and both follow
+// from what is being recorded. Auditing is a property each entry can have, so any number of
+// students may be auditing and it is a control on the student's own row - not a single per-class
+// picker, which is the right shape only for "which one of these is me". And it is the audited
+// student's own status rather than a fact about the instructor, so the wording on the row says
+// what it does to the class views and nothing about who set it.
+//
+// The three things `instructorAccount` deliberately is NOT all hold here too: it is not a
+// write-side switch (an auditor still writes submissions, drafts, telemetry and material views,
+// and still sees their own grades and their own work), it is not "hide this student", and it is
+// not a grading policy. Where the roster means "people who can log in" or "people to email", an
+// auditor is still on it.
+export function isAuditing(entry) {
+  return !!(entry && entry.auditing);
+}
+
+// Is this entry one of the students the instructor is assessing? The single predicate the four
+// class views are scoped by, so a new reason to leave someone out is added here and nowhere else.
+export function isCountedStudent(entry) {
+  return !isInstructorAccount(entry) && !isAuditing(entry);
+}
+
 // The roster as the instructor-facing class views should see it: the gradebook, the analytics,
 // the assignments hub's progress column and the attendance roll.
 export function studentRoster(roster = []) {
-  return (roster || []).filter(r => !isInstructorAccount(r));
+  return (roster || []).filter(isCountedStudent);
+}
+
+// Everyone auditing, for the roster UI's own count.
+export function auditors(roster = []) {
+  return (roster || []).filter(isAuditing);
 }
 
 // The entry marked as the instructor's own, or null. There is at most one per class (the picker

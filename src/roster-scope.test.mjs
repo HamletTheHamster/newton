@@ -8,7 +8,8 @@
 // the marking has to be something only a deliberate pick can do.
 import assert from "node:assert";
 import {
-  isInstructorAccount, instructorAccountOf, studentRoster, studentIds, scopeSubmissions, scopeByStudent,
+  isInstructorAccount, isAuditing, isCountedStudent, auditors,
+  instructorAccountOf, studentRoster, studentIds, scopeSubmissions, scopeByStudent,
 } from "./roster-scope.js";
 
 let passed = 0;
@@ -33,6 +34,47 @@ test("studentRoster drops only the marked entry", () => {
   assert.deepEqual(studentRoster(ROSTER).map(r => r.studentId), ["1001", "1002"]);
   assert.deepEqual(studentRoster([]), []);
   assert.deepEqual(studentRoster(undefined), []);
+});
+
+test("an auditor is the second reason an entry is not a student", () => {
+  assert.equal(isAuditing({ studentId: "1003", auditing: true }), true);
+  // Same default as the instructor flag, and for the same reason: a stale or hand-edited write
+  // must never be able to remove a real student from the class the instructor is reading about.
+  assert.equal(isAuditing({ studentId: "1001" }), false);
+  assert.equal(isAuditing({ studentId: "1001", auditing: false }), false);
+  assert.equal(isAuditing(null), false);
+});
+
+test("isCountedStudent is the single predicate, and both flags fail it", () => {
+  assert.equal(isCountedStudent({ studentId: "1001" }), true);
+  assert.equal(isCountedStudent({ studentId: "0000", instructorAccount: true }), false);
+  assert.equal(isCountedStudent({ studentId: "1003", auditing: true }), false);
+  // An entry carrying both is still just "not a student", not an error.
+  assert.equal(isCountedStudent({ studentId: "0000", instructorAccount: true, auditing: true }), false);
+});
+
+test("auditors are scoped out of the class views exactly like the instructor account", () => {
+  const roster = [...ROSTER, { studentId: "1003", fullName: "Aidan Auditor", auditing: true }];
+  assert.deepEqual(studentRoster(roster).map(r => r.studentId), ["1001", "1002"]);
+  // Any number may audit - it is a property of the entry, not one answer for the class.
+  const two = [...roster, { studentId: "1004", fullName: "Second Auditor", auditing: true }];
+  assert.deepEqual(studentRoster(two).map(r => r.studentId), ["1001", "1002"]);
+  assert.deepEqual(auditors(two).map(r => r.studentId), ["1003", "1004"]);
+  assert.deepEqual(auditors(ROSTER), []);
+  assert.deepEqual(auditors(undefined), []);
+});
+
+test("an auditor's own work is left out of every per-student node", () => {
+  const roster = [...ROSTER, { studentId: "1003", fullName: "Aidan Auditor", auditing: true }];
+  const ids = studentIds(roster);
+  assert.equal(ids.has("1003"), false);
+  // They still WRITE like a student, which is the whole reason the scoping is needed.
+  const subs = [
+    { studentId: "1001", quizId: "q1", score: 9 },
+    { studentId: "1003", quizId: "q1", score: 10 },
+  ];
+  assert.deepEqual(scopeSubmissions(subs, ids).map(x => x.studentId), ["1001"]);
+  assert.deepEqual(Object.keys(scopeByStudent({ "1001": {}, "1003": {} }, ids)), ["1001"]);
 });
 
 test("studentRoster does not mutate or reorder the roster", () => {

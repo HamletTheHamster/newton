@@ -100,9 +100,15 @@ function ProgressBar({ pct, color, width = "100%", height = 5 }) {
   );
 }
 
-// The Progress column cell. Clicking it opens the per-student breakdown. Quizzes and manual
-// assignments have no partial progress, so their cell is the plain no-data hyphen.
-function ProgressCell({ summary, loading, onClick }) {
+// The Progress column cell. Clicking it opens the per-student breakdown. A manual assignment
+// (exam, lab) has no submission at all, so its cell is the plain no-data hyphen.
+//
+// The bar means something slightly different for each kind, and the wording has to say which. A
+// homework is partially completable, so its bar is the class's AVERAGE completion. A quiz is all
+// or nothing, so its bar is the share of the class that has HANDED IT IN. Both answer "how far
+// has the class got with this", which is the column's question, but calling a quiz 40% complete
+// would suggest students are 40% through it rather than that 40% of them have finished.
+function ProgressCell({ summary, loading, onClick, kind = "homework" }) {
   const { muted, teal, text } = useTheme();
   if (loading) return <span style={{ color: muted, fontSize: 11 }}>Loading…</span>;
   if (!summary) return <span style={{ color: muted, fontSize: 12 }}>-</span>;
@@ -110,13 +116,16 @@ function ProgressCell({ summary, loading, onClick }) {
 
   const since = fmtSince(summary.lastWorked);
   const barColor = summary.avg >= 100 ? DONE_COLOR : teal;
+  const hint = kind === "quiz"
+    ? `${summary.submitted}/${summary.count} handed in${since ? ` · last ${since}` : ""} · click for each student`
+    : `${summary.started}/${summary.count} started${since ? ` · last worked ${since}` : ""} · click for each student`;
   // Bar + percentage only. The started count and last-worked time are one hover away and laid
   // out in full in the modal, and printing them here cost three lines of row height plus the
   // column width that the title needs more.
   return (
     <button
       onClick={onClick}
-      title={`${summary.started}/${summary.count} started${since ? ` · last worked ${since}` : ""} · click for each student`}
+      title={hint}
       style={{
         display: "flex", alignItems: "center", gap: 6,
         background: "none", border: "none", padding: 0,
@@ -131,9 +140,10 @@ function ProgressCell({ summary, loading, onClick }) {
 
 // Per-student breakdown, least progress first: the actionable order when you are deciding
 // whether to extend a deadline or spend class time on the set.
-function ProgressModal({ title, rows, summary, onClose }) {
+function ProgressModal({ title, rows, summary, onClose, kind = "homework" }) {
   const { s, text, muted, border, teal, isLight } = useTheme();
   const solidBg = isLight ? "#fff" : "#252627";
+  const isQuiz = kind === "quiz";
 
   return (
     <div onClick={onClose} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
@@ -144,12 +154,20 @@ function ProgressModal({ title, rows, summary, onClose }) {
         </div>
 
         <div style={{ display: "flex", gap: 18, flexWrap: "wrap", padding: "10px 12px", borderRadius: 8, border: `1px solid ${border}` }}>
-          {[
-            { label: "Average", value: `${summary.avg}%` },
-            { label: "Started", value: `${summary.started} of ${summary.count}` },
-            { label: "Submitted", value: `${summary.submitted} of ${summary.count}` },
-            { label: "Last worked", value: fmtSince(summary.lastWorked) || "-" },
-          ].map(f => (
+          {/* A quiz has no partial state, so "Average" and "Started" would both just restate
+              "Submitted" in different units. It gets the two facts it actually has. */}
+          {(isQuiz
+            ? [
+              { label: "Handed in", value: `${summary.submitted} of ${summary.count}` },
+              { label: "Last handed in", value: fmtSince(summary.lastWorked) || "-" },
+            ]
+            : [
+              { label: "Average", value: `${summary.avg}%` },
+              { label: "Started", value: `${summary.started} of ${summary.count}` },
+              { label: "Submitted", value: `${summary.submitted} of ${summary.count}` },
+              { label: "Last worked", value: fmtSince(summary.lastWorked) || "-" },
+            ]
+          ).map(f => (
             <div key={f.label} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
               <span style={{ ...CARD_LABEL, color: muted }}>{f.label}</span>
               <span style={{ color: text, fontSize: 13, fontWeight: 600 }}>{f.value}</span>
@@ -174,7 +192,7 @@ function ProgressModal({ title, rows, summary, onClose }) {
                 style={{ color: r.stalled ? STALLED_COLOR : r.pct > 0 ? text : muted, fontSize: 12, fontFamily: "monospace", textAlign: "right" }}
                 title={r.auto ? "Auto-submitted at the deadline; still open, and the written work has not been handed in" : r.stalled ? "Every problem finished, but not submitted yet" : ""}
               >
-                {r.pct}%
+                {isQuiz ? (r.submitted ? "✓" : "-") : `${r.pct}%`}
               </span>
               <span style={{ color: muted, fontSize: 11, textAlign: "right" }} title={fmtExact(r.at) || ""}>
                 {r.submitted ? "Submitted" : r.auto ? "Auto-submitted" : fmtSince(r.at) || "-"}
@@ -186,10 +204,12 @@ function ProgressModal({ title, rows, summary, onClose }) {
         {/* How one student worked the set - time per problem, tries, what they typed - is a
             reading view, so it lives on the Analytics page at full width rather than in a second
             modal opened from this one. */}
-        <p style={{ ...s.muted, fontSize: 11, margin: 0, lineHeight: 1.5 }}>
-          To see how one student worked through the set, problem by problem, open Analytics and
-          choose Students.
-        </p>
+        {!isQuiz && (
+          <p style={{ ...s.muted, fontSize: 11, margin: 0, lineHeight: 1.5 }}>
+            To see how one student worked through the set, problem by problem, open Analytics and
+            choose Students.
+          </p>
+        )}
 
         <div style={{ display: "flex", justifyContent: "flex-end" }}>
           <button onClick={onClose} style={{ ...s.btnSec, width: "auto", padding: "8px 20px" }}>Close</button>
@@ -286,8 +306,8 @@ function HwGradingModal({ hwTitle, draft: initialDraft, isOverridden, onClose, o
   );
 }
 
-export function Assignments({ classId, roster = [], submissions = [], quizzes, homeworks = [], manualAssignments = {}, gradeCategories = {}, customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onSaveManualAssignments, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz }) {
-  const { s, text, muted, border } = useTheme();
+export function Assignments({ classId, roster = [], submissions = [], quizzes, homeworks = [], manualAssignments = {}, gradeCategories = {}, customQuizzes, dueDates, homeworkSettings, onSaveDueDates, onSaveHomeworkSettings, onSaveManualAssignments, onEditCustomQuiz, onCreateQuiz, onDeleteCustomQuiz, onPreview }) {
+  const { s, text, muted, border, teal } = useTheme();
   const isMobile = useIsMobile();
 
   const [filterText, setFilterText] = useState("");
@@ -350,11 +370,15 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   const subByKey = {};
   (joinSubs || []).forEach(x => { subByKey[`${x.studentId}|${x.quizId}`] = x; });
 
-  const progressRows = hwId => (roster || []).map(r => {
+  // `kind` decides where a student's figure comes from. A quiz is all or nothing and writes no
+  // hwProgress record, so it is read from the submission alone - which also means the quiz column
+  // does not wait on the hwProgress read at all.
+  const progressRows = (hwId, kind = "homework") => (roster || []).map(r => {
     const name = r.altName || r.fullName || r.studentId;
     const sub = subByKey[`${r.studentId}|${hwId}`];
     if (closesAssignment(sub)) return { studentId: r.studentId, name, pct: 100, submitted: true, at: sub.timestamp || null };
     const auto = isAutoSubmission(sub);
+    if (kind === "quiz") return { studentId: r.studentId, name, pct: 0, submitted: false, auto: false, stalled: false, at: null };
     const rec = (progress || {})[r.studentId]?.[hwId];
     const pct = rec && rec.total > 0 ? (rec.pct ?? Math.round((rec.done / rec.total) * 100)) : 0;
     return { studentId: r.studentId, name, pct, submitted: false, auto, stalled: pct >= 100 && !auto, at: rec?.updatedAt || null };
@@ -365,8 +389,8 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   // who has worked the set but resolved nothing still reads as started at 0%; one who merely
   // opened it and walked away does not. The average is over the WHOLE roster, unstarted
   // students included: that is the class-readiness number, not the average among the keen.
-  const progressSummary = hwId => {
-    const rows = progressRows(hwId);
+  const progressSummary = (hwId, kind = "homework") => {
+    const rows = progressRows(hwId, kind);
     const count = rows.length;
     const started = rows.filter(r => r.submitted || r.at).length;
     const submitted = rows.filter(r => r.submitted).length;
@@ -557,14 +581,37 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
               <span style={{ ...s.badge(tm.color), fontSize: 11, justifySelf: "start", whiteSpace: "nowrap" }}>{tm.label}</span>
             );
 
-            // Homework only: quizzes are all-or-nothing and manual assignments (exams, labs)
-            // have no submission at all, so neither has partial progress to report.
-            const isHw = q._type === "homework";
+            // Clicking the title opens the REAL student runner in instructor preview, exactly as
+            // it does in the Modules editor - the same assignment should open the same way from
+            // whichever screen the instructor is on. A manual assignment (exam, lab) has nothing
+            // behind it to open, so its title stays plain text rather than offering a dead click.
+            const openKind = q._manual ? null : q._type === "homework" ? "homework" : q._type === "quiz" ? "quiz" : null;
+            const titleStyle = { color: text, fontSize: isMobile ? 14 : 13, fontWeight: isMobile ? 600 : 500, lineHeight: isMobile ? 1.3 : undefined, wordBreak: "break-word" };
+            const titleEl = openKind && onPreview ? (
+              <span
+                onClick={() => onPreview(q.id, openKind)}
+                title={`Preview this ${openKind} as a student`}
+                style={{ ...titleStyle, cursor: "pointer", width: "fit-content", maxWidth: "100%" }}
+                onMouseEnter={e => { e.currentTarget.style.color = teal; e.currentTarget.style.textDecoration = "underline"; }}
+                onMouseLeave={e => { e.currentTarget.style.color = text; e.currentTarget.style.textDecoration = "none"; }}
+              >
+                {q.title}
+              </span>
+            ) : (
+              <span style={titleStyle}>{q.title}</span>
+            );
+
+            // Homework and quizzes both report class progress; a manual assignment (exam, lab)
+            // has no submission at all, so it keeps the no-data hyphen. The homework figure waits
+            // on the hwProgress read, the quiz figure does not - it comes from `submissions`,
+            // which is already on the first paint.
+            const progressKind = q._manual ? null : q._type === "homework" ? "homework" : q._type === "quiz" ? "quiz" : null;
             const progressEl = (
               <ProgressCell
-                summary={isHw && progress !== null ? progressSummary(q.id) : null}
-                loading={isHw && progress === null}
-                onClick={() => setProgressDetail({ hwId: q.id, title: q.title })}
+                kind={progressKind || "homework"}
+                summary={progressKind && (progressKind === "quiz" || progress !== null) ? progressSummary(q.id, progressKind) : null}
+                loading={progressKind === "homework" && progress === null}
+                onClick={() => setProgressDetail({ hwId: q.id, title: q.title, kind: progressKind })}
               />
             );
 
@@ -628,7 +675,7 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
                   style={{ padding: "12px 14px", borderBottom: rowBorder, display: "flex", flexDirection: "column", gap: 10 }}
                 >
                   <div style={{ display: "flex", gap: 8, alignItems: "flex-start", justifyContent: "space-between" }}>
-                    <span style={{ color: text, fontSize: 14, fontWeight: 600, lineHeight: 1.3, wordBreak: "break-word" }}>{q.title}</span>
+                    {titleEl}
                     {badgeEl}
                   </div>
 
@@ -642,9 +689,9 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
                     {dueEl}
                   </div>
 
-                  {isHw && (
+                  {progressKind && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      <span style={{ ...CARD_LABEL, color: muted }}>Progress</span>
+                      <span style={{ ...CARD_LABEL, color: muted }}>{progressKind === "quiz" ? "Handed in" : "Progress"}</span>
                       {progressEl}
                     </div>
                   )}
@@ -668,7 +715,7 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
                   borderBottom: rowBorder,
                 }}
               >
-                <span style={{ color: text, fontSize: 13, fontWeight: 500, wordBreak: "break-word" }}>{q.title}</span>
+                {titleEl}
                 {badgeEl}
                 {pointsEl}
                 {dueEl}
@@ -681,10 +728,11 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
       )}
 
       {progressDetail && (() => {
-        const sm = progressSummary(progressDetail.hwId);
+        const sm = progressSummary(progressDetail.hwId, progressDetail.kind || "homework");
         return (
           <ProgressModal
             title={progressDetail.title}
+            kind={progressDetail.kind || "homework"}
             rows={sm.rows}
             summary={sm}
             onClose={() => setProgressDetail(null)}

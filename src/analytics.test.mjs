@@ -6,7 +6,8 @@
 // whatever the code happened to return.
 //
 // Plain node, no framework and no dependencies, in keeping with the repo having no test runner.
-import { buildItemAnalysis, buildFunnel, buildActivityByDay, pearson, lastActiveMap, timeOnTaskMap } from "./analytics.js";
+import { buildItemAnalysis, buildFunnel, buildActivityByDay, pearson, lastActiveMap, timeOnTaskMap, countsTowardGrade, isRecordedZero } from "./analytics.js";
+import { effectiveDue } from "./utils.js";
 let fails = 0;
 const eq = (l, g, w) => { const ok = JSON.stringify(g) === JSON.stringify(w); if (!ok) { fails++; console.log(`FAIL ${l}: got ${JSON.stringify(g)} want ${JSON.stringify(w)}`); } else console.log(`ok   ${l}`); };
 const near = (l, g, w, tol = 0.02) => { const ok = g != null && Math.abs(g - w) <= tol; if (!ok) { fails++; console.log(`FAIL ${l}: got ${g} want ~${w}`); } else console.log(`ok   ${l} (${g?.toFixed?.(3) ?? g})`); };
@@ -347,6 +348,40 @@ eq("time on task sums every assignment", timeOnTaskMap({
     telemetryAll: {}, days: 30, now: new Date(2026, 8, 8),
   });
   eq("stale events fall outside the window", old.total, 0);
+}
+
+// ── isRecordedZero: when a blank cell is really a zero ───────────────────────
+// A past-due quiz nobody handed in has always counted as 0 in calcGrades, while every screen
+// printed an em dash. The risk in saying "0" out loud is the opposite one: printing a zero
+// against an exam that has merely not been marked yet tells a whole class they failed it.
+{
+  const NOW = new Date("2026-09-12T12:00:00Z");
+  const past = { id: "q1", type: "quiz", dueDate: "2026-09-01", maxPts: 10 };
+  const future = { id: "q2", type: "quiz", dueDate: "2026-12-01", maxPts: 10 };
+  const exam = { id: "asgn_midterm", type: "manual", dueDate: "2026-09-01", maxPts: 100 };
+  const z = (a, o) => isRecordedZero(a, { hasScore: false, isExcused: false, hasSubmission: false, now: NOW, ...o });
+
+  eq("nothing handed in by the deadline reads as a zero", z(past), true);
+  eq("a deadline still ahead does not", z(future), false);
+  eq("an unmarked exam never reads as a zero", z(exam), false);
+  eq("nor does an assignment the student handed in", z(past, { hasSubmission: true }), false);
+  eq("nor one that already has a score", z(past, { hasScore: true }), false);
+  eq("nor an excused one", z(past, { isExcused: true }), false);
+  eq("no due date means nothing is late", z({ id: "q3", type: "quiz", maxPts: 10 }), false);
+  eq("a missing assignment is not a zero", z(null), false);
+  // A per-student extension has to be resolved by the CALLER (both call sites pass
+  // `effectiveDue(a.dueDate, ov.dueDate)`), because an extension still running must not be
+  // overruled by a zero - that would mark down exactly the student who was granted more time.
+  eq("an extension that is still running is not a zero",
+    isRecordedZero({ ...past, dueDate: effectiveDue(past.dueDate, { dueDate: "2026-12-01" }) },
+      { hasScore: false, isExcused: false, hasSubmission: false, now: NOW }), false);
+  eq("an extension that has expired is",
+    isRecordedZero({ ...past, dueDate: effectiveDue(past.dueDate, { dueDate: "2026-09-05" }) },
+      { hasScore: false, isExcused: false, hasSubmission: false, now: NOW }), true);
+  // It may only ever agree with countsTowardGrade: a cell that does not count toward the grade
+  // must not print a number, or the rows would explain a total they are not part of.
+  eq("it never fires where the assignment does not count yet",
+    [past, future, exam].every(a => !z(a) || countsTowardGrade(a, { hasScore: false, isExcused: false, hasSubmission: false, now: NOW })), true);
 }
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall passed");

@@ -16,7 +16,7 @@ import { scenarioGroups, defaultPcts, projectScenario, overallColor, overallLett
 // Every projected figure comes out of `projectScenario`, which routes through the same
 // `calcGrades` as the banner above it — see src/grade-scenarios.js for why that is not optional.
 export function GradeScenario({ assignments, remaining, categories, scores, excused, byCategory, overall }) {
-  const { s, text, muted, border, teal } = useTheme();
+  const { s, text, muted, border, teal, isLight } = useTheme();
   const [open, setOpen] = useState(false);
 
   const groups = scenarioGroups(remaining, categories);
@@ -92,7 +92,11 @@ export function GradeScenario({ assignments, remaining, categories, scores, excu
                     value={pcts[g.id] ?? 100}
                     onChange={e => setOne(g.id, Number(e.target.value))}
                     aria-label={`Percent on the ${g.count} remaining ${g.name} assignment${g.count !== 1 ? "s" : ""}`}
-                    style={{ flex: "1 1 150px", minWidth: 130, accentColor: cc, cursor: "pointer" }}
+                    /* `colorScheme` is required, not cosmetic: a range input's TRACK is native
+                       browser chrome, not our DOM, so no CSS of ours reaches it and it follows
+                       the color scheme alone. Without this it stays dark in light mode - a black
+                       trough under a colored fill. `accentColor` only paints the filled side. */
+                    style={{ flex: "1 1 150px", minWidth: 130, accentColor: cc, colorScheme: isLight ? "light" : "dark", cursor: "pointer" }}
                   />
                   <span style={{ width: 46, textAlign: "right", fontFamily: "monospace", fontSize: 14, fontWeight: 600, color: cc }}>
                     {pcts[g.id] ?? 100}%

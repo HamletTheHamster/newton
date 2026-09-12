@@ -60,7 +60,7 @@ import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
 import { LockIcon } from "./components/lms/itemIcons.jsx";
 import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
-import { isInstructorAccount, instructorAccountOf, studentRoster } from "./roster-scope.js";
+import { isInstructorAccount, isAuditing, instructorAccountOf, studentRoster, auditors } from "./roster-scope.js";
 import { labAssignments, labWeeksFor, trimmableLabs } from "./lab-schedule.js";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
@@ -983,7 +983,7 @@ export default function App() {
       const { screen, quizDone, showStudentSettings, runnerFrom } = navStateRef.current;
       // Browser-back out of either runner returns to whoever launched it (see runnerReturnScreen).
       const runnerBack = runnerFrom === "instructor" ? "instructor" : "student-portal";
-      if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); quizDone ? go(runnerBack) : setShowLeaveConfirm(true); }
+      if (screen === "quiz") { history.pushState({ newton: "quiz" }, "", ""); (quizDone || runnerFrom === "instructor") ? go(runnerBack) : setShowLeaveConfirm(true); }
       else if (screen === "homework") { go(runnerBack); }
       else if (showStudentSettings) { history.pushState({ newton: "settings" }, "", ""); navStateRef.current = { ...navStateRef.current, showStudentSettings: false }; setShowStudentSettings(false); setNewPw1(""); setNewPw2(""); setPwChangeMsg(""); setStuEmailDraft(""); setStuEmailMsg(""); setStuNickDraft(""); setStuNickMsg(""); }
       else if (screen === "student-pw") { history.pushState({ newton: "student-pw" }, "", ""); setSelectedStudent(null); go("student-search"); }
@@ -1121,6 +1121,16 @@ export default function App() {
     if (current && current.studentId === studentId) return;
     if (current) await saveRosterFields(current.studentId, { instructorAccount: null });
     if (studentId) await saveRosterFields(studentId, { instructorAccount: true });
+  };
+
+  // Whether a student is AUDITING the course - following it unofficially, with no grade to earn
+  // and no attendance to keep. Unlike the instructor's own account this is a property of the
+  // entry, so any number can carry it and it is toggled on the student's own row. It leaves them
+  // out of the same four views (gradebook, analytics, progress column, attendance roll) while
+  // they keep logging in, doing the work and seeing their own grades. `null` rather than `false`
+  // clears it, so an entry that is not auditing carries no field at all.
+  const setAuditing = async (studentId, on) => {
+    await saveRosterFields(studentId, { auditing: on ? true : null });
   };
 
   // ── The student's own preferred first name ────────────────────────────────
@@ -2158,7 +2168,13 @@ export default function App() {
   const runnerBackLabel = runnerFrom !== "instructor"
     ? "Back to Course"
     : instructorSection === "calendar" ? "Back to Calendar" : "Back to Modules";
-  const handleLeaveQuiz = () => { if (quizDone && !subSaveError) { setScreen(runnerReturnScreen); return; } if (!quizDone) setShowLeaveConfirm(true); };
+  // An instructor preview has nothing to lose by leaving: it is forced to practice, so no
+  // submission, score or attempt is recorded either way. The confirmation had nothing to warn
+  // about and sat between checking a question and getting back to the editor.
+  const handleLeaveQuiz = () => {
+    if ((quizDone && !subSaveError) || runnerFrom === "instructor") { setScreen(runnerReturnScreen); return; }
+    if (!quizDone) setShowLeaveConfirm(true);
+  };
   const confirmLeave = () => { setShowLeaveConfirm(false); setScreen(runnerReturnScreen); };
   const onFileSelect = async e => {
     const file = e.target.files[0]; if (!file) return;
@@ -2982,6 +2998,7 @@ export default function App() {
             }}
             onCreateQuiz={() => setEditingCustomQuiz({ quizId: null, title: "", text: "", moduleId: null })}
             onDeleteCustomQuiz={deleteCustomQuiz}
+            onPreview={previewAssignment}
           />
         )}
 
@@ -3019,6 +3036,11 @@ export default function App() {
                   {roster.map(stu => <option key={stu.studentId} value={stu.studentId}>{stu.altName || stu.fullName} ({stu.studentId})</option>)}
                 </select>
               </label>
+              {auditors(roster).length > 0 && (
+                <span style={{ ...s.badge("#8b5cf6"), fontSize: 11 }} title={`${auditors(roster).map(a => a.altName || a.fullName).join(", ")} - auditing, so left out of the gradebook, the analytics, the progress columns and the attendance roll`}>
+                  {auditors(roster).length} auditing
+                </span>
+              )}
               <span style={{ ...s.muted, fontSize: 12, marginLeft: "auto" }}>(MyMercer roster export file)</span>
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6, flexShrink: 0 }}>
                 <label style={{ ...s.btnGhost, cursor: "pointer", display: "inline-block", padding: "8px 16px", fontSize: 13 }}>Upload Roster CSV<input ref={rosterInputRef} type="file" accept=".csv,.txt" onChange={onRosterUpload} style={{ display: "none" }} /></label>
@@ -3112,6 +3134,20 @@ export default function App() {
                               nothing to reset, so the button is simply dead for them, and a dead
                               button is the same fact at the point of action. */}
                           <button disabled={!studentPws[stu.studentId]} onClick={async () => { if (!window.confirm(`Reset ${stu.fullName}'s password back to their Student ID?`)) return; await saveStudentPw(stu.studentId, null); }} title={studentPws[stu.studentId] ? `Reset ${stu.fullName}'s password back to their Student ID` : `${stu.fullName} has not set a password, so there is nothing to reset. They log in with their Student ID.`} style={{ background: studentPws[stu.studentId] ? (isLight ? "rgba(202,138,4,0.12)" : "rgba(202,138,4,0.15)") : "none", border: `1px solid ${studentPws[stu.studentId] ? "rgba(202,138,4,0.5)" : BORDER}`, color: studentPws[stu.studentId] ? (isLight ? "#92640a" : "#fde047") : MUTED, opacity: studentPws[stu.studentId] ? 1 : 0.5, borderRadius: 6, padding: "4px 12px", cursor: studentPws[stu.studentId] ? "pointer" : "default", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>Reset PW</button>
+                          {/* Auditing is a property of this entry, so it is toggled here rather
+                              than from the single per-class picker above, which answers a
+                              different question ("which of these is me"). The instructor's own
+                              account is already out of every class view, so offering it there too
+                              would be a second switch for the same effect. */}
+                          {!isInstructorAccount(stu) && (
+                            <button onClick={() => setAuditing(stu.studentId, !isAuditing(stu))}
+                                    title={isAuditing(stu)
+                                      ? `${stu.altName || stu.fullName} is auditing: left out of the gradebook, the analytics, the progress columns and the attendance roll. Click to count them as an enrolled student again.`
+                                      : `Mark ${stu.altName || stu.fullName} as auditing the course. They keep logging in and doing the work, and keep seeing their own grades, but they leave the gradebook, the analytics, the progress columns and the attendance roll.`}
+                                    style={{ background: isAuditing(stu) ? (isLight ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.18)") : "none", border: `1px solid ${isAuditing(stu) ? "rgba(139,92,246,0.55)" : BORDER}`, color: isAuditing(stu) ? (isLight ? "#6d28d9" : "#c4b5fd") : MUTED, borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>
+                              {isAuditing(stu) ? "Auditing" : "Audit"}
+                            </button>
+                          )}
                           <button onClick={() => { setRemoveStudent(stu); setRemovePw(""); setRemoveErr(""); }} style={{ background: isLight ? "rgba(185,28,28,0.08)" : "rgba(127,29,29,0.3)", border: "1px solid rgba(185,28,28,0.4)", color: isLight ? "#b91c1c" : "#fca5a5", borderRadius: 6, padding: "4px 12px", cursor: "pointer", fontSize: 12, fontWeight: 500, whiteSpace: "nowrap", flexShrink: 0 }}>Remove</button>
                         </td>
                       </tr>

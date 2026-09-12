@@ -238,6 +238,29 @@ Three things differ from quiz/homework and every reader must respect them:
   scored or excused** — applied identically in `Gradebook`'s `activeAssignments` and
   `StudentGrades`' `assignments` filter, which is what keeps the two Overall figures equal.
   It is also why the student's grades list shows no row until the score exists.
+
+  **The other half of that rule is now printed, not just computed.** A past-due quiz or homework
+  with nothing handed in has always counted as a zero in `calcGrades` (`earned += score ?? 0`), but
+  every screen rendered it as an em dash, so the gradebook cell and the student's row showed a
+  blank where the arithmetic had already used a 0 - a grade that was right and looked unexplained,
+  and exactly the thing that generates email. **`isRecordedZero`** (analytics.js, shared by
+  `Gradebook.jsx` and `StudentGrades.jsx` so the two can never say different things about the same
+  cell) decides when a blank is really a zero: not a manual assignment, no score, not excused,
+  **no submission**, and the deadline past. No total changes; only what the cell says.
+
+  It stays **derived, never written** to `gradeOverrides`. A stored zero would have to be found and
+  cleared again the moment the student hands in late, the due date is corrected, or that student is
+  granted an extension, and an override that overrules nothing is what "an untouched cell commits
+  nothing" exists to prevent. Derived, an extension un-zeroes the cell by itself. The one case it
+  deliberately leaves alone is a student who DID hand something in that resolves to no score:
+  telling them they scored zero on submitted work is a worse error than the blank, so that cell
+  keeps its dash.
+
+  Both call sites resolve the **per-student deadline** first (`effectiveDue(a.dueDate, ov.dueDate)`).
+  The student portal already hands `StudentGrades` the signed-in student's own effective dates, but
+  the Gradebook carries the class date, so without this an extended student's untouched assignment
+  counted as a zero from the class deadline - marking down exactly the student who was granted more
+  time, and now saying so on screen. `activeAssignments` was fixed to the same standard.
 - **Nothing to open.** They appear on the student calendar and in the To Do rail (upcoming
   only, never past-due) but are never clickable and never module-gated.
 - **Labs can be zeroed by attendance.** A lab (`catId: "cat_lab"`) linked to an attendance
@@ -262,8 +285,8 @@ shown, and a new consumer cannot reintroduce a private copy of it.
 
 The grid is built over the roster the Gradebook is handed, which App.jsx has already reduced to
 the actual students: an entry marked `instructorAccount` (the instructor's own, sat on the roster
-to walk assignments as a student) has no row in the gradebook, no cell in the CSV and no line in
-the Blackboard export. That is a statement about who is a student, never about whose work counts —
+to walk assignments as a student) or `auditing` (someone following the course unofficially) has no
+row in the gradebook, no cell in the CSV and no line in the Blackboard export. That is a statement about who is a student, never about whose work counts —
 a real student's marks cannot be affected by it. See
 [analytics.md § Who counts](analytics.md#who-counts) and `src/roster-scope.js`.
 
@@ -504,9 +527,10 @@ re-importing quietly returns that assignment to raw marks.
   carries only identity (`Last Name`, `First Name`, `Username`, `Student ID`) plus grades.
 - **Students with no username** — they cannot be matched, so a row for them would be a silent
   no-op at best. They are dropped and named in the modal instead.
-- **The instructor's own roster entry** (`instructorAccount`). It never reaches the export,
-  because it never reaches the score matrix: the Gradebook is handed the student roster. A row for
-  it would be a student the registrar has never heard of, in the official record of the class.
+- **The instructor's own roster entry** (`instructorAccount`), and **anyone auditing**
+  (`auditing`). Neither reaches the export, because neither reaches the score matrix: the Gradebook
+  is handed the student roster. A row for either would be a student the registrar has never heard
+  of, in the official record of the class.
 
 ### Values
 

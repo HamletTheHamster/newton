@@ -1241,7 +1241,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           style={{ position: "absolute", left: 0, bottom: -1, height: 2, width: `${progressPct}%`, background: teal, opacity: 0.85, transition: "width 400ms ease", pointerEvents: "none" }}
         />
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <button onClick={() => setShowLeave(true)} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto" }}>← Back</button>
+          {/* An instructor preview has nothing to lose by leaving: it saves no draft, records no
+              attempt and owes no written work, so the confirmation had nothing to warn about and
+              was one click between checking a problem and getting back to the editor. */}
+          <button onClick={() => preview ? handleLeaveConfirm() : setShowLeave(true)} style={{ ...s.btnGhost, padding: "6px 12px", width: "auto" }}>← Back</button>
           <div style={{ width: 1, height: 20, background: border }} />
           <div>
             <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>

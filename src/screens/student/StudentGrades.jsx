@@ -9,6 +9,7 @@ import { splitRemaining, plannedRemaining, overallColor, overallLetter } from ".
 import { GradeScenario } from "./GradeScenario.jsx";
 import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
 import { closesAssignment } from "../../auto-submit.js";
+import { isRecordedZero } from "../../analytics.js";
 
 // By percentage, not raw points: exams are out of 100 and everything else out of 10, so an
 // 85 and an 8.5 have to read the same green.
@@ -86,7 +87,16 @@ export function StudentGrades({ classId, loggedInStudent, modules, quizzes, subm
     // A bare 0 beside a homework they know they did would read as a bug, so the row carries the
     // score being held and what to do to claim it — the same reasoning as the absence badge.
     if (r.workPending) workPending[a.id] = { base: r.base };
-    scores[a.id] = r.effective;
+    // Nothing handed in by the deadline is a zero, and has always been counted as one by
+    // `calcGrades` (`earned += score ?? 0`). Saying so here rather than leaving the row blank is
+    // what makes the number in the banner explainable from the rows beneath it - a dash against
+    // a grade that had already used a 0 reads as a bug, and generates exactly the email the
+    // badges on this page exist to prevent. Shared with the Gradebook via `isRecordedZero` so
+    // the student and the instructor can never see different things in the same cell, and
+    // derived rather than stored, so a later hand-in or a deadline extension undoes it by itself.
+    scores[a.id] = r.effective == null && isRecordedZero(a, { hasScore: false, isExcused: false, hasSubmission: !!sub, now })
+      ? 0
+      : r.effective;
   }
 
   // Past-due homework the student has started but never handed in — the row that otherwise reads

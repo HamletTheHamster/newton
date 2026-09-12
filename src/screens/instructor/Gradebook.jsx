@@ -7,7 +7,7 @@ import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
 import { formatSessionDate } from "../../attendance.js";
-import { buildScoreMatrix, countsTowardGrade } from "../../analytics.js";
+import { buildScoreMatrix, countsTowardGrade, isRecordedZero } from "../../analytics.js";
 import { readBlackboardExport, mergeImport, pairColumn, buildBlackboardCsv, isCalculatedColumn, gradebookFilename } from "../../blackboard.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
@@ -997,7 +997,14 @@ export function Gradebook({
     // exam is not. The rule lives in `countsTowardGrade` (analytics.js) because StudentGrades
     // and the Analytics tab's missing-work policy must apply the identical test, and that is
     // what keeps every Overall figure in the app in agreement.
-    const activeAssignments = assignments.filter(a => countsTowardGrade(a, {
+    // Against the deadline THIS student is actually working to. `assignments` carries the class
+    // date (the student portal resolves the extension for the signed-in student, but there is no
+    // such student here), so without `effectiveDue` an extended student's untouched assignment
+    // counted as a zero from the class deadline - dragging their Overall down during the very
+    // extension that was granted to them, and, now that the cell prints the 0 rather than a dash,
+    // saying so on screen.
+    const dueForStudent = a => effectiveDue(a.dueDate, (gradeOverrides?.[stu.studentId] || {})[a.id]?.dueDate);
+    const activeAssignments = assignments.filter(a => countsTowardGrade({ ...a, dueDate: dueForStudent(a) }, {
       hasScore: scoreMap[stu.studentId]?.[a.id] != null,
       isExcused: !!excusedMap[stu.studentId]?.[a.id],
       hasSubmission: submittedIds.has(a.id),
@@ -1504,6 +1511,22 @@ export function Gradebook({
                     const pending = pendingMap[stu.studentId]?.[a.id] || null;
                     const absence = absentMap[stu.studentId]?.[a.id];
                     const isMissing = score == null && !isExcused;
+                    // A past-due quiz or homework nobody handed in has always counted as a zero
+                    // in the arithmetic; printing an em dash made the grade look unexplained. The
+                    // rule is shared with the student's own grades list (analytics.js) so the two
+                    // cannot say different things about the same blank cell, and it is derived,
+                    // never stored - granting an extension un-zeroes the cell by itself.
+                    const isZeroed = isMissing && isRecordedZero({
+                      ...a,
+                      // The deadline this student is working to, not the class's - an extension
+                      // must not be overwritten by a zero while it is still running.
+                      dueDate: effectiveDue(a.dueDate, (gradeOverrides?.[stu.studentId] || {})[a.id]?.dueDate),
+                    }, {
+                      hasScore: false,
+                      isExcused,
+                      hasSubmission: !!subsByStudent[stu.studentId]?.[a.id],
+                      now,
+                    });
                     const isEditing = editingCell?.studentId === stu.studentId && editingCell?.assignmentId === a.id;
 
                     if (isEditing) {
@@ -1531,6 +1554,7 @@ export function Gradebook({
                       : isFlagged ? "Integrity flag: full credit. Click to review the submitted work."
                       : pending ? `Auto-submitted at the deadline${pending.base != null ? ` and worth ${pending.base}` : ""}, but the written work has not been handed in, so it does not count yet. Click to review.`
                       : isExcused ? "Excused · click to edit"
+                      : isZeroed ? `Nothing handed in by the deadline: 0 of ${a.maxPts} · click to override`
                       : isMissing ? (a.type === "manual" ? "No score yet · click to enter" : "No submission · click to override")
                       : `${score}/${a.maxPts} · click to edit`;
                     return (
@@ -1550,7 +1574,7 @@ export function Gradebook({
                         {isFlagged && <span title="Integrity flag" style={{ color: "#f87171" }}>* </span>}
                         {pending && <span title="Auto-submitted at the deadline; awaiting written work" style={{ color: "#fbbf24" }}>⌛ </span>}
                         {absence && <span title="Absent from lecture" style={{ color: "#f87171" }}>A </span>}
-                        {isExcused ? "EX" : isMissing ? "–" : score}
+                        {isExcused ? "EX" : isZeroed ? 0 : isMissing ? "–" : score}
                         {/* The entered score is kept visible, struck through: the instructor needs
                             to see that a lab WAS marked, and that policy is what zeroed it. */}
                         {absence?.base != null && absence.base !== 0 && (

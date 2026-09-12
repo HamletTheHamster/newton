@@ -83,6 +83,28 @@ export function countsTowardGrade(assignment, { hasScore, isExcused, hasSubmissi
   return !!hasSubmission || !!(assignment.dueDate && dueToDate(assignment.dueDate) < now);
 }
 
+// The same fact, read as "what should the CELL say". A past-due quiz or homework nobody handed in
+// has always counted as a zero in `calcGrades` (`earned += score ?? 0`), but every screen printed
+// it as an em dash, so the student's grades list and the gradebook both showed a blank where the
+// arithmetic had already used a 0 - the grade was right and looked unexplained. This says when a
+// blank is really a zero, so the two agree without changing any total.
+//
+// It stays DERIVED rather than written into `gradeOverrides`. A stored zero would have to be
+// found and cleared again the moment the student hands in late, the deadline is corrected or that
+// student is granted an extension - and an override that is not overruling anything is exactly
+// what the gradebook's "an untouched cell commits nothing" rule exists to prevent. Deriving it
+// means an extension silently un-zeroes the cell, which is the behaviour an instructor expects.
+export function isRecordedZero(assignment, { hasScore, isExcused, hasSubmission, now = new Date() }) {
+  if (!assignment || assignment.type === "manual") return false;
+  if (hasScore || isExcused) return false;
+  // `hasSubmission` is excluded deliberately, which is the one place this does NOT simply mirror
+  // `countsTowardGrade`: a student who handed something in that resolves to no score has not
+  // "failed to hand it in", and telling them they scored zero on work they submitted is a worse
+  // error than the blank cell this replaces. That cell keeps its dash.
+  if (hasSubmission) return false;
+  return !!(assignment.dueDate && dueToDate(assignment.dueDate) < now);
+}
+
 // ── Statistics ────────────────────────────────────────────────────────────────
 
 // Pearson product-moment correlation over [x, y] pairs. Returns null when there are fewer than
