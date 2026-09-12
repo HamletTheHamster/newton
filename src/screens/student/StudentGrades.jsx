@@ -10,14 +10,6 @@ import { GradeScenario } from "./GradeScenario.jsx";
 import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
 import { closesAssignment } from "../../auto-submit.js";
 
-// The what-if panel is BUILT AND TESTED but not yet shown to students: it is worth the most late
-// in a term, when there is a real spread of marks behind it and the work still ahead is the thing
-// a student is actually weighing. Flip this to true to unveil it. It is a flag rather than
-// commented-out code or a deleted call site so the wiring stays live and cannot rot in the
-// meantime — the props below are the real ones, and `node src/grade-scenarios.test.mjs` still
-// guards the projection. See src/screens/student/GradeScenario.jsx.
-const SHOW_GRADE_SCENARIOS = false;
-
 // By percentage, not raw points: exams are out of 100 and everything else out of 10, so an
 // 85 and an 8.5 have to read the same green.
 function scoreColor(score, maxPts, excused, missing, muted) {
@@ -119,9 +111,7 @@ export function StudentGrades({ classId, loggedInStudent, modules, quizzes, subm
   // The work still ahead: everything on the gradebook with no grade against it yet. It feeds the
   // scenario panel only, and deliberately includes assignments not yet released, since those are
   // exactly what a student planning the rest of the term is asking about.
-  const { remaining } = SHOW_GRADE_SCENARIOS
-    ? splitRemaining(allAssignments, new Set(assignments.map(a => a.id)))
-    : { remaining: [] };
+  const { remaining } = splitRemaining(allAssignments, new Set(assignments.map(a => a.id)));
 
   const sortedCats = Object.values(gradeCategories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const activeCatCount = sortedCats.filter(c => (byCategory[c.id]?.possible ?? 0) > 0).length;
@@ -171,8 +161,8 @@ export function StudentGrades({ classId, loggedInStudent, modules, quizzes, subm
         )}
       </div>
 
-      {/* Optional what-if panel, closed by default. Renders nothing when nothing is left. */}
-      {SHOW_GRADE_SCENARIOS && <GradeScenario
+      {/* The what-if panel, closed by default. Renders nothing when no work is left. */}
+      <GradeScenario
         assignments={assignments}
         remaining={remaining}
         categories={gradeCategories}
@@ -180,7 +170,7 @@ export function StudentGrades({ classId, loggedInStudent, modules, quizzes, subm
         excused={excused}
         byCategory={byCategory}
         overall={overall}
-      />}
+      />
 
       {/* Category breakdown */}
       {sortedCats.map(cat => {

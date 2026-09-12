@@ -275,12 +275,15 @@ folded in next time that file is touched.
 
 ## Grade scenarios (the student's what-if panel)
 
-**Not yet shown to students.** `SHOW_GRADE_SCENARIOS` at the top of
-[`StudentGrades.jsx`](../src/screens/student/StudentGrades.jsx) is `false`; flip it to `true` to
-unveil the panel. It is worth the most late in a term, when there is a real spread of marks behind
-it and the work still ahead is what a student is actually weighing. It is a flag rather than a
-deleted call site or commented-out code so the wiring below stays live and cannot rot while it
-waits, and `node src/grade-scenarios.test.mjs` still guards the projection either way.
+**Live for students** as of 2026-09-12. It was built behind a `SHOW_GRADE_SCENARIOS` flag in
+[`StudentGrades.jsx`](../src/screens/student/StudentGrades.jsx) because it is worth the most late
+in a term, when there is a real spread of marks behind it and the work still ahead is what a
+student is actually weighing; that flag is now gone and `GradeScenario` renders unconditionally.
+Nothing gates it in its place, because it does not need a gate: the panel returns `null` when no
+category has work left (`scenarioGroups`), so a class with everything graded sees no panel rather
+than an empty one, and a brand-new class with nothing graded never reaches it (the grades page
+returns "No graded assignments yet." first). `node src/grade-scenarios.test.mjs` guards the
+projection.
 
 A collapsed panel on the student grades page, under the overall banner: one slider per category
 that still has work in it, and the projected overall read against the real one
