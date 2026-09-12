@@ -396,7 +396,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
     if (!trimmed) return;
     const id = newId("cat");
     const maxOrder = sorted.length > 0 ? Math.max(...sorted.map(c => c.order ?? 0)) : -1;
-    setDrafts(prev => ({ ...prev, [id]: { id, name: trimmed, weight: Number(newWeight) || 0, dropLowest: 0, order: maxOrder + 1 } }));
+    setDrafts(prev => ({ ...prev, [id]: { id, name: trimmed, weight: Number(newWeight) || 0, dropLowest: 0, plannedCount: 0, order: maxOrder + 1 } }));
     setNewName(""); setNewWeight(0);
   };
 
@@ -412,7 +412,7 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
-      <div style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 580, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ ...s.card, background: solidBg, width: "100%", maxWidth: 660, maxHeight: "90vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 22px", borderBottom: cellBorder, flexShrink: 0 }}>
           <h3 style={{ color: text, fontWeight: 700, fontSize: 18, margin: 0 }}>Grade Categories</h3>
           <button onClick={onClose} style={{ background: "none", border: "none", color: muted, fontSize: 24, cursor: "pointer", lineHeight: 1, padding: "0 4px" }}>×</button>
@@ -426,6 +426,8 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
             <span style={{ width: 52, textAlign: "center", color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Weight</span>
             <span style={{ width: 8 }} />
             <span style={{ width: 100, textAlign: "center", color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Drop lowest</span>
+            <span style={{ width: 8 }} />
+            <span style={{ width: 92, textAlign: "center", color: muted, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.04em" }}>Term total</span>
             <span style={{ width: 34 }} />
           </div>
           {sorted.map(cat => (
@@ -455,6 +457,20 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
                 />
                 <span style={{ color: muted, fontSize: 11, whiteSpace: "nowrap" }}>lowest</span>
               </div>
+              {/* How many the term will hold, not how many exist. The student's grade-scenario
+                  projection divides a slider over the whole term, so a category whose work is
+                  still being written (homework, quizzes) needs to say so; 0 means "however many
+                  exist", which is right for labs and exams since those are seeded whole. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                <input
+                  type="text" inputMode="numeric"
+                  value={cat.plannedCount ?? 0}
+                  onChange={e => updateCat(cat.id, "plannedCount", Number(e.target.value) || 0)}
+                  title="How many assignments this category will hold by the end of the term, counting ones you have not built yet. Used by the student grade projection. 0 means however many exist."
+                  style={{ ...s.input, width: 44, padding: "6px 4px", fontSize: 13, textAlign: "center", height: "auto" }}
+                />
+                <span style={{ color: muted, fontSize: 11, whiteSpace: "nowrap" }}>planned</span>
+              </div>
               <button onClick={() => deleteCat(cat.id)} style={{ ...s.btnDanger, width: "auto", padding: "5px 10px", fontSize: 12, flexShrink: 0 }}>✕</button>
             </div>
           ))}
@@ -479,6 +495,8 @@ function GradeSettingsModal({ gradeCategories, onSave, onClose }) {
               <span style={{ color: muted, fontSize: 12 }}>%</span>
             </div>
             <div style={{ width: 100 }} />
+            <div style={{ width: 8 }} />
+            <div style={{ width: 92 }} />
             <button onClick={addCat} style={{ ...s.btnSec, width: "auto", padding: "6px 14px", fontSize: 13, flexShrink: 0 }}>Add</button>
           </div>
         </div>

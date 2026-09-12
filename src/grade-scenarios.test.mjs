@@ -8,7 +8,7 @@
 // work in it, and a category nobody asked about is left out rather than assumed zero.
 //
 // Plain node, no framework and no dependencies, in keeping with the repo having no test runner.
-import { splitRemaining, scenarioGroups, defaultPcts, projectScenario, clampPct, overallLetter, overallColor } from "./grade-scenarios.js";
+import { splitRemaining, plannedRemaining, scenarioGroups, defaultPcts, projectScenario, clampPct, overallLetter, overallColor } from "./grade-scenarios.js";
 import { calcGrades } from "./utils.js";
 
 let fails = 0;
@@ -103,6 +103,88 @@ const { graded, remaining } = splitRemaining(ALL, new Set(["hw1", "lab1"]));
 eq("0% on everything left is a real scenario, not a missing one",
   Math.round(projectScenario({ assignments: graded, remaining, categories: CATS, scores, excused: {}, pctByCat: { cat_hw: 0, cat_lab: 0, cat_final: 0 } }).overall * 100) / 100,
   Math.round((10 / 30 * 100 * 0.4 + 5 / 20 * 100 * 0.2 + 0) * 100) / 100);
+
+// ── plannedRemaining: the work the term will hold that does not exist yet ────
+// The reason this needs guarding is the question the instructor actually asked: the panel must
+// not go wrong the moment the missing homework and quizzes get built and graded. The count is a
+// FLOOR that real assignments consume, so the term total must hold steady all the way through.
+const PLANNED = {
+  cat_hw:    { ...CATS.cat_hw,    plannedCount: 13 },
+  cat_lab:   { ...CATS.cat_lab,   plannedCount: 0 },
+  cat_final: { ...CATS.cat_final, plannedCount: 0 },
+};
+const hwRun = n => Array.from({ length: n }, (_, i) => A(`hw${i + 1}`, "cat_hw"));
+const withHw = n => [...hwRun(n), A("lab1", "cat_lab"), A("lab2", "cat_lab"), A("final", "cat_final", 100)];
+
+{
+  const held = plannedRemaining(withHw(3), PLANNED);
+  eq("the shortfall against the term's count is filled", held.length, 10);
+  eq("and only in the category that is short", [...new Set(held.map(h => h.catId))], ["cat_hw"]);
+  eq("a placeholder is numbered on from the real ones", [held[0].title, held.at(-1).title], ["Homework 4", "Homework 13"]);
+  eq("and is worth what the category's real work is worth", [...new Set(held.map(h => h.maxPts))], [10]);
+  eq("its id cannot collide with a real assignment's", held.every(h => h.id.startsWith("planned:") && h.planned === true), true);
+  eq("plannedCount 0 means 'however many exist'", plannedRemaining(withHw(3), PLANNED).filter(h => h.catId !== "cat_hw"), []);
+}
+eq("a category already holding more than promised gets nothing", plannedRemaining(withHw(14), PLANNED), []);
+eq("neither does one holding exactly the promised number", plannedRemaining(withHw(13), PLANNED), []);
+eq("no categories at all is not a crash", plannedRemaining(null, null), []);
+eq("a category with nothing in it yet falls back to 10 points",
+  [...new Set(plannedRemaining([], { cat_hw: PLANNED.cat_hw }).map(h => h.maxPts))], [10]);
+eq("a category of 100-point work gets 100-point placeholders",
+  [...new Set(plannedRemaining([A("m1", "cat_final", 100)], { cat_final: { ...CATS.cat_final, plannedCount: 3 } }).map(h => h.maxPts))], [100]);
+
+// The invariant the instructor asked for in words: across the whole life of the term — nothing
+// built, half built, fully built, over-built — the number of homeworks the projection reasons
+// over is the promised 13 until the real ones exceed it, and never 13 PLUS the real ones. It
+// must not matter how many of the real ones have been graded, since a graded assignment leaves
+// `remaining` but is still an assignment that exists.
+{
+  const bad = [];
+  for (let real = 0; real <= 15; real++) {
+    const all = withHw(real);
+    for (let gradedCount = 0; gradedCount <= real; gradedCount++) {
+      const gradedIds = new Set(hwRun(gradedCount).map(a => a.id));
+      const { remaining } = splitRemaining(all, gradedIds);
+      const scenario = [...remaining, ...plannedRemaining(all, PLANNED)];
+      const hwInPlay = gradedCount + scenario.filter(a => a.catId === "cat_hw").length;
+      const ids = new Set(scenario.map(a => a.id));
+      if (hwInPlay !== Math.max(13, real)) bad.push(`${real} built/${gradedCount} graded → ${hwInPlay}`);
+      if (ids.size !== scenario.length) bad.push(`${real}/${gradedCount} duplicate id`);
+    }
+  }
+  eq("the term holds 13 homeworks at every stage of building and grading them", bad, []);
+}
+
+// The same thing read as the panel's own label, since that is what the student sees.
+{
+  const all = withHw(6);
+  const { remaining } = splitRemaining(all, new Set(["hw1", "hw2", "hw3", "hw4", "hw5"]));
+  const groups = scenarioGroups([...remaining, ...plannedRemaining(all, PLANNED)], PLANNED);
+  eq("five graded of six built leaves 8 homeworks to plan over", groups.find(g => g.id === "cat_hw").count, 8);
+  eq("which is the promised 13 less the five that are marked", 13 - 5, 8);
+}
+
+// ── the projection over a term that is still being written ───────────────────
+{
+  // Three homeworks marked (10, 2, 10) of a promised 13, one lab marked, the final ahead.
+  const all = withHw(3);
+  const gradedIds = new Set(["hw1", "hw2", "hw3", "lab1"]);
+  const gradedList = all.filter(a => gradedIds.has(a.id));
+  const scores = { hw1: 10, hw2: 2, hw3: 10, lab1: 8 };
+  const DROPPING = { ...PLANNED, cat_hw: { ...PLANNED.cat_hw, dropLowest: 1 } };
+  const scenario = [...splitRemaining(all, gradedIds).remaining, ...plannedRemaining(all, DROPPING)];
+
+  const ace = projectScenario({ assignments: gradedList, remaining: scenario, categories: DROPPING, scores, excused: {}, pctByCat: { cat_hw: 100 } });
+  eq("the slider reaches all ten unwritten homeworks, not just the built ones", ace.byCategory.cat_hw.possible, 120);
+  eq("and the lowest of the thirteen is still dropped", ace.byCategory.cat_hw.dropped, ["hw2"]);
+  near("so acing the rest of the term is a perfect homework category", ace.byCategory.cat_hw.pct, 100);
+
+  const zero = projectScenario({ assignments: gradedList, remaining: scenario, categories: DROPPING, scores, excused: {}, pctByCat: { cat_hw: 0 } });
+  eq("giving up drops a placeholder zero instead", zero.byCategory.cat_hw.dropped.length, 1);
+  near("and the marks already earned are all that is left", zero.byCategory.cat_hw.pct, 22 / 120 * 100);
+  near("the slider never touches work already graded", zero.byCategory.cat_hw.earned, 22);
+  eq("a category the panel was not asked about keeps only its real work", zero.byCategory.cat_lab.possible, 10);
+}
 
 // ── clampPct ─────────────────────────────────────────────────────────────────
 eq("out-of-range input is clamped, not trusted", [clampPct(120), clampPct(-5), clampPct("87.5"), clampPct(""), clampPct(null)], [100, 0, 87.5, 0, 0]);

@@ -48,6 +48,69 @@ export function splitRemaining(allAssignments, gradedIds) {
   return { graded, remaining };
 }
 
+// Work the term will hold that does not exist yet. Homework and quizzes reach the gradebook only
+// once they are BUILT, but a student planning the term is asking about the whole term: a course
+// that promises 13 homeworks and has 6 written has seven more coming, and a projection that
+// cannot see them divides the slider over the wrong denominator — "100% on the rest of the
+// homework" then moves the grade by a seventh of what it really would, which is worse than not
+// offering the slider. So a category carries `plannedCount`, how many assignments the term will
+// hold, and this fills the shortfall with placeholders that exist ONLY inside the projection.
+//
+// The count is a FLOOR that real assignments consume, never an addition, and that is the whole
+// of why this stays accurate as the term fills in. `have` counts every real assignment in the
+// category — graded and ungraded alike — so:
+//
+//   * writing homework 7 turns a placeholder into the real thing (6 real + 7 held → 7 + 6), and
+//     the category's total never moves;
+//   * grading homework 7 moves it from remaining to graded, which `have` counts either way, so
+//     nothing is double counted and no placeholder reappears behind it;
+//   * a category that ends up holding MORE than promised gets no placeholders at all rather
+//     than a negative correction, so the real assignments always win;
+//   * an excused assignment is not replaced by a placeholder, since it still exists.
+//
+// Labs and both exams are seeded whole when a class is created (a midterm, a final, and two labs
+// for every lecture week the course teaches — 26 for PHY 215, see src/lab-schedule.js), so their
+// `plannedCount` is 0, meaning "however many actually exist".
+const PLANNED_PREFIX = "planned:";
+
+// Placeholders are worth what the category's real assignments are worth — the most common
+// `maxPts` among them, since a category can hold a mix. 10 is the fallback for a category with
+// nothing in it yet, matching every non-exam assignment the app creates.
+function typicalMaxPts(items) {
+  const counts = new Map();
+  for (const a of items || []) {
+    const pts = a.maxPts || 0;
+    if (pts > 0) counts.set(pts, (counts.get(pts) || 0) + 1);
+  }
+  let best = 10, bestCount = 0;
+  for (const [pts, n] of counts) if (n > bestCount) { best = pts; bestCount = n; }
+  return best;
+}
+
+export function plannedRemaining(allAssignments, categories) {
+  const cats = Object.values(categories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const out = [];
+  for (const cat of cats) {
+    const planned = Math.floor(Number(cat.plannedCount) || 0);
+    if (planned <= 0) continue;
+    const have = (allAssignments || []).filter(a => a.catId === cat.id);
+    const gap = planned - have.length;
+    if (gap <= 0) continue;
+    const maxPts = typicalMaxPts(have);
+    for (let n = 1; n <= gap; n++) {
+      out.push({
+        id: `${PLANNED_PREFIX}${cat.id}:${n}`,
+        title: `${cat.name} ${have.length + n}`,
+        type: "planned",
+        catId: cat.id,
+        maxPts,
+        planned: true,
+      });
+    }
+  }
+  return out;
+}
+
 // One row per category that still has work in it, in the instructor's category order. Built by
 // walking the CATEGORIES rather than the assignments, so an assignment carrying a category id the
 // class no longer defines is dropped here exactly as `calcGrades` would drop it later.

@@ -61,26 +61,26 @@ import { PageViewer } from "./components/lms/PageViewer.jsx";
 import { LockIcon } from "./components/lms/itemIcons.jsx";
 import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
 import { isInstructorAccount, instructorAccountOf, studentRoster } from "./roster-scope.js";
+import { labAssignments, labWeeksFor, trimmableLabs } from "./lab-schedule.js";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
 // Manual assignment ordering: module items occupy order = modIdx*100 + itemIdx.
 // Module 7 HW lands at 603; Midterm at 650 slots it right after.
 // Final at 1350 follows Module 14 HW (1303). Labs start at 2000.
-function makeDefaultManualAssignments() {
-  const labs = {};
-  for (let w = 1; w <= 14; w++) {
-    for (const s of ["a", "b"]) {
-      const id = `asgn_lab${w}${s}`;
-      labs[id] = { id, title: `Lab ${w}${s}`, catId: "cat_lab", maxPts: 10, order: 2000 + (w - 1) * 2 + (s === "a" ? 0 : 1) };
-    }
-  }
+// KNOWN, unfixed: 650 is PHY 115's midterm, which sits after module 7. PHY 215 examines after
+// module 6, so its Midterm column sorts one module late in the gradebook, the assignments hub
+// and the student's grades list. Display order only, no effect on any score, and the instructor
+// can drag the column (assignmentOrderOverrides). Fixing it properly means making this order
+// per course like the lab count below, plus a migration, since a seeded class already stored 650.
+// The lab list itself (how many sessions a course's term holds, and the trim for a class seeded
+// with too many) lives in src/lab-schedule.js, where it is tested.
+function makeDefaultManualAssignments(courseType) {
   return {
     asgn_midterm: { id: "asgn_midterm", title: "Midterm Exam", catId: "cat_midterm", maxPts: 100, order: 650 },
     asgn_final:   { id: "asgn_final",   title: "Final Exam",   catId: "cat_final",   maxPts: 100, order: 1350 },
-    ...labs,
+    ...labAssignments(labWeeksFor(courseType)),
   };
 }
-const DEFAULT_MANUAL_ASSIGNMENTS = makeDefaultManualAssignments();
 
 // Exams are graded out of 100, labs and everything else out of 10. Classes seeded before
 // `maxPts` varied got exams at 10; this lifts them to 100 once. `maxPtsSet` is written
@@ -98,13 +98,34 @@ function migrateExamMaxPts(manualAsgn) {
   return changed ? next : null;
 }
 
+// `plannedCount` is how many assignments the TERM will hold, which is not the same as how many
+// exist: labs and both exams are seeded whole above, but homework and quizzes reach the gradebook
+// only as they are written. It is read by the student's grade-scenario projection, which has to
+// divide a slider over the whole term rather than over the handful built so far, and it is a
+// floor that real assignments consume (see plannedRemaining in src/grade-scenarios.js). 0 means
+// "however many actually exist", which is right for everything already enumerated.
 const DEFAULT_GRADE_CATEGORIES = {
-  cat_lab:     { id: "cat_lab",     name: "Laboratory",   weight: 20, dropLowest: 1, order: 0 },
-  cat_hw:      { id: "cat_hw",      name: "Homework",     weight: 20, dropLowest: 1, order: 1 },
-  cat_quiz:    { id: "cat_quiz",    name: "Quiz",         weight: 10, dropLowest: 1, order: 2 },
-  cat_midterm: { id: "cat_midterm", name: "Midterm Exam", weight: 20, dropLowest: 0, order: 3 },
-  cat_final:   { id: "cat_final",   name: "Final Exam",   weight: 30, dropLowest: 0, order: 4 },
+  cat_lab:     { id: "cat_lab",     name: "Laboratory",   weight: 20, dropLowest: 1, plannedCount: 0,  order: 0 },
+  cat_hw:      { id: "cat_hw",      name: "Homework",     weight: 20, dropLowest: 1, plannedCount: 13, order: 1 },
+  cat_quiz:    { id: "cat_quiz",    name: "Quiz",         weight: 10, dropLowest: 1, plannedCount: 13, order: 2 },
+  cat_midterm: { id: "cat_midterm", name: "Midterm Exam", weight: 20, dropLowest: 0, plannedCount: 0,  order: 3 },
+  cat_final:   { id: "cat_final",   name: "Final Exam",   weight: 30, dropLowest: 0, plannedCount: 0,  order: 4 },
 };
+
+// `plannedCount` arrived after these classes were seeded, so a stored category has no value for
+// it. Fill it from the default for that id on read rather than writing the node on load: the
+// projection is correct immediately, and the value persists the next time the instructor saves a
+// category. A category the instructor added themselves gets 0 — the app cannot know how many of
+// something it was never told about are coming, and 0 means "however many exist".
+function withPlannedDefaults(cats) {
+  const out = {};
+  for (const [id, c] of Object.entries(cats || {})) {
+    out[id] = (c && typeof c === 'object' && c.plannedCount == null)
+      ? { ...c, plannedCount: DEFAULT_GRADE_CATEGORIES[id]?.plannedCount ?? 0 }
+      : c;
+  }
+  return out;
+}
 
 // ── Sidebar definitions ──────────────────────────────────────────────────────
 // Syllabus, Course Guide and Resources sit together on purpose: they are the three things a
@@ -562,7 +583,7 @@ export default function App() {
           if (c.courseGuide !== undefined) setCourseGuide(normalizeGuide(c.courseGuide));
           if (Array.isArray(c.modules)) setModules(c.modules);
           if (c.announcements && typeof c.announcements === 'object') setAnnouncements(c.announcements);
-          if (c.gradeCategories && typeof c.gradeCategories === 'object') setGradeCategories(c.gradeCategories);
+          if (c.gradeCategories && typeof c.gradeCategories === 'object') setGradeCategories(withPlannedDefaults(c.gradeCategories));
           else setGradeCategories(DEFAULT_GRADE_CATEGORIES);
           if (c.gradeOverrides && typeof c.gradeOverrides === 'object') setGradeOverrides(c.gradeOverrides);
           if (c.assignmentCategories && typeof c.assignmentCategories === 'object') setAssignmentCategories(c.assignmentCategories);
@@ -629,22 +650,46 @@ export default function App() {
       const annsObj = (annsData && typeof annsData === 'object') ? annsData : {};
 
       // Grade data — seed default categories on first class load
-      let gradeCatsObj = (gradeCatsData && typeof gradeCatsData === 'object') ? gradeCatsData : {};
+      let gradeCatsObj = withPlannedDefaults((gradeCatsData && typeof gradeCatsData === 'object') ? gradeCatsData : {});
       if (Object.keys(gradeCatsObj).length === 0) {
         gradeCatsObj = { ...DEFAULT_GRADE_CATEGORIES };
         try { await fbSet(classPath(classId, 'gradeCategories'), gradeCatsObj); } catch (e) { console.warn("Grade category seed failed:", e?.message); }
       }
       const gradeOverridesObj = (gradeOverridesData && typeof gradeOverridesData === 'object') ? gradeOverridesData : {};
+      // Hoisted above the manual-assignment migration below, which reads roll calls to decide
+      // whether a lab it is about to delete is one the absence policy already points at.
+      const attendanceObj = (attendanceData && typeof attendanceData === 'object') ? attendanceData : {};
       const assignmentCatsObj = (assignmentCatsData && typeof assignmentCatsData === 'object') ? assignmentCatsData : {};
+      // The lab count is per course (PHY 215 teaches 13 lecture weeks, PHY 115 fourteen), so both
+      // the seed and the stale-lab trim below need to know which course this class is.
+      const courseType = classes[classId]?.metadata?.courseType;
       let manualAsgnObj = (manualAsgnData && typeof manualAsgnData === 'object') ? manualAsgnData : {};
       if (Object.keys(manualAsgnObj).length === 0) {
-        manualAsgnObj = { ...DEFAULT_MANUAL_ASSIGNMENTS };
+        manualAsgnObj = makeDefaultManualAssignments(courseType);
         try { await fbSet(classPath(classId, 'manualAssignments'), manualAsgnObj); } catch (e) { console.warn("Manual assignment seed failed:", e?.message); }
       } else {
         const migrated = migrateExamMaxPts(manualAsgnObj);
         if (migrated) {
           manualAsgnObj = migrated;
           try { await fbSet(classPath(classId, 'manualAssignments'), manualAsgnObj); } catch (e) { console.warn("Exam max-points migration failed:", e?.message); }
+        }
+        // Classes seeded with a lab in midterm week hold two sessions the term does not. They
+        // cannot be removed by hand (a manual assignment has no delete control), and a stale
+        // pair is wrong in the gradebook's possible points, the absence policy and the student's
+        // grade projection at once. `trimmableLabs` refuses unless the stored list is exactly the
+        // seeded shape and the extra pair carries no grade record and no roll call, so this can
+        // never delete a lab that happened. The write is a PATCH of those two keys — a
+        // deliberate, verified, key-addressed deletion, not a prune of what local state thinks is
+        // missing, so nothing else under the node can be caught by it.
+        const { remove: staleLabs, blocked: labTrimBlocked } = trimmableLabs(manualAsgnObj, { gradeOverrides: gradeOverridesObj, attendance: attendanceObj, weeks: labWeeksFor(courseType) });
+        if (labTrimBlocked) console.warn("Lab schedule trim skipped:", labTrimBlocked);
+        if (staleLabs.length) {
+          try {
+            await fbUpdate(classPath(classId, 'manualAssignments'), Object.fromEntries(staleLabs.map(id => [id, null])));
+            const kept = { ...manualAsgnObj };
+            for (const id of staleLabs) delete kept[id];
+            manualAsgnObj = kept;
+          } catch (e) { console.warn("Lab schedule trim failed:", e?.message); }
         }
       }
       const nameOverrideObj = (nameOverrideData && typeof nameOverrideData === 'object') ? nameOverrideData : {};
@@ -654,8 +699,7 @@ export default function App() {
       // array in RTDB is the sentinel.
       let modulesArr = Array.isArray(modulesData) ? modulesData : null;
       if (modulesArr === null) {
-        const meta = classes[classId]?.metadata;
-        const template = defaultModulesForCourse(meta?.courseType);
+        const template = defaultModulesForCourse(courseType);
         const { modules: seeded, moduleConfig: migratedCfg } = migrateLegacyModuleConfig(template, moduleConfigObj);
         modulesArr = seeded;
         try {
@@ -694,7 +738,6 @@ export default function App() {
       setAssignmentOrderOverrides(orderOverrideObj);
       const hwSettingsObj = (hwSettingsData && typeof hwSettingsData === 'object') ? hwSettingsData : {};
       setHomeworkSettings(hwSettingsObj);
-      const attendanceObj = (attendanceData && typeof attendanceData === 'object') ? attendanceData : {};
       setAttendance(attendanceObj);
       const blackboardObj = (blackboardData && typeof blackboardData === 'object') ? blackboardData : null;
       setBlackboard(blackboardObj);

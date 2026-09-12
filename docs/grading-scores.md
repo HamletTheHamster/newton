@@ -323,6 +323,54 @@ is already showing, so the two halves cannot disagree about what has been marked
 `overallLetter` / `overallColor` moved into the same module, since the projected percentage is
 rendered beside the real one and the two must read identically.
 
+### The work the term will hold but does not contain yet
+
+A slider over "the rest of the homework" is only meaningful if it covers the rest of the **term**.
+Labs and both exams are enumerated the moment a class is created (a midterm, a final, and two labs for every
+lecture week the course teaches — 26 for PHY 215; see `src/lab-schedule.js`),
+but homework and quizzes reach the gradebook **only as they are written** — mid-term a class may
+hold 6 of a promised 13. A projection that can see only those 6 divides the slider over the wrong
+denominator: "100% on the rest of the homework" then moves the grade by a fraction of what it
+really would, which is worse than not offering the slider at all.
+
+So each grade category carries **`plannedCount`**, how many assignments it will hold by the end of
+the term, seeded at 13 for homework and 13 for quizzes and editable per class in the Gradebook's
+Grade Categories modal ("Term total"). `plannedCount: 0` means "however many actually exist",
+which is right for labs and exams. `plannedRemaining` (grade-scenarios.js) fills the shortfall
+with placeholder assignments that exist **only inside the projection** — namespaced ids
+(`planned:cat_hw:7`), worth the most common `maxPts` among the category's real work, never
+written anywhere, never rendered as a row, never carrying a score.
+
+**The count is a floor that real assignments consume, never an addition**, and that one rule is
+what keeps the panel accurate as the term fills in. `plannedRemaining` counts every real
+assignment in the category, **graded and ungraded alike**, so:
+
+- writing homework 7 turns a placeholder into the real thing and the category's total does not
+  move (6 real + 7 held becomes 7 real + 6 held);
+- **grading** homework 7 moves it out of `remaining` into the graded list, which the count sees
+  either way — so nothing is double counted and no placeholder reappears behind it;
+- a category that ends up holding **more** than promised gets no placeholders rather than a
+  negative correction: the real assignments always win;
+- an excused assignment still exists, so it is not replaced by a placeholder.
+
+`src/grade-scenarios.test.mjs` asserts that invariant directly, sweeping 0 to 15 built homeworks
+against every possible number of them being marked and requiring the total the projection reasons
+over to be `max(plannedCount, built)` with no duplicate ids in any combination.
+
+Placeholders go through `calcGrades` like everything else, so **drop-lowest is re-run across the
+whole term**: a student with a 3/10 on homework 3 who projects the remaining ten at full marks
+sees that 3 dropped, and one who projects zeros sees a placeholder zero dropped instead. The
+three categories that drop their lowest (`cat_lab`, `cat_hw`, `cat_quiz`, each `dropLowest: 1` in
+`DEFAULT_GRADE_CATEGORIES`) therefore behave in the projection exactly as they do in the
+gradebook.
+
+`plannedCount` is **no new RTDB node** — it rides on `gradeCategories`. Classes seeded before it
+existed have no value stored, so App.jsx's `withPlannedDefaults` fills it from
+`DEFAULT_GRADE_CATEGORIES` on read rather than writing the node on load: the projection is right
+immediately, and the value persists the next time the instructor saves a category. A category the
+instructor added themselves defaults to 0, since the app cannot know how many of something it was
+never told about are coming.
+
 Covered by `node src/grade-scenarios.test.mjs`.
 
 ## Per-student deadline extensions

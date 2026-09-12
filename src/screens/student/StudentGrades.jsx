@@ -5,7 +5,7 @@ import { buildGradebookAssignments, calcGrades, dueToDate, effectiveDue } from "
 import { resolveScore } from "../../homework.js";
 import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { categoryColor } from "../../category-colors.js";
-import { splitRemaining, overallColor, overallLetter } from "../../grade-scenarios.js";
+import { splitRemaining, plannedRemaining, overallColor, overallLetter } from "../../grade-scenarios.js";
 import { GradeScenario } from "./GradeScenario.jsx";
 import { buildAbsenceMap, attendanceFor, formatSessionDate } from "../../attendance.js";
 import { closesAssignment } from "../../auto-submit.js";
@@ -108,10 +108,16 @@ export function StudentGrades({ classId, loggedInStudent, modules, quizzes, subm
 
   const { overall, byCategory } = calcGrades({ assignments, categories: gradeCategories, scores, excused });
 
-  // The work still ahead: everything on the gradebook with no grade against it yet. It feeds the
-  // scenario panel only, and deliberately includes assignments not yet released, since those are
-  // exactly what a student planning the rest of the term is asking about.
-  const { remaining } = splitRemaining(allAssignments, new Set(assignments.map(a => a.id)));
+  // The work still ahead: everything on the gradebook with no grade against it yet, PLUS the
+  // assignments the term will hold that have not been written (`plannedRemaining` — a category's
+  // `plannedCount` is a floor that the real ones consume, so the two lists never double count,
+  // and the total holds steady as homework 7 gets written and then graded). It feeds the scenario
+  // panel only, and deliberately includes work not yet released, since that is exactly what a
+  // student planning the rest of the term is asking about.
+  const remaining = [
+    ...splitRemaining(allAssignments, new Set(assignments.map(a => a.id))).remaining,
+    ...plannedRemaining(allAssignments, gradeCategories),
+  ];
 
   const sortedCats = Object.values(gradeCategories || {}).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
   const activeCatCount = sortedCats.filter(c => (byCategory[c.id]?.possible ?? 0) > 0).length;

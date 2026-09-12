@@ -397,7 +397,7 @@ export function Assignments({ classId, roster = [], submissions = [], quizzes, h
   ];
 
   // Quiz and homework chips are fixed; every manual category present gets its own chip, so
-  // 28 labs can be filtered away from the two exams.
+  // a term of labs can be filtered away from the two exams.
   const manualTypeIds = [...new Set(manualList.map(m => m._type))]
     .sort((a, b) => (gradeCategories[a]?.order ?? 99) - (gradeCategories[b]?.order ?? 99));
   const TYPES = [
