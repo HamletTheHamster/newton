@@ -61,7 +61,7 @@ import { PageViewer } from "./components/lms/PageViewer.jsx";
 import { LockIcon } from "./components/lms/itemIcons.jsx";
 import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
 import { isInstructorAccount, isAuditing, instructorAccountOf, studentRoster, auditors } from "./roster-scope.js";
-import { labAssignments, labWeeksFor, trimmableLabs } from "./lab-schedule.js";
+import { labAssignments, labWeeksFor } from "./lab-schedule.js";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
 // Manual assignment ordering: module items occupy order = modIdx*100 + itemIdx.
@@ -656,12 +656,9 @@ export default function App() {
         try { await fbSet(classPath(classId, 'gradeCategories'), gradeCatsObj); } catch (e) { console.warn("Grade category seed failed:", e?.message); }
       }
       const gradeOverridesObj = (gradeOverridesData && typeof gradeOverridesData === 'object') ? gradeOverridesData : {};
-      // Hoisted above the manual-assignment migration below, which reads roll calls to decide
-      // whether a lab it is about to delete is one the absence policy already points at.
-      const attendanceObj = (attendanceData && typeof attendanceData === 'object') ? attendanceData : {};
       const assignmentCatsObj = (assignmentCatsData && typeof assignmentCatsData === 'object') ? assignmentCatsData : {};
-      // The lab count is per course (PHY 215 teaches 13 lecture weeks, PHY 115 fourteen), so both
-      // the seed and the stale-lab trim below need to know which course this class is.
+      // The lab count is per course (PHY 215 teaches 13 lecture weeks, PHY 115 fourteen), so the
+      // seed below needs to know which course this class is; the module seed uses it too.
       const courseType = classes[classId]?.metadata?.courseType;
       let manualAsgnObj = (manualAsgnData && typeof manualAsgnData === 'object') ? manualAsgnData : {};
       if (Object.keys(manualAsgnObj).length === 0) {
@@ -672,24 +669,6 @@ export default function App() {
         if (migrated) {
           manualAsgnObj = migrated;
           try { await fbSet(classPath(classId, 'manualAssignments'), manualAsgnObj); } catch (e) { console.warn("Exam max-points migration failed:", e?.message); }
-        }
-        // Classes seeded with a lab in midterm week hold two sessions the term does not. They
-        // cannot be removed by hand (a manual assignment has no delete control), and a stale
-        // pair is wrong in the gradebook's possible points, the absence policy and the student's
-        // grade projection at once. `trimmableLabs` refuses unless the stored list is exactly the
-        // seeded shape and the extra pair carries no grade record and no roll call, so this can
-        // never delete a lab that happened. The write is a PATCH of those two keys — a
-        // deliberate, verified, key-addressed deletion, not a prune of what local state thinks is
-        // missing, so nothing else under the node can be caught by it.
-        const { remove: staleLabs, blocked: labTrimBlocked } = trimmableLabs(manualAsgnObj, { gradeOverrides: gradeOverridesObj, attendance: attendanceObj, weeks: labWeeksFor(courseType) });
-        if (labTrimBlocked) console.warn("Lab schedule trim skipped:", labTrimBlocked);
-        if (staleLabs.length) {
-          try {
-            await fbUpdate(classPath(classId, 'manualAssignments'), Object.fromEntries(staleLabs.map(id => [id, null])));
-            const kept = { ...manualAsgnObj };
-            for (const id of staleLabs) delete kept[id];
-            manualAsgnObj = kept;
-          } catch (e) { console.warn("Lab schedule trim failed:", e?.message); }
         }
       }
       const nameOverrideObj = (nameOverrideData && typeof nameOverrideData === 'object') ? nameOverrideData : {};
@@ -738,6 +717,7 @@ export default function App() {
       setAssignmentOrderOverrides(orderOverrideObj);
       const hwSettingsObj = (hwSettingsData && typeof hwSettingsData === 'object') ? hwSettingsData : {};
       setHomeworkSettings(hwSettingsObj);
+      const attendanceObj = (attendanceData && typeof attendanceData === 'object') ? attendanceData : {};
       setAttendance(attendanceObj);
       const blackboardObj = (blackboardData && typeof blackboardData === 'object') ? blackboardData : null;
       setBlackboard(blackboardObj);
