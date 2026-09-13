@@ -592,6 +592,85 @@ export const ANSWER_KEYS = {
       hw6_p10a: { answerType: "text", answer: "Balanced means the galvanometer carries no current, and that is the only fact needed. First, with no current in the branch containing G, points $b$ and $c$ are at the same potential: $V_b = V_c$. Second, with nothing drawn off at $b$, the whole of the current down the left arm passes through $N$ and then through $M$; call it $I_1$. Likewise the whole of the current down the right arm passes through $P$ and then through $X$; call it $I_2$. Now compare the two arms between the same pairs of points. From $a$ down to $b$ and from $a$ down to $c$: since $V_b = V_c$, the two drops must be equal, so $I_1N = I_2P$. From $b$ down to $d$ and from $c$ down to $d$: both arms start at the same potential and end at the same point $d$, so those drops must be equal too, giving $I_1M = I_2X$. Dividing the second relation by the first eliminates both unknown currents: $\\dfrac{I_1M}{I_1N} = \\dfrac{I_2X}{I_2P}$, that is $\\dfrac{M}{N} = \\dfrac{X}{P}$, and therefore $X = \\dfrac{MP}{N}$. Notice that the emf and the resistance of the battery never enter, which is what makes the bridge a precise comparison instrument: it measures a RATIO of resistances, and only the null reading of the galvanometer has to be trusted." },
       hw6_p10b: { answerType: "numeric", answer: 1897.2, sigFigs: 4, unit: "Ω", nonNegative: true },
     },
+    hw7: {
+      // Y&F Ch. 27. Every value re-derived by script from the problem statements before the
+      // instructor key was opened (see docs/courses/phy215.md § hw7); constants e = 1.602176634e-19,
+      // m_e = 9.1094e-31, k = 8.9876e9, g = 9.81.
+      // 27.1 — F = q v x B with q NEGATIVE, so each force is opposite to v x B.
+      //   (a) v x (1.40 i) = -(v_y)(1.40) k = +5.39e4 k;  q times that = -6.68e-4 N k.
+      //   (b) v x (1.40 k) = (v_y)(1.40) i - (v_x)(1.40) j = -5.39e4 i - 5.87e4 j;
+      //       q times that = +6.68e-4 i + 7.27e-4 j N.
+      hw7_p1a: { answerType: "math", answer: "(-6.68\\times10^{-4})\\,\\hat{k}\\ \\text{N}" },
+      hw7_p1b: { answerType: "math", answer: "(6.68\\times10^{-4})\\,\\hat{\\imath} + (7.27\\times10^{-4})\\,\\hat{\\jmath}\\ \\text{N}" },
+      // 27.14 — vertical triangular prism (ad, bc, ef are the 30.0-cm vertical edges; the end
+      // triangle abe is 3-4-5: be = 30.0, ab = 40.0, so ea = 50.0 cm, matching df). B along +z.
+      //   (a) abcd is the y-z plane, normal along x: 0.
+      //   (b) befc is the x-y plane, A = 0.300 x 0.300 = 0.0900 m^2, OUTWARD normal -z:
+      //       -(0.128)(0.0900) = -0.01152 Wb.
+      //   (c) aefd is the slanted face, A = 0.300 x 0.500 = 0.150 m^2, outward normal
+      //       (0.8, 0, 0.6): (0.128)(0.150)(0.6) = +0.01152 Wb.
+      //   (d) closed surface: 0 (the ends abe and dcf have normals along y).
+      // Signed per the outward-normal convention that (d) presupposes, matching the textbook's
+      // own answers (-0.0115 Wb, +0.0115 Wb) and the instructor key, so (b) and (c) carry no
+      // nonNegative. The zeros in (a) and (d) are exact. A zero answer is matched by an ABSOLUTE
+      // band (matchValue: |s| <= tol), and the default 0.02 is wider than this set's nonzero
+      // fluxes, so without the explicit tolerance a student answering 0.0115 Wb for (a) would
+      // have been marked right. 1e-4 Wb is two orders below the smallest nonzero value here.
+      hw7_p2a: { answerType: "numeric", answer: 0, sigFigs: 3, unit: "Wb", tolerance: 1e-4 },
+      hw7_p2b: { answerType: "numeric", answer: -0.01152, sigFigs: 3, unit: "Wb" },
+      hw7_p2c: { answerType: "numeric", answer: 0.01152, sigFigs: 3, unit: "Wb" },
+      hw7_p2d: { answerType: "numeric", answer: 0, sigFigs: 3, unit: "Wb", tolerance: 1e-4 },
+      // 27.15 — R = 5.00 cm. B = m v/(e R) = (9.1094e-31)(1.41e6)/((1.6022e-19)(0.0500)) =
+      // 1.603e-4 T = 160 uT. t = pi R / v = 111 ns.
+      hw7_p3a_m: { answerType: "numeric", answer: 160.3348, sigFigs: 3, unit: "μT", nonNegative: true },
+      hw7_p3a_d: { answerType: "text", answer: "Into the page (perpendicular to the plane of the figure, pointing away from the viewer). At $A$ the electron is moving straight up, and the center of the semicircle is at the midpoint of $AB$, to the right of $A$, so the magnetic force at $A$ must point to the right, toward $B$. The force is $\\vec F = q\\vec v\\times\\vec B$ with $q = -e$ negative. If $\\vec B$ pointed out of the page, $\\vec v\\times\\vec B$ (up crossed with out of the page) would point to the right and the negative charge would be pushed to the LEFT, away from $B$. So $\\vec B$ must point into the page: then $\\vec v\\times\\vec B$ points to the left and $-e$ times it points to the right, bending the electron around toward $B$." },
+      hw7_p3b: { answerType: "numeric", answer: 111.4040, sigFigs: 3, unit: "ns", nonNegative: true },
+      // 27.29 — E = v B = (8750)(0.550) = 4812.5 N/C. The charge cancels from q E = q v B, which
+      // is the whole content of (c).
+      hw7_p4a: { answerType: "numeric", answer: 4812.5, sigFigs: 3, unit: "N/C", nonNegative: true },
+      hw7_p4b: { answerType: "text", answer: "The three vectors must be mutually perpendicular: $\\vec E$ perpendicular to $\\vec B$, and both perpendicular to the ions' velocity $\\vec v$. Beyond that, $\\vec E$ must point opposite to $\\vec v\\times\\vec B$, so that the electric force $q\\vec E$ and the magnetic force $q\\vec v\\times\\vec B$ on a positive ion are in opposite directions and cancel. For example, with the ions moving to the right and $\\vec B$ pointing into the page, $\\vec v\\times\\vec B$ points up the page, so $\\vec E$ must point down the page: the positive ion then feels $qE$ downward and $qvB$ upward, and the two balance when $E = vB$." },
+      hw7_p4c_i: { answerType: "text", answer: "Yes. Changing the sign of the charge reverses BOTH forces: the electric force $q\\vec E$ and the magnetic force $q\\vec v\\times\\vec B$ each flip direction, so they still point opposite to each other and still cancel. The balance condition $qE = qvB$, i.e. $E = vB$, does not depend on the sign of $q$, so a $-5e$ ion with the same velocity passes through undeflected." },
+      hw7_p4c_ii: { answerType: "text", answer: "Yes. Both forces are proportional to the charge, so the condition for zero net force, $qE = qvB$, reduces to $v = E/B$ no matter what $q$ is. Any ion with the selected speed passes undeflected regardless of its charge (and regardless of its mass). A velocity selector selects velocity only; sorting the ions by charge or mass takes a second stage, such as the magnetic field of a mass spectrometer." },
+      // 27.42 — the bar must be pushed UP. B into the page: I L x B is up only for L to the right,
+      // so current runs left to right along the bar, up the right side, left through R to b,
+      // through the battery to a, and down to the bar: it LEAVES the battery at a, so a is +.
+      // (b) I = 175/5.00 = 35.0 A; F = B I L = (1.50)(35.0)(0.600) = 31.5 N; m = 31.5/9.81 = 3.21 kg.
+      hw7_p5a: { answerType: "text", answer: "Point $a$. The bar has to hold up the weight, so the magnetic force on it must point UPWARD. The field is into the page, and $\\vec F = I\\vec L\\times\\vec B$ is upward only when the current in the bar flows from left to right (right-hand rule: $\\vec L$ to the right crossed with $\\vec B$ into the page gives up). Following that current around the circuit, it flows to the right along the bar, up the right-hand wire, leftward through the $5.00\\text{-}\\Omega$ resistor to $b$, through the battery from $b$ to $a$, and down the left-hand wire back to the bar. Conventional current leaves a battery at its positive terminal, and here it leaves at $a$, so $a$ must be the positive terminal. (With $b$ positive the current would run right to left along the bar, the magnetic force would push the bar down, and the balance could not work.)" },
+      hw7_p5b: { answerType: "numeric", answer: 3.211009, sigFigs: 3, unit: "kg", nonNegative: true },
+      // 27.47 — plane parallel to B, so phi = 90 deg: tau = I A B = (2.00)(0.500)(3.00) = 3.00 N m
+      // about the horizontal axis A_2 (the 0.500-m sides are parallel to B and feel no force; the
+      // forces on the 1.00-m sides are a couple). I about A_2 with lambda = 0.212/3.00 = 0.070667 kg/m:
+      //   two 1.00-m sides at r = 0.250 m:   2 (0.070667)(0.250)^2 = 0.0088333
+      //   two 0.500-m rods about their centers: 2 (1/12)(0.035333)(0.500)^2 = 0.0014722
+      //   I = 0.010306 kg m^2, alpha = 3.00/0.010306 = 291 rad/s^2 (cross-checked numerically).
+      hw7_p6a: { answerType: "text", answer: "About $A_2$, the horizontal axis. The magnetic force on a straight segment is $\\vec F = I\\vec L\\times\\vec B$. The two $0.500\\text{-m}$ sides are parallel to $\\vec B$, so $\\vec L\\times\\vec B = 0$ and they feel no force at all. The two $1.00\\text{-m}$ sides are perpendicular to $\\vec B$ and each feels a force of magnitude $ILB = (2.00)(1.00)(3.00) = 6.00\\text{ N}$ directed perpendicular to the plane of the coil; the current runs opposite ways along the two sides, so one force points out of the page and the other into it. Those two equal and opposite forces form a couple whose torque is about the axis midway between them and parallel to them, which is $A_2$. Equivalently, the magnetic moment $\\vec\\mu$ is perpendicular to the plane of the coil, and the torque $\\vec\\tau = \\vec\\mu\\times\\vec B$ is perpendicular to both $\\vec\\mu$ and $\\vec B$, hence horizontal, along $A_2$. There is no torque about $A_1$: each force on a $1.00\\text{-m}$ side is spread uniformly along that side, so it acts at the side's midpoint, which lies on $A_1$." },
+      hw7_p6b: { answerType: "numeric", answer: 291.1051, sigFigs: 3, unit: "rad/s²", nonNegative: true },
+      // 27.57 — (a) both nuclei move at v, so 2 (m v^2/2) = k e^2 / r at closest approach:
+      // v = sqrt(k e^2/(m r)) = sqrt((8.9876e9)(1.6022e-19)^2 / ((3.34e-27)(1.0e-15))) = 8.31e6 m/s.
+      // (b) R = 1.25 m (the DIAMETER is 2.50 m): B = m v/(e R) = 0.139 T. Carried at 3 sf, the
+      // instructor key's precision; strictly the 1.0e-15 m separation is 2 sf.
+      hw7_p7a: { answerType: "numeric", answer: 8311094, sigFigs: 3, unit: "m/s", sci: true, nonNegative: true },
+      hw7_p7b: { answerType: "numeric", answer: 0.1386070, sigFigs: 3, unit: "T", nonNegative: true },
+      // 27.58 — T = 2 pi r / v = 2 pi (5.3e-11)/(2.2e6) = 1.51e-16 s; I = e/T = 1.06 mA;
+      // mu = I pi r^2 = (1.0585e-3) pi (5.3e-11)^2 = 9.34e-24 A m^2. The data are 2 sf. (The
+      // instructor key boxes 9.4e-24 from a rounded 1.1 mA; 0.6% off, within tolerance.)
+      hw7_p8a: { answerType: "numeric", answer: 1.513683e-16, sigFigs: 2, unit: "s", sci: true, nonNegative: true },
+      hw7_p8b: { answerType: "numeric", answer: 1.058465, sigFigs: 2, unit: "mA", nonNegative: true },
+      hw7_p8c: { answerType: "numeric", answer: 9.340687e-24, sigFigs: 2, unit: "A·m²", sci: true, nonNegative: true },
+      // 27.69 — the FBD is graded client-side from physics2.js. B vertical makes the magnetic
+      // force horizontal; it must point into the incline (uphill side). Along the slope:
+      // F cos(theta) = M g sin(theta) with F = I L B, so I = M g tan(theta)/(B L). (Perpendicular
+      // to the slope, N = M g / cos(theta).) Direction: in the figure the incline rises away from
+      // the viewer, so the force must point away from the viewer; with B up, that is a current
+      // from right to left along the wire.
+      hw7_p9_m: { answerType: "math", answer: "\\frac{Mg\\tan\\theta}{BL}" },
+      hw7_p9_d: { answerType: "text", answer: "From right to left along the wire as it is drawn in the figure (from the right-hand end of the wire toward the left-hand end). The wire tends to slide down the incline, so the magnetic force on it must have a component pointing up the slope. Because $\\vec B$ is vertical, the force $\\vec F = I\\vec L\\times\\vec B$ is horizontal, perpendicular to both the wire and the vertical. A horizontal force helps only if it points into the incline, toward the uphill side, which in the figure is the side away from the viewer (the angle $\\theta$ is marked at the front corner and the surface climbs toward the back). With $\\vec B$ pointing up, the right-hand rule gives a force directed away from the viewer only when the current flows from right to left; a current from left to right would give a horizontal force out of the incline, toward the viewer, which would push the wire off the slope instead of holding it. Along the slope the balance is $ILB\\cos\\theta = Mg\\sin\\theta$, so $I = Mg\\tan\\theta/(LB)$, and perpendicular to the slope $N = Mg/\\cos\\theta$." },
+      // 27.70 — S closed puts the bar (10.0 ohm) in parallel with the 10.0-ohm resistor: 5.00 ohm,
+      // in series with 25.0 ohm, so 4.00 A leaves the battery and 2.00 A crosses the bar.
+      // F = B I L = (1.60)(2.00)(1.50) = 4.80 N; m = 2.60/9.81 = 0.2650 kg; a = 18.1 m/s^2,
+      // directed away from the rest of the circuit ((-y) x (-z) = +x).
+      hw7_p10: { answerType: "numeric", answer: 18.11077, sigFigs: 3, unit: "m/s²", nonNegative: true },
+    },
   },
 };
 

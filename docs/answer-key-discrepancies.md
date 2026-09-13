@@ -263,3 +263,40 @@ across each; 490 / 327 / 163 W; least resistance dissipates most), all of 26.24 
 (1.57 nC remaining, 13.6 A), all of 26.63 (0.848 A, 2.14 A, 0.171 A), all of 26.66 (6.00 / 4.00 /
 2.00 / 4.00 / 6.00 A, 10.0 A through the battery, 1.40 Ω), the three values in 26.71 (186 V, 3.00 A,
 20.0 Ω), all of 26.74 (4.2 / 1.4 / 2.8 A, 72 μC), and both of 26.81 ($X = MP/N$, 1897 Ω).
+
+---
+
+## HW7 — Magnetic Field & Magnetic Forces (verified 2026-09-13)
+
+Every value independently re-derived from the problem statements before the key was opened, then
+checked a second way where the problem allowed one (27.14 as a surface integral closing to zero,
+27.47(b)'s moment of inertia by numerical integration, 27.57(a) by back-substitution, 27.69 by a
+3-D force sum). Assigned problems: 27.1, 27.14, 27.15, 27.29, 27.42, 27.47, 27.57, 27.58, 27.69,
+27.70.
+
+**This key is numerically correct throughout.** One boxed value is carried from a rounded
+intermediate and lands 0.6% off; the rest agree to the figures printed. What is listed below is
+that one rounding, and two **omissions** of things the problems explicitly ask for.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| **27.69** — direction of the current | **not stated** | **From right to left along the wire as drawn** (the horizontal magnetic force must point into the incline, away from the viewer, and with $\vec B$ upward that takes a right-to-left current). | n/a (omission, not a number) | The problem asks for "the magnitude **and direction** of the current" and to "draw the direction of the current on your copy". The key boxes $I = Mg\tan\theta/(BL)$ and draws an unlabelled arrow on its sketch. Same shape as the 26.71 omission in HW6. | ☐ |
+| 27.29 (b) — orientation of $\vec E$, $\vec B$, $\vec v$ | a sketch only ($\otimes\vec B$, $\vec v$ right, $\vec E$ down) | **The same sketch, plus the rule:** $\vec E \perp \vec B \perp \vec v$ with $\vec E$ antiparallel to $\vec v\times\vec B$, so $q\vec E$ and $q\vec v\times\vec B$ cancel. | n/a (omission, not a number) | The sketch is correct, but "show how the two fields should be oriented" is answered as a *rule* in the textbook's solution, and a student comparing a differently oriented (equally correct) sketch against the key cannot tell it is right. | ☐ |
+| 27.58 (c) — magnetic moment | $9.4\times10^{-24}$ A·m² | **$9.34\times10^{-24}$ A·m²** | No (0.6%) | Carried the rounded $1.1$ mA from part (b) into (c); the unrounded current is $1.058$ mA. The 2-sf reveal in the app reads $9.3\times10^{-24}$, and both spellings grade correct. | ☐ |
+
+**Not a key error, but noted for context — 27.57(a)'s source text has a typo.** The textbook
+sentence reads "assume that a separation of $1.0\times10^{-15}$ is required for fusion", with no
+unit. The app's prompt restores " m" (the stem says "about $10^{-15}$ m" two sentences earlier).
+The key works the problem with the metre assumed, as it should.
+
+**Not a key error, but noted for context — 27.14's signs.** The key boxes $-0.01152$ Wb for (b)
+and $+0.01152$ Wb for (c), which is the outward-normal convention that part (d) presupposes and
+the textbook's own printed answer. The app grades those signs. Worth a sentence in lecture, since
+the problem statement itself never says which way the normals point.
+
+**Confirmed correct (no discrepancy):** both of 27.1 ($-6.68\times10^{-4}$ N $\hat k$;
+$6.68\times10^{-4}\,\hat\imath + 7.27\times10^{-4}\,\hat\jmath$ N), all of 27.14 (0, $-0.0115$,
+$+0.0115$, 0 Wb), all of 27.15 (160 μT into the page, 111 ns), 27.29(a) (4.81 kN/C) and (c)
+(yes, yes), both of 27.42 ($a$ positive; 3.21 kg), both of 27.47 ($A_2$; 291 rad/s²), both of
+27.57 ($8.31\times10^6$ m/s, 0.139 T), 27.58(a)/(b) ($1.5\times10^{-16}$ s, 1.1 mA), 27.69's
+magnitude ($Mg\tan\theta/(BL)$) and 27.70 (18.1 m/s²).

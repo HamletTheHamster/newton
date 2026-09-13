@@ -1392,4 +1392,208 @@ export const HOMEWORKS_PHYSICS2 = [
       },
     ],
   },
+  {
+    id: "hw7",
+    title: "Homework 7: Magnetic Field & Magnetic Forces",
+    // WORDING: every prompt below is the Y&F problem text VERBATIM, with only the adaptations the
+    // app forces:
+    //   - "Fig. E27.14" / "(Fig. E27.47)" / "(Fig. P27.69)" becomes "the figure" / "(see the
+    //     figure)" (the served crops carry no caption).
+    //   - A sentence that asks one question of several cases ("What is the force ... (a) B = ...
+    //     and (b) B = ...?", "Find (a) the magnitude and direction ..., and (b) the time ...") is
+    //     split so the shared clause stays in the stem and each lettered clause becomes its own
+    //     part, carrying the source's own verb.
+    //   - "magnitude and direction" (27.15 a) splits into a numeric magnitude + a text direction,
+    //     since a numeric item holds one value (same treatment as hw6 26.71).
+    //   - 27.29(c)'s "(i) ... , (ii) ..." list becomes one text part per item, each carrying the
+    //     shared parenthetical so it reads whole on its own.
+    //   - 27.1's forces and 27.69's current are expressions, so they are `math` parts and the
+    //     stem/part says what form to enter them in (as hw1 21.34 and 21.87 do).
+    //   - 27.69 asks in one breath for magnitude, direction, a drawn current and a free-body
+    //     diagram; it becomes an `fbd` part, a `math` part and a `text` part, ordered the way the
+    //     lecture method works (diagram first), as hw2 22.43 is. The FBD part adds one orienting
+    //     sentence so the side view's left/right sense is unambiguous, as 22.43 does.
+    //   - 27.57(a)'s source omits the unit after "1.0 x 10^-15"; the " m" is restored (the stem
+    //     itself says "about 10^-15 m"), the only character in the set that is not the source's.
+    //   - Bold problem titles ("Magnetic Balance.", "Fusion Reactor.", "Magnetic Moment of the
+    //     Hydrogen Atom.") are kept as plain text, as hw5/hw6 keep theirs.
+    //   - Units live in `unit`, which renders beside the input box.
+    problems: [
+      // 27.1 — F = q v x B evaluated twice. The charge is NEGATIVE, so each force is opposite to
+      // v x B: (a) v x (1.40 i) = -(v_y)(1.40) k = +5.39e4 k, times q gives -6.68e-4 N k.
+      // (b) v x (1.40 k) = (v_y)(1.40) i - (v_x)(1.40) j, times q gives +6.68e-4 i + 7.27e-4 j.
+      // The answers are vectors, so both parts are `math` in unit-vector form (as hw1 21.34).
+      {
+        id: "hw7_p1",
+        prompt: "A particle with a charge of $-1.24\\times10^{-8}\\text{ C}$ is moving with instantaneous velocity $\\vec v = (4.19\\times10^{4}\\text{ m/s})\\,\\hat{\\imath} + (-3.85\\times10^{4}\\text{ m/s})\\,\\hat{\\jmath}$. (Enter each force in N in unit-vector form, for example $(-1.20\\times10^{-4})\\,\\hat{\\imath} + (4.50\\times10^{-4})\\,\\hat{k}$.)",
+        parts: [
+          { id: "hw7_p1a", prompt: "(a) What is the force exerted on this particle by a magnetic field $\\vec B = (1.40\\text{ T})\\,\\hat{\\imath}$?", answerType: "math" },
+          { id: "hw7_p1b", prompt: "(b) What is the force exerted on this particle by a magnetic field $\\vec B = (1.40\\text{ T})\\,\\hat{k}$?", answerType: "math" },
+        ],
+      },
+      // 27.14 — flux through the faces of a triangular prism whose axis is vertical (ad, bc, ef are
+      // the 30.0-cm vertical edges; abe and dcf are the triangular ends). Verified against the
+      // figure: ab = 40.0 cm and be = 30.0 cm make the end triangle 3-4-5, so cd = 40.0 cm and
+      // df = 50.0 cm, exactly as labelled. With B along +z:
+      //   abcd is the y-z plane (normal along x): flux 0.
+      //   befc is the x-y plane, 0.300 x 0.300 m; its OUTWARD normal is -z: -0.01152 Wb.
+      //   aefd is the slanted face, 0.300 x 0.500 m, outward normal (0.8, 0, 0.6): +0.01152 Wb.
+      //   net through the closed surface: 0 (the two triangular ends have normals along y).
+      // The signs follow the outward-normal convention that part (d) presupposes, and they are
+      // the textbook's (Y&F answers -0.0115 Wb and +0.0115 Wb). Signs are graded, so (b) and (c)
+      // are deliberately NOT nonNegative. The two zeros are exact, not near-cancellations.
+      {
+        id: "hw7_p2",
+        figure: "/homeworkFigures/physics2/HW7/figE27-14.png", figureWidth: 340,  // natural 466x410
+        prompt: "The magnetic field $\\vec B$ in a certain region is $0.128\\text{ T}$, and its direction is that of the $+z$-axis in the figure.",
+        parts: [
+          { id: "hw7_p2a", prompt: "(a) What is the magnetic flux across the surface $abcd$ in the figure?", answerType: "numeric", unit: "Wb" },
+          { id: "hw7_p2b", prompt: "(b) What is the magnetic flux across the surface $befc$?", answerType: "numeric", unit: "Wb" },
+          { id: "hw7_p2c", prompt: "(c) What is the magnetic flux across the surface $aefd$?", answerType: "numeric", unit: "Wb" },
+          { id: "hw7_p2d", prompt: "(d) What is the net flux through all five surfaces that enclose the shaded volume?", answerType: "numeric", unit: "Wb" },
+        ],
+      },
+      // 27.15 — a semicircle of diameter 10.0 cm, so R = 5.00 cm and B = m v / (e R) = 160 uT.
+      // Direction: at A the electron moves up and must be pushed to the RIGHT (the center of the
+      // arc is at the midpoint of AB); for a negative charge that needs B INTO the page. The
+      // half-turn takes pi R / v = 111 ns.
+      {
+        id: "hw7_p3",
+        figure: "/homeworkFigures/physics2/HW7/figE27-15.png", figureWidth: 340,  // natural 442x330
+        prompt: "An electron at point $A$ in the figure has a speed $v_0$ of $1.41\\times10^{6}\\text{ m/s}$.",
+        parts: [
+          { id: "hw7_p3a_m", prompt: "(a) Find the magnitude of the magnetic field that will cause the electron to follow the semicircular path from $A$ to $B$.", answerType: "numeric", unit: "μT" },
+          { id: "hw7_p3a_d", prompt: "(a) Find the direction of the magnetic field that will cause the electron to follow the semicircular path from $A$ to $B$.", answerType: "text" },
+          { id: "hw7_p3b", prompt: "(b) Find the time required for the electron to move from $A$ to $B$.", answerType: "numeric", unit: "ns" },
+        ],
+      },
+      // 27.29 — velocity selector. (a) E = vB = 4.81 kN/C; the charge and mass never enter, which
+      // is exactly what (c) is asking about. (b) is an orientation question in three dimensions
+      // (v, E and B mutually perpendicular, E opposite to v x B), which no 2-D field can draw, so it
+      // is text. (c)(i)/(ii) are the source's yes/no questions, one text part each, since they
+      // rest on different reasons (both forces reverse; both forces scale with q).
+      {
+        id: "hw7_p4",
+        prompt: "In designing a velocity selector that uses uniform perpendicular electric and magnetic fields, you want to select positive ions of charge $+5e$ that are traveling perpendicular to the fields at $8.75\\text{ km/s}$. The magnetic field available to you has a magnitude of $0.550\\text{ T}$.",
+        parts: [
+          { id: "hw7_p4a", prompt: "(a) What magnitude of electric field do you need?", answerType: "numeric", unit: "N/C" },
+          { id: "hw7_p4b", prompt: "(b) Show how the two fields should be oriented relative to each other and to the velocity of the ions.", answerType: "text" },
+          { id: "hw7_p4c_i", prompt: "(c)(i) Will your velocity selector also allow negative ions of charge $-5e$ (having the same velocity as the $+5e$ ions) to pass through undeflected?", answerType: "text" },
+          { id: "hw7_p4c_ii", prompt: "(c)(ii) Will your velocity selector also allow positive ions of charge different from $+5e$ (having the same velocity as the $+5e$ ions) to pass through undeflected?", answerType: "text" },
+        ],
+      },
+      // 27.42 — magnetic balance. The bar must be pushed UP, and with B into the page that takes a
+      // current flowing left to right along the bar; following it round the loop it leaves the
+      // battery at a, so a is the + terminal. (b) I = 175/5.00 = 35.0 A, F = BIL = 31.5 N,
+      // m = F/g = 3.21 kg.
+      {
+        id: "hw7_p5",
+        figure: "/homeworkFigures/physics2/HW7/figE27-42.png", figureWidth: 340,  // natural 444x384
+        prompt: "Magnetic Balance. The circuit shown in the figure is used to make a magnetic balance to weigh objects. The mass $m$ to be measured is hung from the center of the bar that is in a uniform magnetic field of $1.50\\text{ T}$, directed into the plane of the figure. The battery voltage can be adjusted to vary the current in the circuit. The horizontal bar is $60.0\\text{ cm}$ long and is made of extremely light-weight material. It is connected to the battery by thin vertical wires that can support no appreciable tension; all the weight of the suspended mass $m$ is supported by the magnetic force on the bar. A resistor with $R = 5.00\\ \\Omega$ is in series with the bar; the resistance of the rest of the circuit is much less than this.",
+        parts: [
+          { id: "hw7_p5a", prompt: "(a) Which point, $a$ or $b$, should be the positive terminal of the battery?", answerType: "text" },
+          { id: "hw7_p5b", prompt: "(b) If the maximum terminal voltage of the battery is $175\\text{ V}$, what is the greatest mass $m$ that this instrument can measure?", answerType: "numeric", unit: "kg" },
+        ],
+      },
+      // 27.47 — torque on a coil whose plane is PARALLEL to B, so phi = 90 deg and tau = IAB =
+      // 3.00 N m. The 0.500-m sides are parallel to B and feel nothing; the forces on the 1.00-m
+      // sides are a couple about the horizontal axis A_2. Moment of inertia about A_2: the two
+      // 1.00-m sides at 0.250 m (2 m r^2) plus the two 0.500-m rods spinning about their centers
+      // (2 x m L^2/12), with lambda = 0.212/3.00 kg/m: I = 0.010306 kg m^2, alpha = 291 rad/s^2.
+      // Cross-checked by numerically integrating lambda y^2 ds around the loop.
+      {
+        id: "hw7_p6",
+        figure: "/homeworkFigures/physics2/HW7/figE27-47.png", figureWidth: 360,  // natural 468x376
+        prompt: "A uniform rectangular coil of total mass $212\\text{ g}$ and dimensions $0.500\\text{ m}\\times1.00\\text{ m}$ is oriented with its plane parallel to a uniform $3.00\\text{-T}$ magnetic field (see the figure). A current of $2.00\\text{ A}$ is suddenly started in the coil.",
+        parts: [
+          { id: "hw7_p6a", prompt: "(a) About which axis ($A_1$ or $A_2$) will the coil begin to rotate? Why?", answerType: "text" },
+          { id: "hw7_p6b", prompt: "(b) Find the initial angular acceleration of the coil just after the current is started.", answerType: "numeric", unit: "rad/s²" },
+        ],
+      },
+      // 27.57 — fusion. (a) Energy conservation for two equal-speed nuclei: 2(m v^2/2) = k e^2/r,
+      // so v = e sqrt(k/(m r)) = 8.31e6 m/s. (b) R = 1.25 m (the problem gives the DIAMETER), so
+      // B = m v/(e R) = 0.139 T. The source drops the unit after "1.0 x 10^-15"; " m" is restored.
+      {
+        id: "hw7_p7",
+        prompt: "Fusion Reactor. If two deuterium nuclei (charge $+e$, mass $3.34\\times10^{-27}\\text{ kg}$) get close enough together, the attraction of the strong nuclear force will fuse them to make an isotope of helium, releasing vast amounts of energy. The range of this force is about $10^{-15}\\text{ m}$. This is the principle behind the fusion reactor. The deuterium nuclei are moving much too fast to be contained by physical walls, so they are confined magnetically.",
+        parts: [
+          { id: "hw7_p7a", prompt: "(a) How fast would two nuclei have to move so that in a head-on collision they would get close enough to fuse? (Assume their speeds are equal. Treat the nuclei as point charges, and assume that a separation of $1.0\\times10^{-15}\\text{ m}$ is required for fusion.)", answerType: "numeric", unit: "m/s" },
+          { id: "hw7_p7b", prompt: "(b) What strength magnetic field is needed to make deuterium nuclei with this speed travel in a circle of diameter $2.50\\text{ m}$?", answerType: "numeric", unit: "T" },
+        ],
+      },
+      // 27.58 — the Bohr orbit as a current loop. T = 2 pi r / v = 1.5e-16 s, I = e/T = 1.1 mA,
+      // mu = I pi r^2 = 9.3e-24 A m^2. The data (2.2 and 5.3) are 2 sf, so every reveal is 2 sf.
+      {
+        id: "hw7_p8",
+        prompt: "Magnetic Moment of the Hydrogen Atom. In the Bohr model of the hydrogen atom (see Section 38.5), in the lowest energy state the electron orbits the proton at a speed of $2.2\\times10^{6}\\text{ m/s}$ in a circular orbit of radius $5.3\\times10^{-11}\\text{ m}$.",
+        parts: [
+          { id: "hw7_p8a", prompt: "(a) What is the orbital period of the electron?", answerType: "numeric", unit: "s" },
+          { id: "hw7_p8b", prompt: "(b) If the orbiting electron is considered to be a current loop, what is the current $I$?", answerType: "numeric", unit: "mA" },
+          { id: "hw7_p8c", prompt: "(c) What is the magnetic moment of the atom due to the motion of the electron?", answerType: "numeric", unit: "A·m²" },
+        ],
+      },
+      // 27.69 — wire held on a frictionless incline by a horizontal magnetic force. Three forces:
+      // weight, the normal (perpendicular to the incline, theta from vertical) and the magnetic
+      // force, which is HORIZONTAL (B is vertical, so I L x B is perpendicular to both the wire
+      // and the vertical) and must point into the incline, toward the uphill side. Balance along
+      // the slope: F cos(theta) = M g sin(theta), so I = M g tan(theta)/(B L); perpendicular to
+      // it, N = M g / cos(theta). In the figure the incline rises AWAY from the viewer (theta is
+      // marked at the front corner, between the ground and the edge climbing to the back), so the
+      // force must point away from the viewer, and with B up the right-hand rule puts the current
+      // from RIGHT to LEFT along the wire as drawn.
+      // Same shape as hw2 22.43: the FBD comes first, the incline angle is the problem's symbol
+      // rather than a number, so the normal carries `angleSymbol` and a wide tolerance, and one
+      // orienting sentence fixes the side view's left/right sense.
+      {
+        id: "hw7_p9",
+        figure: "/homeworkFigures/physics2/HW7/figP27-69.png", figureWidth: 340,  // natural 438x306
+        prompt: "A straight piece of conducting wire with mass $M$ and length $L$ is placed on a frictionless incline tilted at an angle $\\theta$ from the horizontal (see the figure). There is a uniform, vertical magnetic field $\\vec B$ at all points (produced by an arrangement of magnets not shown in the figure). To keep the wire from sliding down the incline, a voltage source is attached to the ends of the wire. When just the right amount of current flows through the wire, the wire remains at rest.",
+        parts: [
+          {
+            id: "hw7_p9_fbd", answerType: "fbd",
+            prompt: "Show in a free-body diagram all the forces that act on the wire. Add every force from the bank, assign your positive axes, and show the wire's acceleration. Draw the side view looking along the wire, with the incline rising to the right; the incline angle is not given as a number, so the diagram will mark it $\\theta$ for you.",
+            fbd: {
+              xMin: -1.5, xMax: 1.5, yMin: -1.5, yMax: 1.5, xTick: 1, yTick: 1, snapDiv: 30,
+              origin: [0, 0], bodyLabel: "wire",
+              // Friction is offered so that "frictionless" has to be read: a drawn f is an extra force.
+              bank: ["F", "T", "N", "w", "f"],
+              // Label the off-axis angle rather than measuring it: it is this problem's symbol.
+              angleSymbol: "θ",
+              forces: [
+                // The normal is perpendicular to the incline. With the incline rising to the right
+                // it leans up and to the LEFT, theta from the vertical: [-sin theta, cos theta].
+                // Keyed at a schematic 30 deg with +/-22 deg (roughly 8 deg to 52 deg from
+                // vertical), the 22.43 treatment: theta is a symbol here, so a tight window would
+                // grade an angle the problem never fixes. What the band does enforce is that the
+                // normal tilts away from the slope, so a straight-up N (30 deg off, outside the
+                // band) is rejected, which is the real misconception. `angleSymbol` also keeps
+                // snapFBDDirections off this arrow.
+                { type: "N", dir: [-0.5, 0.86603], angleTol: 22, angleSymbol: "θ" },
+                // The magnetic force is horizontal and points INTO the incline (toward the uphill
+                // side, which is the right in this side view). Horizontal is what the physics
+                // fixes (B is vertical), so it stays at the house +/-5 deg.
+                { type: "F", dir: [1, 0], angleTol: 5 },
+                { type: "w", dir: [0, -1], angleTol: 5 },
+              ],
+              accel: { none: true },   // the wire remains at rest
+            },
+          },
+          { id: "hw7_p9_m", prompt: "Determine the magnitude of the current in the wire that will cause the wire to remain at rest. Give an expression in terms of $M$, $g$, $L$, $B$ and $\\theta$.", answerType: "math" },
+          { id: "hw7_p9_d", prompt: "Determine the direction of the current in the wire that will cause the wire to remain at rest. Copy the figure and draw the direction of the current on your copy, and state that direction here.", answerType: "text" },
+        ],
+      },
+      // 27.70 — with S closed the bar (10.0 ohm) is in parallel with the 10.0-ohm resistor, so
+      // R_eq = 25.0 + 5.00 = 30.0 ohm, 4.00 A leaves the battery and 2.00 A crosses the bar.
+      // F = BIL = 4.80 N on a bar of mass 2.60/9.81 = 0.265 kg: a = 18.1 m/s^2. (Directed away
+      // from the rest of the circuit: current runs down the bar, B is into the page, and
+      // (-y) x (-z) = +x.) The source asks for "the acceleration" and the key boxes the
+      // magnitude; the direction is a recommendation in the course doc, not a part.
+      {
+        id: "hw7_p10",
+        figure: "/homeworkFigures/physics2/HW7/figP27-70.png", figureWidth: 400,  // natural 542x248
+        prompt: "A $2.60\\text{-N}$ metal bar, $1.50\\text{ m}$ long and having a resistance of $10.0\\ \\Omega$, rests horizontally on conducting wires connecting it to the circuit shown in the figure. The bar is in a uniform, horizontal, $1.60\\text{-T}$ magnetic field and is not attached to the wires in the circuit. What is the acceleration of the bar just after the switch S is closed?",
+        answerType: "numeric", unit: "m/s²",
+      },
+    ],
+  },
 ];

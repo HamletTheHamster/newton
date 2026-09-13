@@ -75,6 +75,10 @@ export function sigFigsOf(raw) {
 // both get the tolerance band AND the sig-fig leniency; `sf` is the sig-fig count of what the
 // student actually typed.
 function matchValue(s, sf, a, tol) {
+  // A zero answer has no scale to be 2% of, so `tol` is applied as an ABSOLUTE band here. That
+  // is fine when the problem's other values are of order 1 or more, but a key whose nonzero
+  // answers are small in its unit (PHY 215 hw7's 0.0115 Wb fluxes) must set an explicit
+  // per-item `tolerance` below them, or a wrong nonzero entry is accepted as "zero".
   if (a === 0) return Math.abs(s) <= (tol || 1e-9);
   if (Math.abs(s - a) <= tol * Math.abs(a)) return true;
   // Sig-fig leniency: accept the true answer correctly rounded to however many sig figs

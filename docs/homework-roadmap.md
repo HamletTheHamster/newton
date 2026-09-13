@@ -418,6 +418,12 @@ The procedure:
    accepts a value within the ±2% band OR one equal to the true answer correctly rounded to the
    sig figs the student typed (≥2 sf), so an honest rounding like `17` for `16.603` is accepted
    even though it's 2.39% off — just outside the band.
+   **If the answer is exactly zero, also set `tolerance`.** A zero has no scale to be 2% of, so
+   `matchValue` matches it by an *absolute* band of width `tol`, and the default 0.02 is wider than
+   any small-unit answer in the same problem: PHY 215 `hw7`'s 27.14 has fluxes of 0.0115 Wb beside
+   two exact zeros, and without `tolerance: 1e-4` on the zeros a wrong 0.0115 Wb was accepted as
+   "zero". Pick a tolerance two orders below the problem's smallest nonzero value in that unit,
+   or express the unit so the nonzero values are of order 1 or more.
 8. **Log every key-vs-verified discrepancy** in
    [answer-key-discrepancies.md](answer-key-discrepancies.md). Any time your verified value
    differs from the instructor's source key — *even within the ±2% tolerance* — add a row
