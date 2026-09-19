@@ -117,10 +117,16 @@ export const QUIZZES_PHYSICS2 = [
       },
       {
         id: "q3_3",
+        // Q3 and Q4 share the Gauss simulation (src/components/sims/GaussSurfaceSim.jsx): a
+        // point charge with its field lines inside a closed surface the student can inflate, the
+        // charge draggable, every line crossing marked and counted, and E shown at a marker on
+        // the surface. The count is (3) and the marker is (4a) against the count (4b).
+        simulation: "gaussSurface",
         text: "A rubber balloon has a single point charge in its interior. Does the electric flux through the balloon depend on whether or not it is fully inflated? Explain your reasoning.",
       },
       {
         id: "q3_4",
+        simulation: "gaussSurface",
         // No $…$ math here: quiz question text renders as PLAIN TEXT (ChatMessages.jsx), unlike
         // homework prompts, which go through MathText. A "$q$" would reach students literally.
         text: "A spherical Gaussian surface encloses a point charge q. The point charge is now moved from the center of the sphere to a point away from the center.\n\n(a) Does the electric field at a point on the surface change? Explain.\n\n(b) Does the total flux through the Gaussian surface change? Explain.",
@@ -205,6 +211,10 @@ export const QUIZZES_PHYSICS2 = [
     questions: [
       {
         id: "q7_1",
+        // Bulbs on an ideal battery in series or in parallel, added one at a time, glowing in
+        // proportion to their power, with the battery current printed (BulbsCircuitSim): (a),
+        // (b) and (c) are all seen in the picture.
+        simulation: "bulbsCircuit",
         // The source asks the brightness half as "(i) in series and (ii) in parallel". Those are
         // relabelled (a)/(b) here — beyond reading better as separate parts, "(i)" is a single
         // lowercase letter in parens, so detectParts (utils.js) would have counted it as a THIRD
@@ -213,6 +223,9 @@ export const QUIZZES_PHYSICS2 = [
       },
       {
         id: "q7_2",
+        // q(t) for the RC circuit against a dashed reference at the default R, fixed axes, τ
+        // marked (RCCircuitSim): the plateau does not move with R (a), the approach does (b).
+        simulation: "rcCircuit",
         text: "A capacitor, a battery, and a resistor are connected in series.\n\n(a) Does the resistor affect the maximum charge stored on the capacitor? Why or why not?\n\n(b) What purpose does the resistor serve? Explain your reasoning.",
       },
     ],
@@ -228,10 +241,15 @@ export const QUIZZES_PHYSICS2 = [
     questions: [
       {
         id: "q8_1",
+        // A proton launched into a uniform B at a chosen angle, animated, with v and F drawn and
+        // speed / K / F read out (ChargeInBSim): along B there is no force and a straight line
+        // (1); across it a circle at constant speed with F always perpendicular to v (2a).
+        simulation: "chargeInB",
         text: "Can a charged particle move through a magnetic field without experiencing any force? If so, how? If not, why not?",
       },
       {
         id: "q8_2",
+        simulation: "chargeInB",
         // The source asks these as two consecutive sentences with no labels; (a)/(b) are added so
         // detectParts (utils.js) grades them separately. The source's "hoe" is corrected to "how",
         // and (b)'s "Are there other examples ...?" is reworded so it cannot be answered "yes"

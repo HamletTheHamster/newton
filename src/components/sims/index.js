@@ -1,5 +1,9 @@
 import { ParallelWiresSim } from "./ParallelWiresSim.jsx";
 import { TwistedPairSim } from "./TwistedPairSim.jsx";
+import { BulbsCircuitSim } from "./BulbsCircuitSim.jsx";
+import { RCCircuitSim } from "./RCCircuitSim.jsx";
+import { GaussSurfaceSim } from "./GaussSurfaceSim.jsx";
+import { ChargeInBSim } from "./ChargeInBSim.jsx";
 
 // Interactive simulations a quiz can carry for its whole sitting. A quiz opts in with
 // `simulation: "<id>"` on the quiz object (src/courses/*.js), and a question may name its own
@@ -11,6 +15,10 @@ import { TwistedPairSim } from "./TwistedPairSim.jsx";
 export const QUIZ_SIMULATIONS = {
   parallelWires: { title: "Two long parallel wires", Component: ParallelWiresSim },
   twistedPair: { title: "A twisted pair", Component: TwistedPairSim },
+  bulbsCircuit: { title: "Bulbs on a battery", Component: BulbsCircuitSim },
+  rcCircuit: { title: "Charging a capacitor", Component: RCCircuitSim },
+  gaussSurface: { title: "A charge inside a closed surface", Component: GaussSurfaceSim },
+  chargeInB: { title: "A charge in a magnetic field", Component: ChargeInBSim },
 };
 
 export const simulationFor = id => (id && QUIZ_SIMULATIONS[id]) || null;
