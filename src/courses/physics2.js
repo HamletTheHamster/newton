@@ -240,6 +240,31 @@ export const QUIZZES_PHYSICS2 = [
       },
     ],
   },
+  // Week 9 quiz — covers week 8 (Ch. 28): sources of magnetic field. Both free response, for the
+  // same reason as q3–q8: Q1 asks "if so, where? if not, why not?" and "explain your answer", and
+  // Q2 asks "how" twice, so the prose is the entire answer. Both are split into the labelled parts
+  // the source document already carries: Q1's three parts have three different answers (no
+  // cancellation anywhere / the far field decreases in proportion to the spacing / with parallel
+  // currents it cancels on the midline) and Q2's two are two different mechanisms (see
+  // docs/courses/phy215.md for the worked answers).
+  {
+    id: "q9",
+    title: "Quiz 9: Sources of Magnetic Field",
+    questions: [
+      {
+        id: "q9_1",
+        // The source's "oppose directions" is corrected to "opposite". The condition on the far
+        // point is the Unicode "r ≫ d" (the source's "r>>d"): quiz text renders raw, so "$r \gg d$"
+        // would reach students literally — see the note on q3_4. Part (c) names part (a), so "(a)"
+        // occurs twice; detectParts (utils.js) dedupes labels, so it still reads a/b/c.
+        text: "Two very long, straight, parallel wires are separated by a distance d and carry equal currents in opposite directions.\n\n(a) Is there any place that their magnetic fields completely cancel? If so, where? If not, why not?\n\n(b) Now consider a point a distance r from the pair, where r ≫ d, in the plane containing both wires. Does the net field there increase, decrease, or stay the same if the wires are moved closer together while the currents are held fixed? Explain your answer.\n\n(c) How would your answer to (a) change if the currents were in the same direction?",
+      },
+      {
+        id: "q9_2",
+        text: "Pairs of conductors carrying opposing current into and out of the power supply components of electronic equipment are sometimes twisted together to reduce magnetic-field effects on the surrounding circuitry.\n\n(a) How does keeping them close together help?\n\n(b) How does twisting them help?",
+      },
+    ],
+  },
 ];
 
 // ── Modules ──────────────────────────────────────────────────────────────────────────────────
