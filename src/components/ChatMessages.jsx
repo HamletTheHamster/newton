@@ -1,5 +1,42 @@
 import { useTheme } from "../theme.js";
 
+// One part of a multi-part question: its letter as a small teal label, then its text. Shared by
+// the question card (which shows part (a) under the stem) and the `part` message that poses each
+// later part.
+function PartPrompt({ label, text: partText, index, total }) {
+  const { text, teal } = useTheme();
+  return (
+    <div style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+      <span style={{ color: teal, fontSize: 12, fontWeight: 700, fontFamily: "monospace", flexShrink: 0, paddingTop: 3 }} title={`Part ${index + 1} of ${total}`}>({label})</span>
+      <p style={{ color: text, fontSize: 14, lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", userSelect: "none", flex: 1 }}>{partText}</p>
+    </div>
+  );
+}
+
+// The instructor's "show everything" preview lays the quiz out as cards with no input footer, so
+// a widget question's answer controls (its options, the word bank, the yes/no pair) would be
+// missing from the picture; this prints them read-only under the question, with the keyed answer
+// marked. Only ever rendered in that preview (`showWidget` is set by App.jsx previewMessages).
+function WidgetSummary({ q }) {
+  const { muted, teal, text } = useTheme();
+  const box = { marginTop: 12, borderTop: `1px dashed ${teal}44`, paddingTop: 10, fontSize: 13, color: muted, lineHeight: 1.7 };
+  if (q.choices) return (
+    <div style={box}>
+      {(q.options || []).map(o => <div key={o.key} style={{ color: o.key === q.correct ? text : muted }}>{o.key}. {o.label}{o.key === q.correct ? " ✓" : ""}</div>)}
+    </div>
+  );
+  if (q.yesNo) return <div style={box}>Yes / No</div>;
+  if (q.dragDrop) return (
+    <div style={box}>
+      <div>{q.displaySentence}</div>
+      <div>Word bank: {(q.wordBank || []).join(", ")}</div>
+      <div style={{ color: text }}>Answer: {(q.correctBlanks || []).join(", ")}</div>
+    </div>
+  );
+  if (q.survey) return <div style={box}>Survey: any response is accepted.</div>;
+  return null;
+}
+
 export function ChatMessages({ messages, busy = false }) {
   const { s, muted, border, teal, tealDim, text, isLight } = useTheme();
 
@@ -23,12 +60,27 @@ export function ChatMessages({ messages, busy = false }) {
             <div style={{ color: teal, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
               Question {msg.num} of {msg.total} · {msg.pts} {msg.pts === 1 ? "point" : "points"}
             </div>
-            <p style={{ color: text, fontSize: 14, lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", userSelect: "none" }}>{msg.q.text}</p>
+            {msg.split ? (
+              // A multi-part question poses its parts one at a time: the stem, then part (a) here,
+              // the rest as `part` messages below as each earlier one is settled.
+              <>
+                {msg.split.stem && <p style={{ color: text, fontSize: 14, lineHeight: 1.7, margin: "0 0 10px", whiteSpace: "pre-wrap", userSelect: "none" }}>{msg.split.stem}</p>}
+                <PartPrompt label={msg.split.parts[0].label} text={msg.split.parts[0].text} index={0} total={msg.split.parts.length} />
+              </>
+            ) : (
+              <p style={{ color: text, fontSize: 14, lineHeight: 1.7, margin: 0, whiteSpace: "pre-wrap", userSelect: "none" }}>{msg.q.text}</p>
+            )}
             {msg.q.requiresImage && (
               <div style={{ marginTop: 12, background: `${teal}18`, border: `1px solid ${teal}44`, borderRadius: 8, padding: "10px 14px", fontSize: 13, color: muted }}>
                 Drawing required. Accepted formats: {msg.q.formatLabel}.
               </div>
             )}
+            {msg.showWidget && <WidgetSummary q={msg.q} />}
+          </div>
+        );
+        if (msg.type === "part") return (
+          <div key={i} style={{ background: tealDim, border: `2px solid ${teal}44`, borderRadius: 14, padding: "14px 20px" }}>
+            <PartPrompt label={msg.label} text={msg.text} index={msg.index} total={msg.total} />
           </div>
         );
         if (msg.type === "student") return (

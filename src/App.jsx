@@ -7,9 +7,9 @@ import { flattenSubs, subsByStudentMap, submissionMergePatch, keyForSubmission }
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
   ACCEPTED_IMG,
-  dueToDate, fmtDueTime, isLate, effectiveDue, fmtDate, ptsPer, detectParts,
+  dueToDate, fmtDueTime, isLate, effectiveDue, fmtDate, ptsPer, splitParts,
   compressImage, checkImageReadability, evaluateAnswer,
-  parseRoster,
+  parseRoster, useIsMobile,
 } from "./utils.js";
 import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, defaultModulesForCourse } from "./courses/index.js";
 import { COURSE_META } from "./course-meta.js";
@@ -63,6 +63,8 @@ import { LockIcon } from "./components/lms/itemIcons.jsx";
 import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
 import { isInstructorAccount, isAuditing, instructorAccountOf, studentRoster, auditors } from "./roster-scope.js";
 import { labAssignments, labWeeksFor } from "./lab-schedule.js";
+import { simulationFor } from "./components/sims/index.js";
+import { QuizSimPanel } from "./components/sims/QuizSimPanel.jsx";
 
 // ── Grade category defaults ───────────────────────────────────────────────────
 // Manual assignment ordering: module items occupy order = modIdx*100 + itemIdx.
@@ -315,6 +317,12 @@ export default function App() {
   const [input, setInput] = useState(""); const [pendingFile, setPendingFile] = useState(null);
   const [pasteWarning, setPasteWarning] = useState(false);
   const [busy, setBusy] = useState(false); const [quizDone, setQuizDone] = useState(false); const [attemptCount, setAttemptCount] = useState(0); const [completedParts, setCompletedParts] = useState([]);
+  // True from a simulation pick on the current part until that part is settled: the runner is
+  // waiting for the justification in words, and the input says so.
+  const [awaitingJustification, setAwaitingJustification] = useState(false);
+  // Instructor preview only: show every question and part of the quiz at once instead of
+  // walking through it (see previewMessages / skipAhead).
+  const [previewAll, setPreviewAll] = useState(false);
   const [subSaveError, setSubSaveError] = useState(false); const [pendingSub, setPendingSub] = useState(null);
 
   // ── Instructor state ────────────────────────────────────────────────────────
@@ -422,9 +430,26 @@ export default function App() {
     return map;
   })();
   const currentQ = activeQuiz?.questions[qIdx];
+  // A question's own `simulation` replaces the quiz's while it is being asked (q9: the two-wire
+  // field for Q1, the twisted pair for Q2); the quiz-level one is the default for every question.
+  // Every simulation the sitting has shown so far stays on screen, in the order it appeared, so a
+  // student on Q2 can scroll back up to Q1's; `quizSim` is the one for the question being asked.
+  const activeSimId = currentQ?.simulation || activeQuiz?.simulation || null;
+  const quizSim = simulationFor(activeSimId);
+  const quizSims = (() => {
+    if (!activeQuiz) return [];
+    const ids = [];
+    const upTo = previewAll ? activeQuiz.questions.length - 1 : Math.min(qIdx, activeQuiz.questions.length - 1);
+    for (let i = 0; i <= upTo; i++) {
+      const id = activeQuiz.questions[i].simulation || activeQuiz.simulation;
+      if (id && !ids.includes(id) && simulationFor(id)) ids.push(id);
+    }
+    return ids.map(id => ({ id, ...simulationFor(id) }));
+  })();
+  const simInline = useIsMobile(1100);
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
   const isChoiceQ = !!currentQ?.choices, isSurveyQ = !!currentQ?.survey;
-  // Widget questions — anything whose answer isn't free-form prose. `detectParts` looks for
+  // Widget questions — anything whose answer isn't free-form prose. `splitParts` looks for
   // "(a) … (b) …" in the question text, which is meaningless for these.
   const isWidgetQ = isYesNoQ || isDragDropQ || isChoiceQ || isSurveyQ;
   // A survey question reuses the ordinary textarea (it just isn't graded), so it keeps autofocus.
@@ -432,7 +457,19 @@ export default function App() {
   // Multiple choice IS graded on the same 5-attempt / half-credit schedule as free response, so it
   // shows the counter; yes/no, drag-drop and survey have no attempt limit.
   const showsAttempts = !isYesNoQ && !isDragDropQ && !isSurveyQ;
-  const currentParts = currentQ && !isWidgetQ ? detectParts(currentQ.text) : null;
+  // A multi-part free-response question is posed ONE PART AT A TIME: the question card shows the
+  // stem and part (a), and each later part appears as its own card once the one before it is
+  // settled (answered, or five attempts spent). `completedParts` holds `{ label, credit }` for
+  // every settled part, so its length is the index of the part being asked now.
+  const currentSplit = currentQ && !isWidgetQ ? splitParts(currentQ.text) : null;
+  const currentPart = currentSplit ? currentSplit.parts[completedParts.length] || null : null;
+  // Whether the part being asked accepts a point on the quiz's simulation as an answer. A
+  // question opts in with `simAnswer`: an array of part labels for a split question, or `true`
+  // for a single-part one. The pick is described to the grader and always followed by a request
+  // to justify it in words (see submitSimPick), so the sim can never earn the part by itself.
+  const simAnswerable = !!quizSim && !!currentQ && !isWidgetQ && (
+    currentSplit ? Array.isArray(currentQ.simAnswer) && !!currentPart && currentQ.simAnswer.includes(currentPart.label)
+                 : currentQ.simAnswer === true);
   // "Handed in", not merely "has a record": a deadline auto-submission banks a score without
   // closing the assignment, so it must not tick the module list, drop the work off the To Do
   // rail, or make re-opening the homework launch in practice mode. See closesAssignment.
@@ -2055,21 +2092,54 @@ export default function App() {
   };
 
   // ── Quiz flow ──────────────────────────────────────────────────────────────
+  // The chat card that poses a question. A multi-part free-response question carries its split
+  // (`stem` + `parts`) so the card shows the stem and part (a) only; the later parts arrive as
+  // `part` messages as each earlier one is settled (see submitAnswer). Widget questions never
+  // split, since "(a)" in a survey or multiple-choice stem is not a part.
+  const questionMsg = (quiz, idx, id) => {
+    const q = quiz.questions[idx];
+    const widget = !!(q.yesNo || q.dragDrop || q.choices || q.survey);
+    const split = widget ? null : splitParts(q.text);
+    return { id, type: "question", q, num: idx + 1, total: quiz.questions.length, pts: ptsPer(quiz.questions.length)[idx], ...(split ? { split } : {}) };
+  };
   const advanceOrFinish = async (quiz, nScores, afterMsgs, nextIdx) => {
     if (nextIdx >= quiz.questions.length) { await finishQuiz(quiz, nScores, afterMsgs); }
     else {
       const nPts = ptsPer(quiz.questions.length);
-      setMessages([...afterMsgs, { id: Date.now() + 2, type: "question", q: quiz.questions[nextIdx], num: nextIdx + 1, total: quiz.questions.length, pts: nPts[nextIdx] }]);
-      setQIdx(nextIdx); setApiHist([]); setAttemptCount(0); setCompletedParts([]);
+      setMessages([...afterMsgs, questionMsg(quiz, nextIdx, Date.now() + 2)]);
+      setQIdx(nextIdx); setApiHist([]); setAttemptCount(0); setCompletedParts([]); setAwaitingJustification(false);
     }
   };
+  // Instructor preview: move on without answering. The current part is settled with no credit
+  // (a preview scores nothing anyway) and the next part or question is posed exactly as it would
+  // be for a student, so what the instructor sees next is what the student would see next.
+  const skipAhead = async () => {
+    if (runnerFrom !== "instructor" || busy || quizDone) return;
+    const note = { id: Date.now(), type: "tutor", text: "Skipped (instructor preview)." };
+    if (currentSplit && currentPart && completedParts.length + 1 < currentSplit.parts.length) {
+      const settled = [...completedParts, { label: currentPart.label, credit: 0 }];
+      const next = currentSplit.parts[settled.length];
+      setCompletedParts(settled); setAttemptCount(0); setAwaitingJustification(false);
+      setMessages([...messages, note, { id: Date.now() + 1, type: "part", label: next.label, text: next.text, index: settled.length, total: currentSplit.parts.length }]);
+      return;
+    }
+    await advanceOrFinish(activeQuiz, qScores, [...messages, note], qIdx + 1);
+  };
+  // Instructor preview's "show everything": the whole quiz laid out as the cards a student would
+  // meet, every question with every part, built from the same questionMsg / part shapes the
+  // walk-through uses so the two cannot differ.
+  const previewMessages = quiz => quiz.questions.flatMap((q, i) => {
+    const qm = { ...questionMsg(quiz, i, 1000 + i * 100), showWidget: true };
+    const parts = qm.split ? qm.split.parts.slice(1).map((p, j) => ({ id: 1000 + i * 100 + j + 1, type: "part", label: p.label, text: p.text, index: j + 1, total: qm.split.parts.length })) : [];
+    return [qm, ...parts];
+  });
   // `from` is "student" or "instructor" (a Modules-editor preview). An instructor preview is
   // FORCED to practice regardless of the caller, since there is no student to save a run for —
   // finishQuiz's submission path reads loggedInStudent, which is null on the instructor side.
   const startQuiz = (quiz, isPractice = false, from = "student") => {
     const preview = from === "instructor";
     setRunnerFrom(from);
-    setPracticeMode(isPractice || preview); setActiveQuiz(quiz); setQIdx(0); setApiHist([]); setAttemptCount(0); setCompletedParts([]);
+    setPracticeMode(isPractice || preview); setActiveQuiz(quiz); setQIdx(0); setApiHist([]); setAttemptCount(0); setCompletedParts([]); setAwaitingJustification(false); setPreviewAll(false);
     setQScores(new Array(quiz.questions.length).fill(null));
     setQuizDone(false); setInput(""); setPendingFile(null); setBusy(false); setShowLeaveConfirm(false); setSubSaveError(false); setPendingSub(null);
     // The chat opens straight on question 1. There used to be a leading `system` message repeating
@@ -2079,9 +2149,7 @@ export default function App() {
     // (mirroring HomeworkRunner, which already reported "past due" there rather than in the body).
     // ChatMessages KEEPS its `system` branch: submissions saved before this change still carry one
     // in their stored dialogue, and the gradebook re-renders those.
-    setMessages([
-      { id: 1, type: "question", q: quiz.questions[0], num: 1, total: quiz.questions.length, pts: ptsPer(quiz.questions.length)[0] },
-    ]);
+    setMessages([questionMsg(quiz, 0, 1)]);
     setScreen("quiz");
     history.pushState({ newton: "quiz" }, "", "");
   };
@@ -2237,6 +2305,33 @@ export default function App() {
     }
     setBusy(false);
   };
+  // A point picked on the quiz's simulation, offered as the answer to the current part. It goes
+  // to the grader like a typed answer, described in full (the point means nothing without the
+  // settings it was found under), but it is NOT an attempt: it cannot complete the part and it
+  // costs nothing. The grader is told to judge the point and ask for the reasoning in words,
+  // and the input then asks for that justification, which is graded as an ordinary attempt with
+  // the pick in the exchange's history.
+  const submitSimPick = async pick => {
+    if (busy || !simAnswerable || !pick?.summary) return;
+    setBusy(true);
+    const q = activeQuiz.questions[qIdx];
+    const partCtx = currentSplit && currentPart
+      ? { label: currentPart.label, text: currentPart.text, index: completedParts.length, total: currentSplit.parts.length, stem: currentSplit.stem, full: q.text }
+      : null;
+    const ans = "Picked a point on the simulation: " + pick.summary;
+    const newMsgs = [...messages, { id: Date.now(), type: "student", text: ans }];
+    setMessages(newMsgs);
+    try {
+      const result = await evaluateAnswer(q.text, pick.summary, apiHist, null, 0, partCtx, classMeta?.courseType || "physics1", true);
+      const qLine = partCtx ? "Physics Question (full): " + q.text + "\n\nThe student is now answering part (" + partCtx.label + "): " + partCtx.text : "Physics Question: " + q.text;
+      setApiHist([...apiHist, { role: "user", content: qLine + "\n\nStudent Answer (a point picked on the simulation): " + pick.summary }, { role: "assistant", content: JSON.stringify(result) }]);
+      setAwaitingJustification(true);
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }]);
+    } catch (err) {
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: "⚠️ " + (err?.message || "Error evaluating your answer.") + " Please try again." }]);
+    }
+    setBusy(false);
+  };
   const submitAnswer = async () => {
     if (busy) return;
     if (isImageQ && !pendingFile && !input.trim()) return;
@@ -2244,35 +2339,43 @@ export default function App() {
     const ans = input.trim(), imgData = pendingFile?.base64 || null, previewUrl = pendingFile?.previewUrl || null;
     setInput(""); clearFile(); setBusy(true);
     const q = activeQuiz.questions[qIdx], pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
-    const parts = currentParts;
     const currentAttempt = attemptCount + 1;
     setAttemptCount(currentAttempt);
     const newMsgs = [...messages, { id: Date.now(), type: "student", text: ans || null, imageUrl: previewUrl }];
     setMessages(newMsgs);
     try {
-      const result = await evaluateAnswer(q.text, ans, apiHist, imgData, currentAttempt, parts, completedParts, classMeta?.courseType || "physics1");
-      const histUser = imgData ? "Physics Question: " + q.text + "\n\n[Student submitted a drawing" + (ans ? ". Note: " + ans : "") + "]" : "Physics Question: " + q.text + "\n\nStudent Answer: " + ans;
+      const partCtx = currentSplit && currentPart
+        ? { label: currentPart.label, text: currentPart.text, index: completedParts.length, total: currentSplit.parts.length, stem: currentSplit.stem, full: q.text }
+        : null;
+      const result = await evaluateAnswer(q.text, ans, apiHist, imgData, currentAttempt, partCtx, classMeta?.courseType || "physics1");
+      const qLine = partCtx ? "Physics Question (full): " + q.text + "\n\nThe student is now answering part (" + partCtx.label + "): " + partCtx.text : "Physics Question: " + q.text;
+      const histUser = imgData ? qLine + "\n\n[Student submitted a drawing" + (ans ? ". Note: " + ans : "") + "]" : qLine + "\n\nStudent Answer: " + ans;
       setApiHist([...apiHist, { role: "user", content: histUser }, { role: "assistant", content: JSON.stringify(result) }]);
-      if (parts) {
-        const newlyCompleted = Array.isArray(result.newlyCompleted) ? result.newlyCompleted.filter(p => parts.includes(p) && !completedParts.includes(p)) : [];
-        const updatedCompleted = [...completedParts, ...newlyCompleted];
-        const perPart = qPts / parts.length;
-        const priorScore = qScores[qIdx] || 0;
-        if (updatedCompleted.length >= parts.length) {
-          const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
-          await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: "✅ " + result.message, correct: true }], qIdx + 1);
-        } else if (newlyCompleted.length > 0) {
-          const earned = parseFloat((priorScore + newlyCompleted.length * perPart).toFixed(2));
+      if (partCtx) {
+        // Settle THIS part only: full credit when correct, half after the fifth miss (the grader
+        // has told them the answer by then), otherwise another try. A settled part is followed by
+        // the next part's card, or by the next question once every part is settled. The
+        // question's score is the sum of its parts' credits, so a half-credit part costs exactly
+        // its own share and nothing of the parts answered outright.
+        const perPart = qPts / currentSplit.parts.length;
+        const settle = async (credit, tutorText, correct) => {
+          const settled = [...completedParts, { label: partCtx.label, credit }];
+          const earned = parseFloat((settled.reduce((a, p) => a + p.credit, 0) * perPart).toFixed(2));
           const nScores = [...qScores]; nScores[qIdx] = earned; setQScores(nScores);
-          setCompletedParts(updatedCompleted);
+          const tutorMsg = { id: Date.now() + 1, type: "tutor", text: tutorText, correct };
+          if (settled.length >= currentSplit.parts.length) {
+            await advanceOrFinish(activeQuiz, nScores, [...newMsgs, tutorMsg], qIdx + 1);
+            return;
+          }
+          const next = currentSplit.parts[settled.length];
+          setCompletedParts(settled);
           setAttemptCount(0);
-          setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: "✅ " + result.message, correct: true }]);
-        } else if (currentAttempt >= 5) {
-          const remaining = parts.length - completedParts.length;
-          const earned = parseFloat((priorScore + remaining * perPart / 2).toFixed(2));
-          const nScores = [...qScores]; nScores[qIdx] = earned; setQScores(nScores);
-          await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }], qIdx + 1);
-        } else { setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }]); }
+          setAwaitingJustification(false);
+          setMessages([...newMsgs, tutorMsg, { id: Date.now() + 2, type: "part", label: next.label, text: next.text, index: settled.length, total: currentSplit.parts.length }]);
+        };
+        if (result.status === "correct") await settle(1, "✅ " + result.message, true);
+        else if (currentAttempt >= 5) await settle(0.5, result.message, false);
+        else setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }]);
       } else if (result.status === "correct") {
         const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
         await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: "✅ " + result.message, correct: true }], qIdx + 1);
@@ -2608,6 +2711,10 @@ export default function App() {
   }
 
   if (screen === "quiz") {
+    // The sim offers its pinned point as an answer only while the part being asked accepts one
+    // and nothing is in flight; a second pick before the justification is still allowed, since
+    // a student may want to correct their point.
+    const simOnAnswer = simAnswerable && !busy && !quizDone && !previewAll ? submitSimPick : null;
     // eslint-disable-next-line no-shadow
     const s = appTh.s; const MUTED = appTh.muted; const BORDER = appTh.border; const CARD = appTh.card; const text = appTh.text;
     const solidBg = appTh.isLight ? "#fff" : "#252627";
@@ -2648,17 +2755,30 @@ export default function App() {
             title={lightMode ? "Switch to dark mode" : "Switch to light mode"}
             style={{ background: "transparent", border: "none", cursor: "pointer", padding: "4px 8px", color: MUTED, fontSize: 16, lineHeight: 1 }}
           >{lightMode ? "☀" : "☽"}</button>
-          {!quizDone && (
+          {runnerFrom === "instructor" && !quizDone && (
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setPreviewAll(v => !v)} style={{ ...s.btnGhost, padding: "6px 10px", width: "auto", fontSize: 12, color: previewAll ? TEAL : MUTED, borderColor: previewAll ? TEAL : BORDER }}>{previewAll ? "Walk through" : "Show everything"}</button>
+              {!previewAll && <button onClick={skipAhead} disabled={busy} style={{ ...s.btnGhost, padding: "6px 10px", width: "auto", fontSize: 12, opacity: busy ? 0.5 : 1 }}>{currentPart && completedParts.length + 1 < currentSplit.parts.length ? "Skip part →" : qIdx + 1 < activeQuiz.questions.length ? "Skip question →" : "Skip to results →"}</button>}
+            </div>
+          )}
+          {!quizDone && previewAll && <div style={{ ...s.muted, fontFamily: "monospace" }}>All {activeQuiz?.questions.length} questions</div>}
+          {!quizDone && !previewAll && (
             <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
               <div style={{ ...s.muted, fontFamily: "monospace" }}>Q{qIdx + 1}/{activeQuiz?.questions.length}</div>
-              {currentParts && completedParts.length > 0 && <div style={{ color: TEAL, fontFamily: "monospace", fontSize: 11 }}>Part{completedParts.length > 1 ? "s" : ""} {completedParts.join(", ")} done · {currentParts.filter(p => !completedParts.includes(p)).join(", ")} remaining</div>}
+              {currentPart && <div style={{ color: TEAL, fontFamily: "monospace", fontSize: 11 }}>Part ({currentPart.label}) of {currentSplit.parts.length}</div>}
               {showsAttempts && <div style={{ ...s.muted, fontFamily: "monospace", fontSize: 11 }}>{Math.max(0, 5 - attemptCount)} attempt{Math.max(0, 5 - attemptCount) !== 1 ? "s" : ""} left</div>}
             </div>
           )}
         </div>
       </div>
-      <div ref={chatRef} style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-        <ChatMessages messages={messages} busy={busy} />
+      {/* A quiz with a `simulation` keeps it on screen for the whole sitting: beside the chat on a
+          wide screen, folded into the top of the chat column on a narrow one. The chat column's
+          scroll element stays `chatRef` either way, so auto-scroll is unchanged. */}
+      <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
+      <div ref={chatRef} style={{ flex: 1, minWidth: 0, overflowY: "auto", padding: "20px 16px", boxSizing: "border-box" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto" }}>
+        {quizSims.length > 0 && simInline && <QuizSimPanel sims={quizSims} activeId={activeSimId} layout="inline" onAnswer={simOnAnswer} />}
+        <ChatMessages messages={previewAll && !quizDone ? previewMessages(activeQuiz) : messages} busy={busy} />
         {quizDone && subSaveError && (
           <div style={{ background: "rgba(248,113,113,0.12)", border: "1px solid rgba(248,113,113,0.4)", borderRadius: 12, padding: "16px 20px", marginTop: 8, display: "flex", flexDirection: "column", gap: 10 }}>
             <p style={{ color: "#f87171", fontWeight: 700, fontSize: 14, margin: 0 }}>⚠️ Your submission could not be saved</p>
@@ -2668,7 +2788,10 @@ export default function App() {
         )}
         {quizDone && <button onClick={() => setScreen(runnerReturnScreen)} style={{ ...s.btnPri, marginTop: 8 }}>{runnerBackLabel}</button>}
       </div>
-      {!quizDone && (
+      </div>
+      {quizSims.length > 0 && !simInline && <QuizSimPanel sims={quizSims} activeId={activeSimId} layout="aside" onAnswer={simOnAnswer} />}
+      </div>
+      {!quizDone && !previewAll && (
         <div style={{ background: CARD, borderTop: `1px solid ${BORDER}`, padding: 16, flexShrink: 0 }}>
           <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
             {isYesNoQ ? (
@@ -2709,7 +2832,7 @@ export default function App() {
                     <textarea
                       ref={inputRef}
                       style={{ ...s.input, resize: "none", lineHeight: 1.5 }}
-                      placeholder={isImageQ ? "Upload your drawing above, and optionally add a note…" : isSurveyQ ? "Type your response… (Enter to submit, Shift+Enter for new line)" : "Type your answer… (Enter to submit, Shift+Enter for new line)"}
+                      placeholder={isImageQ ? "Upload your drawing above, and optionally add a note…" : isSurveyQ ? "Type your response… (Enter to submit, Shift+Enter for new line)" : awaitingJustification ? "Now justify that point in words… (Enter to submit, Shift+Enter for new line)" : "Type your answer… (Enter to submit, Shift+Enter for new line)"}
                       value={input}
                       onChange={e => setInput(e.target.value)}
                       rows={2}

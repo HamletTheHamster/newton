@@ -50,6 +50,33 @@ export const detectParts = text => {
   return labels.length >= 2 ? labels : null;
 };
 
+// Split a multi-part quiz question into the shared stem and one entry per part, so the quiz
+// runner can pose the parts ONE AT A TIME (each graded on its own). Parts are cut at the FIRST
+// occurrence of each label in `detectParts` order; a later mention of an earlier label ("how
+// would your answer to (a) change") therefore stays inside the part that mentions it. Text
+// before "(a)" is the stem, which may be empty. A part written inline in a list ("(b) the force
+// does negative work, and (c) ...") loses its trailing ", and" so it reads as its own prompt.
+//   { stem: "Two wires ...", parts: [{ label: "a", text: "Is there ..." }, ...] } | null
+export const splitParts = text => {
+  const labels = detectParts(text);
+  if (!labels) return null;
+  const cuts = [];
+  let from = 0;
+  for (const l of labels) {
+    const at = text.indexOf("(" + l + ")", from);
+    if (at < 0) return null;
+    cuts.push({ label: l, at });
+    from = at + 3;
+  }
+  const clean = t => t.replace(/[\s,;]*\band\s*$/i, "").replace(/^[\s,;:]+|[\s,;]+$/g, "").trim();
+  const stem = clean(text.slice(0, cuts[0].at));
+  const parts = cuts.map((c, i) => ({
+    label: c.label,
+    text: clean(text.slice(c.at + 3, i + 1 < cuts.length ? cuts[i + 1].at : text.length)),
+  }));
+  return { stem, parts };
+};
+
 // ── Image compression ────────────────────────────────────────────────────────
 export function compressImage(file, maxPx = 1200, quality = 0.8) {
   return new Promise((res, rej) => {
@@ -93,23 +120,34 @@ export async function checkImageReadability(imgData) {
   try { return JSON.parse(text.replace(/```json\n?|```/g, "").trim()); } catch { return { readable: true }; }
 }
 
-export async function evaluateAnswer(question, answer, history, imageData, attemptNum = 1, parts = null, completedParts = [], courseType = "physics1") {
-  const remaining = parts ? parts.filter(p => !completedParts.includes(p)) : null;
+// Grade one free-response quiz answer. `part` is null for a single-part question; for a
+// multi-part question it is `{ label, text, index, total, stem, full }` for the ONE part being
+// asked right now (the runner poses parts sequentially, see App.jsx `submitAnswer`), and the
+// grader is told to evaluate only that part. The full question rides along as context so a part
+// like "how would your answer to (a) change" can be judged against what (a) asked; `history` is
+// the per-question exchange, so what the student said for earlier parts is in view too.
+// `simPick` marks an answer given by clicking a point on the quiz's simulation instead of in
+// words (`answer` is then the runner's description of the point and the settings it was picked
+// under). A pick never completes a part: the grader is told to judge the point and always ask
+// for the justification in words, which is the message graded next.
+export async function evaluateAnswer(question, answer, history, imageData, attemptNum = 1, part = null, courseType = "physics1", simPick = false) {
   const courseLabel = courseLabelFor(courseType);
   let system;
-  if (remaining && remaining.length > 0) {
-    const doneStr = completedParts.length > 0 ? "(" + completedParts.join("), (") + ")" : "none yet";
-    const remStr = "(" + remaining.join("), (") + ")";
-    const partsStr = "(" + parts.join("), (") + ")";
-    system = "You are an encouraging " + courseLabel + " tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nThis is a MULTI-PART question with parts " + partsStr + ". The student has already correctly answered: " + doneStr + ". Still needed: " + remStr + ".\n\nEvaluate ONLY the parts the student EXPLICITLY addresses in their latest answer. Do NOT mark a part as complete unless the student clearly addressed it — do not infer or assume completion from related reasoning. Do not re-evaluate parts already complete.\n\nFor each remaining part the student attempted, decide whether their reasoning demonstrates conceptual understanding (informal wording is fine, but the core physics must be accurate and the key idea present).\n\nReply ONLY with valid JSON, exactly one of these forms:\n- All remaining parts now correctly addressed: {\"status\":\"correct\",\"newlyCompleted\":[\"a\",...],\"message\":\"1-2 sentences confirming what they got across all parts\"}\n- Some new parts correct, others still needed: {\"status\":\"partial\",\"newlyCompleted\":[\"a\"],\"message\":\"Acknowledge by letter what they got, then prompt by letter for the remaining part(s)\"}\n- No new parts correctly addressed (wrong, vague, or didn't address remaining parts): {\"status\":\"incorrect\",\"newlyCompleted\":[],\"message\":\"One focused Socratic question targeting the gap on the part(s) they attempted\"}";
+  if (part) {
+    const done = part.index > 0 ? " Parts " + Array.from({ length: part.index }, (_, i) => "(" + String.fromCharCode(97 + i) + ")").join(", ") + " are already answered and graded; do not re-evaluate them." : "";
+    system = "You are an encouraging " + courseLabel + " tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nThis is a MULTI-PART question. The parts are posed ONE AT A TIME, and the student is currently answering ONLY part (" + part.label + ") of " + part.total + "." + done + " The full question is shown for context; evaluate the student's latest answer against part (" + part.label + ") alone, and do not hold them to anything a later part asks.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea of part (" + part.label + "). Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
   } else {
     system = "You are an encouraging " + courseLabel + " tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
   }
+  if (simPick) system += "\n\nThe student has just answered by clicking a point on the interactive simulation beside the quiz instead of writing (their message describes the point and the simulation's settings when they picked it). A picked point can NEVER complete this part on its own, because the part asks for reasoning. Reply with status \"incorrect\" regardless. In the message: if the point and the settings it was picked under match what the part asks, say so warmly in one sentence and ask them to justify in their own words WHY the field behaves that way there; if the settings do not match the case the part asks about, or the point is not what the part asks for, say what you see at that point (a number they can check on the plot) and ask one Socratic question that steers them, without giving the location. Do not count this against them.";
   if (attemptNum === 4) system += "\n\nThis is the student's 4th attempt on the current part(s). Give a more direct hint — point clearly toward the key concept without stating the full answer. They have one more try after this.";
   if (attemptNum >= 5) system += "\n\nThis is the student's final (5th) attempt on the current part(s). If still incorrect, kindly tell them the correct answer directly and encourage them to review the concept before moving on.";
+  const qText = part
+    ? "Physics Question (full): " + question + "\n\nThe student is now answering part (" + part.label + "): " + part.text
+    : "Physics Question: " + question;
   const userContent = imageData
-    ? [{ type: "text", text: "Physics Question: " + question + "\n\nThe student submitted a drawing." + (answer ? "\nNote: " + answer : "") }, { type: "image", source: { type: "base64", media_type: imageData.type, data: imageData.data } }]
-    : "Physics Question: " + question + "\n\nStudent Answer: " + answer;
+    ? [{ type: "text", text: qText + "\n\nThe student submitted a drawing." + (answer ? "\nNote: " + answer : "") }, { type: "image", source: { type: "base64", media_type: imageData.type, data: imageData.data } }]
+    : qText + (simPick ? "\n\nStudent Answer (a point picked on the simulation): " : "\n\nStudent Answer: ") + answer;
   const res = await fetch("/.netlify/functions/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

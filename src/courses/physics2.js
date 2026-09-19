@@ -242,25 +242,49 @@ export const QUIZZES_PHYSICS2 = [
   },
   // Week 9 quiz — covers week 8 (Ch. 28): sources of magnetic field. Both free response, for the
   // same reason as q3–q8: Q1 asks "if so, where? if not, why not?" and "explain your answer", and
-  // Q2 asks "how" twice, so the prose is the entire answer. Both are split into the labelled parts
-  // the source document already carries: Q1's three parts have three different answers (no
-  // cancellation anywhere / the far field decreases in proportion to the spacing / with parallel
-  // currents it cancels on the midline) and Q2's two are two different mechanisms (see
-  // docs/courses/phy215.md for the worked answers).
+  // Q2 asks "how" twice, so the prose is the entire answer. Both are split into labelled parts,
+  // which the runner poses ONE AT A TIME (splitParts, utils.js): Q1's three parts have three
+  // different answers (with parallel currents it cancels on the midline / with opposed currents
+  // nowhere / the opposed pair's far field decreases in proportion to the spacing) and Q2's two
+  // are two different mechanisms (see docs/courses/phy215.md for the worked answers).
+  //
+  // The quiz carries the two-wire SIMULATION (src/components/sims/ParallelWiresSim.jsx) for its
+  // whole sitting: adjustable I1, I2 (magnitude and into/out of the page) and d, with the net
+  // field along the line through the wires plotted live, so the student can find the answers by
+  // playing rather than by recall. Q1's parts were reordered (2026-09-19) so the sitting starts
+  // from the same-direction case the simulation opens on most naturally, then flips the current.
   {
     id: "q9",
     title: "Quiz 9: Sources of Magnetic Field",
+    simulation: "parallelWires",
     questions: [
       {
         id: "q9_1",
-        // The source's "oppose directions" is corrected to "opposite". The condition on the far
+        // Deliberately NO `simAnswer`: parts (a) and (b) ask where, so a point on the plot could
+        // answer them (the runner supports it, see App.jsx submitSimPick), but the instructor's
+        // call (2026-09-19) is that this quiz is answered in words with the sim as a discovery
+        // tool beside it. Add `simAnswer: ["a", "b"]` to turn the plot into an input.
+        // The source's parts run (a) opposite currents: any cancellation? (b) the far point,
+        // r ≫ d, as d shrinks; (c) how (a) changes with parallel currents. Reordered here to
+        // (a) parallel currents, (b) how that changes with opposite currents, (c) the far point,
+        // and re-lettered. Since the source stem fixed the currents as opposite, the stem now
+        // ends at "equal currents" and each part names its own case; (c) says "again in opposite
+        // directions" because the source's far-point question is about the opposed pair. The
+        // source's "oppose directions" is corrected to "opposite". The condition on the far
         // point is the Unicode "r ≫ d" (the source's "r>>d"): quiz text renders raw, so "$r \gg d$"
-        // would reach students literally — see the note on q3_4. Part (c) names part (a), so "(a)"
-        // occurs twice; detectParts (utils.js) dedupes labels, so it still reads a/b/c.
-        text: "Two very long, straight, parallel wires are separated by a distance d and carry equal currents in opposite directions.\n\n(a) Is there any place that their magnetic fields completely cancel? If so, where? If not, why not?\n\n(b) Now consider a point a distance r from the pair, where r ≫ d, in the plane containing both wires. Does the net field there increase, decrease, or stay the same if the wires are moved closer together while the currents are held fixed? Explain your answer.\n\n(c) How would your answer to (a) change if the currents were in the same direction?",
+        // would reach students literally — see the note on q3_4. Part (b) names part (a), so "(a)"
+        // occurs twice; splitParts cuts at the FIRST occurrence of each label, so it still reads
+        // a/b/c with the mention staying inside (b).
+        text: "Two very long, straight, parallel wires are separated by a distance d and carry equal currents.\n\n(a) If the currents are in the same direction, is there any place that their magnetic fields completely cancel? If so, where? Explain your answer. If not, why not?\n\n(b) How would your answer to (a) change if the currents were in opposite directions?\n\n(c) Now consider a point a distance r from the pair, where r ≫ d, in the plane containing both wires, with the currents again in opposite directions. Does the net field there increase, decrease, or stay the same if the wires are moved closer together while the currents are held fixed? Explain your answer.",
       },
       {
         id: "q9_2",
+        // Q2 swaps the sim for the twisted pair (src/components/sims/TwistedPairSim.jsx): the
+        // same two wires, now twisted N half-turns over 40 cm, drawn as the chain of alternating
+        // current-loop dipoles the twist makes of them, with the field beside the pair against
+        // distance for one wire / the straight pair / the twisted pair. (a) is the d slider,
+        // (b) is the N slider.
+        simulation: "twistedPair",
         text: "Pairs of conductors carrying opposing current into and out of the power supply components of electronic equipment are sometimes twisted together to reduce magnetic-field effects on the surrounding circuitry.\n\n(a) How does keeping them close together help?\n\n(b) How does twisting them help?",
       },
     ],
