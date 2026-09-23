@@ -14,6 +14,12 @@ eq("no override keeps the class date", effectiveDue("2026-09-01", undefined), "2
 eq("override with no dueDate keeps the class date", effectiveDue("2026-09-01", { score: 8 }), "2026-09-01");
 eq("an extension wins", effectiveDue("2026-09-01", { dueDate: "2026-09-15T17:00" }), "2026-09-15T17:00");
 eq("an extension works with no class date", effectiveDue(null, { dueDate: "2026-09-15T17:00" }), "2026-09-15T17:00");
+// Both call shapes have to mean the same thing. Passing the override's dueDate alone is how the
+// gradebook, the student grades list and the score matrix have always called it, and taking only
+// the object made those calls quietly ignore every extension they were given.
+eq("the extension may be passed on its own", effectiveDue("2026-09-01", "2026-09-15T17:00"), "2026-09-15T17:00");
+eq("an empty string is not an extension", effectiveDue("2026-09-01", ""), "2026-09-01");
+eq("null override keeps the class date", effectiveDue("2026-09-01", null), "2026-09-01");
 
 // The picker's "T" form must be read in Eastern, like every other due date.
 const spaceForm = dueToDate("2026-09-15 17:00");

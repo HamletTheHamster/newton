@@ -166,13 +166,17 @@ exercise column creation.
 
 - **A created column arrives at 100 points** (Ultra), not Newton's 10. The upload format has no
   points field; `[Total Pts: …]` is written on download and ignored inbound. Fix it in Blackboard
-  (Gradebook → Gradable Items → ⋯ → Edit → points), which is the house route, or turn on
-  `scaleToColumn`. Not a Newton bug.
+  (Gradebook → Gradable Items → ⋯ → Edit → points) — scores always upload raw. Not a Newton bug.
 - **An assignment nobody has a grade in does not appear** after upload. Ultra only creates a column
   that has at least one grade in it, so Newton holds those back deliberately and lists them under
   "waiting on a first grade". Not a dropped column.
-- **Excused work uploads blank.** A grade upload cannot set Blackboard's exempt flag. Mark those
-  exempt in Blackboard by hand.
+- **Excused work uploads blank.** A grade upload cannot set Blackboard's exempt flag, and a cell
+  exempted in Ultra downloads with its score unchanged, so the format carries it in neither
+  direction. Step 3 of the modal lists every cell to exempt by hand, with what Blackboard held in
+  it at the last import.
+- **A past-due assignment with nothing handed in uploads as `0`, not blank.** That is deliberate:
+  Blackboard drops a blank cell out of the denominator, so a blank would raise the Blackboard
+  grade above Newton's by exactly the work a student missed.
 
 ### If you need a fixture
 

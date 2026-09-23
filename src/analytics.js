@@ -36,13 +36,24 @@ import { closesAssignment } from "./auto-submit.js";
 //                                          zeroed. `base` is the score the instructor actually
 //                                          entered, kept so the cell can show it struck through
 //                                          beside the enforced 0 rather than discarding it.
+//   zeroMap[studentId][assignmentId]    → true when the empty cell is a RECORDED ZERO: past due,
+//                                          nothing handed in, not excused (`isRecordedZero`).
+//                                          `scoreMap` deliberately leaves it undefined — the two
+//                                          are not the same fact, and `countsTowardGrade` needs
+//                                          to tell "no score" from "a zero" — but the arithmetic
+//                                          has always used a 0 here, so every EXPORT has to write
+//                                          that 0 out rather than a blank. A blank sent to
+//                                          Blackboard is not a zero there: with "points earned
+//                                          out of total graded points" it drops out of the
+//                                          denominator, and the missing work quietly RAISES the
+//                                          grade instead of matching Newton's.
 //
 // A flag never withholds credit on its own: the submission counts at full credit until the
 // instructor upholds the flag, at which point `resolveScore` applies the 50% penalty. A deadline
 // auto-submission is the deliberate opposite — it counts for nothing until its written work is
 // handed in, because handing in the written work is what makes a homework count at all.
-export function buildScoreMatrix({ roster, assignments, submissions, gradeOverrides, attendance }) {
-  const scoreMap = {}, excusedMap = {}, flaggedMap = {}, absentMap = {}, pendingMap = {};
+export function buildScoreMatrix({ roster, assignments, submissions, gradeOverrides, attendance, now = new Date() }) {
+  const scoreMap = {}, excusedMap = {}, flaggedMap = {}, absentMap = {}, pendingMap = {}, zeroMap = {};
   const absenceMap = buildAbsenceMap(attendance);
   const overrides = gradeOverrides || {};
 
@@ -55,19 +66,24 @@ export function buildScoreMatrix({ roster, assignments, submissions, gradeOverri
 
   for (const stu of (roster || [])) {
     const sid = stu.studentId;
-    scoreMap[sid] = {}; excusedMap[sid] = {}; flaggedMap[sid] = {}; absentMap[sid] = {}; pendingMap[sid] = {};
+    scoreMap[sid] = {}; excusedMap[sid] = {}; flaggedMap[sid] = {}; absentMap[sid] = {}; pendingMap[sid] = {}; zeroMap[sid] = {};
     for (const a of (assignments || [])) {
       const ov = (overrides[sid] || {})[a.id];
       const sub = subsByStudent[sid]?.[a.id];
-      const r = resolveScore(sub, ov, attendanceFor(absenceMap, sid, a.id), effectiveDue(a.dueDate, ov?.dueDate));
+      // The deadline THIS student is working to, so an extension un-zeroes the cell by itself.
+      const due = effectiveDue(a.dueDate, ov?.dueDate);
+      const r = resolveScore(sub, ov, attendanceFor(absenceMap, sid, a.id), due);
       if (r.excused) { excusedMap[sid][a.id] = true; continue; }
       if (r.flagged) flaggedMap[sid][a.id] = true;
       if (r.workPending) pendingMap[sid][a.id] = { base: r.base };
       if (r.absentZero) absentMap[sid][a.id] = { date: absenceMap[sid][a.id], base: r.base };
+      if (r.effective == null && isRecordedZero({ ...a, dueDate: due }, {
+        hasScore: false, isExcused: false, hasSubmission: !!sub, now,
+      })) zeroMap[sid][a.id] = true;
       scoreMap[sid][a.id] = r.effective;
     }
   }
-  return { scoreMap, excusedMap, flaggedMap, absentMap, pendingMap, subsByStudent };
+  return { scoreMap, excusedMap, flaggedMap, absentMap, pendingMap, zeroMap, subsByStudent };
 }
 
 // Does this assignment count toward the student's grade yet?

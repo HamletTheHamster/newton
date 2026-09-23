@@ -6,7 +6,7 @@
 // whatever the code happened to return.
 //
 // Plain node, no framework and no dependencies, in keeping with the repo having no test runner.
-import { buildItemAnalysis, buildFunnel, buildActivityByDay, pearson, lastActiveMap, timeOnTaskMap, countsTowardGrade, isRecordedZero } from "./analytics.js";
+import { buildItemAnalysis, buildFunnel, buildActivityByDay, pearson, lastActiveMap, timeOnTaskMap, countsTowardGrade, isRecordedZero, buildScoreMatrix } from "./analytics.js";
 import { effectiveDue } from "./utils.js";
 let fails = 0;
 const eq = (l, g, w) => { const ok = JSON.stringify(g) === JSON.stringify(w); if (!ok) { fails++; console.log(`FAIL ${l}: got ${JSON.stringify(g)} want ${JSON.stringify(w)}`); } else console.log(`ok   ${l}`); };
@@ -382,6 +382,33 @@ eq("time on task sums every assignment", timeOnTaskMap({
   // must not print a number, or the rows would explain a total they are not part of.
   eq("it never fires where the assignment does not count yet",
     [past, future, exam].every(a => !z(a) || countsTowardGrade(a, { hasScore: false, isExcused: false, hasSubmission: false, now: NOW })), true);
+
+  // The same rule, per cell, off the shared matrix — so the gradebook grid, the CSV and the
+  // Blackboard upload all print one zero rather than three opinions about a blank.
+  {
+    const roster = [{ studentId: "s1" }];
+    const asg = [past, future, exam, { id: "q4", type: "quiz", dueDate: "2026-09-01", maxPts: 10 }];
+    const m = buildScoreMatrix({
+      roster, assignments: asg, submissions: [{ studentId: "s1", quizId: "q4", score: 7 }],
+      gradeOverrides: {}, attendance: {}, now: NOW,
+    });
+    eq("the matrix flags the past-due blank", m.zeroMap.s1.q1, true);
+    eq("and leaves a deadline still ahead alone", m.zeroMap.s1.q2, undefined);
+    eq("and never zeroes an unmarked exam", m.zeroMap.s1.asgn_midterm, undefined);
+    eq("and never a cell that has a score", m.zeroMap.s1.q4, undefined);
+    eq("a zeroed cell still has no SCORE — the two facts stay apart", m.scoreMap.s1.q1, null);
+    // An extension un-zeroes the cell with nothing to undo, which is why this is derived.
+    const ext = buildScoreMatrix({
+      roster, assignments: asg, submissions: [],
+      gradeOverrides: { s1: { q1: { dueDate: "2026-12-01" } } }, attendance: {}, now: NOW,
+    });
+    eq("an extension still running is not a zero in the matrix either", ext.zeroMap.s1.q1, undefined);
+    const exc = buildScoreMatrix({
+      roster, assignments: asg, submissions: [],
+      gradeOverrides: { s1: { q1: { excused: true } } }, attendance: {}, now: NOW,
+    });
+    eq("an excused cell is never a recorded zero", exc.zeroMap.s1.q1, undefined);
+  }
 }
 
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall passed");

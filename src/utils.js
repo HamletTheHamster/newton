@@ -37,7 +37,23 @@ export const isLate = due => due && new Date() > dueToDate(due);
 // replaces the assignment's own. Without this the extension was display-only: it showed in the
 // gradebook panel but every late check still read the assignment's date, so an extended student
 // was still scored at half credit and still told their work was past due.
-export const effectiveDue = (due, override) => (override && override.dueDate) || due || null;
+// The deadline as it applies to ONE student: a per-student extension
+// (`gradeOverrides[sid][aid].dueDate`) replaces the assignment's class date. Resolved in one
+// place so an extension reaches every consumer — the late penalty, on-time credit, the recorded
+// zero, the To Do rail and the calendar — from a single edit.
+//
+// `override` is taken EITHER as the whole override object or as its `dueDate` alone, because it
+// has always been called both ways and one of them silently did nothing: `"2026-12-01".dueDate`
+// is undefined, so `effectiveDue(classDate, ov.dueDate)` fell back to the class date and threw
+// the extension away. Seven of the ten call sites were written that way — the gradebook's
+// Overall, the student's own grades list and the score matrix among them — so an extension was
+// honored where the student submits but ignored everywhere a grade is read back, which marked a
+// zero against exactly the student who had been granted more time. Accepting both shapes fixes
+// all of them at once and leaves nothing to get wrong at the eleventh call site.
+export const effectiveDue = (due, override) => {
+  const ext = typeof override === "string" ? override : (override && override.dueDate);
+  return ext || due || null;
+};
 export const fmtDate = ts => new Date(ts).toLocaleString();
 
 export const ptsPer = n => {

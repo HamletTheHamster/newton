@@ -434,6 +434,24 @@ land there without being retyped. `src/blackboard.js` is the whole interchange (
 env-agnostic, like `category-colors.js`), covered by `node src/blackboard.test.mjs`; the UI is
 `BlackboardModal` in `Gradebook.jsx`, behind the header's **Blackboard** button.
 
+### What Blackboard has to be told by hand
+
+Newton uploads **cells, never rules.** Everything that turns cells into an Overall Grade lives in
+Blackboard's own settings and has to be set there to match Newton's categories, or the two
+gradebooks disagree while every individual cell agrees:
+
+| Newton | Set in Blackboard (Overall Grade → Calculation Details) |
+|---|---|
+| Category weights: Laboratory 20, Homework 20, Quiz 10, Midterm 20, Final 30 (`App.jsx`, `DEFAULT_GRADE_CATEGORIES`) | Weighted calculation, same percentages, items weighed **proportionally** |
+| `dropLowest: 1` on Laboratory, Homework and Quiz | *Edit calculation rules* on each of those three categories → drop the lowest 1 grade |
+| A category with no graded work is left out and the rest renormalize (`calcGrades`) | Blackboard does this already |
+
+**The drop rules are the one that bites.** On 2026-09-23 every Blackboard overall sat below
+Newton's — Rossi 82.24% against 98.36%, Hashim 67.49% against 79.74% — with all 14 shared columns
+agreeing for all 18 students. Blackboard was keeping every zero that Newton drops. Adding the
+three drop rules made all 18 overalls match to the second decimal. When the two totals disagree
+and the cells do not, it is a calculation rule, not a grade.
+
 ### Why a "link" step exists at all
 
 Blackboard's own advice is to download the current Grade Center and upload that same shape back,
@@ -489,31 +507,60 @@ column id.
 The full cycle, verified end-to-end in the tests: upload → Blackboard creates the columns → set
 their points → download → import → linked forever.
 
-### Points mismatches, and `scaleToColumn`
+### Points mismatches
 
 Because a created column lands at Blackboard's default (100) while Newton's quizzes, homework and
-labs are out of 10, a raw 8 would read as **8%** there. Two ways out, and the modal offers the
-choice at the point where it reports the mismatch:
+labs are out of 10, a raw 8 reads as **8%** there until the column's points are fixed. There is
+one way out, and it is a Blackboard edit: Gradebook → Gradable Items → the item's ⋯ menu → Edit →
+points → Save. Two clicks per column, once, forever. The modal's mismatch panel is the **punch
+list**: after every upload-and-re-import it names exactly which columns still have the wrong
+points total, and it empties itself as they are fixed.
 
-- **Fix the points in Blackboard** (Gradebook → Gradable Items → the item's ⋯ menu → Edit →
-  points → Save). The raw marks then match Newton exactly. One edit per column, forever.
-- **`scaleToColumn`** — upload 80 instead of 8 into a /100 column, so the percentage feeding the
-  Overall Grade is right with no column editing at all. Off by default: silently rescaling grades
-  is not something to do without being asked.
+**Scores always upload raw.** There used to be a `scaleToColumn` option that sent 80 instead of 8
+into a /100 column so the percentage came out right untouched. It was **removed on 2026-09-23**,
+after it went wrong in the live PHY 215 gradebook, and it should not come back. The reason is
+structural: the scale factor can only be taken from a points total Blackboard itself reported on
+a download, so a column created by this very upload has unknown points and must go up raw. Mix
+the two in one category — one linked /100 column and one column Blackboard has not been
+downloaded since creating — and **some** of the category's assignments are multiplied by ten and
+some are not, which inside a category means one assignment silently counts ten times another.
+Uniform raw upload is wrong in a way that is visible in one glance at the column header and
+fixable in two clicks; a partial rescale is wrong in a way that looks right, and unwinding it is
+a per-cell edit for every student.
 
-**The house route is the first one.** PHY 215 Fall 26 matches points possible by hand in
-Blackboard as each column appears, so the raw marks read identically on both platforms and
-`scaleToColumn` stays off. That makes the modal's mismatch panel a **punch list**: after every
-upload-and-re-import it names exactly which Blackboard columns still have the wrong points total,
-and it empties itself as they are fixed. Don't suggest turning scaling on to clear it — clearing
-it is the point.
+### Exemptions: the one thing that cannot be uploaded
 
-Three rules keep scaling honest. The factor is only ever taken from a points total **Blackboard
-itself reported on a download** — a column being created this very upload has unknown points and
-is sent raw, because assuming "it'll be 100" would multiply every grade by ten the day that
-default changes. A column reporting 0 points is not treated as a scale (it would divide the grades
-away). And scaling **stops on its own** once the two agree, so fixing a column in Blackboard and
-re-importing quietly returns that assignment to raw marks.
+Blackboard's exempt flag is a property of the **cell**, not a grade, and the file format carries
+it in neither direction. Verified on 2026-09-23: a cell was exempted by hand in Ultra and the
+Grade Center downloaded again — the cell came back holding its original score, byte for byte
+unchanged. There is therefore nothing Newton can write that means "exempt": a blank leaves
+whatever Blackboard already holds, and a number is a grade.
+
+So an excused cell uploads **blank**, and `pendingExemptions` (blackboard.js) produces the punch
+list instead: every excused, linked cell, named by student and column, **with the value Blackboard
+held at the last import**. That last part is what makes it worth reading — a stale score sitting
+under an exemption Newton granted is invisible in Blackboard, where it reads as an ordinary
+grade. It is how PHY 215's Lab 3b was found excused in Newton and still `0.00` in Blackboard. The
+list is shown in step 3 of the Blackboard modal, right above the download button.
+
+The value snapshot rides on the saved link as `link.values` (`{ [studentId]: { [bbId]: "9.25" } }`)
+and is **replaced** by each import rather than merged: it is what Blackboard held at
+`importedAt`, and merging an older file into it would describe a Blackboard that never existed.
+
+### Recorded zeros upload as real zeros
+
+A past-due assignment with nothing handed in has no entry in `scoreMap` — Newton keeps "no score"
+and "a zero" deliberately apart, because `countsTowardGrade` needs the difference — but the grade
+arithmetic has always counted it as a zero (`earned += score ?? 0`). `buildScoreMatrix` therefore
+also returns **`zeroMap`**, the same `isRecordedZero` rule applied per cell, and every export
+writes that 0 out: `0` in the Blackboard upload, `0` in the CSV, matching the `0` the gradebook
+cell and the student's own grades row already print.
+
+Sending a blank instead is not the same thing as sending a zero. With Blackboard's **"Calculate
+grades based on points earned out of total graded points"** ticked, a blank cell drops out of the
+denominator entirely, so missing work would *raise* the Blackboard grade while lowering the
+Newton one — the two gradebooks would disagree by exactly the work a student failed to do, and in
+the student's favour.
 
 ### What the export deliberately leaves out
 

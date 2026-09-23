@@ -7,8 +7,8 @@ import { SubViewModal } from "../../components/SubmissionView.jsx";
 import { newId } from "../../courses/ids.js";
 import { categoryColor } from "../../category-colors.js";
 import { formatSessionDate } from "../../attendance.js";
-import { buildScoreMatrix, countsTowardGrade, isRecordedZero } from "../../analytics.js";
-import { readBlackboardExport, mergeImport, pairColumn, buildBlackboardCsv, isCalculatedColumn, gradebookFilename } from "../../blackboard.js";
+import { buildScoreMatrix, countsTowardGrade } from "../../analytics.js";
+import { readBlackboardExport, mergeImport, pairColumn, buildBlackboardCsv, pendingExemptions, isCalculatedColumn, gradebookFilename } from "../../blackboard.js";
 
 // ── Shared helpers ────────────────────────────────────────────────────────────
 function catColor(catId) { return categoryColor(catId, TEAL); }
@@ -636,7 +636,7 @@ function BulkScoreModal({ assignment, students, scoreMap, excusedMap, onClose, o
 // column is LEFT OUT of the upload instead of being invented: a header without a column id makes
 // Blackboard create a zero-point text column that can't feed a calculated total, and undoing 37
 // of those inside Blackboard is far worse than being told which ones to make first.
-function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard, onSave, courseCode, onClose }) {
+function BlackboardModal({ roster, assignments, scoreMap, excusedMap, zeroMap, blackboard, onSave, courseCode, onClose }) {
   const { s, muted, border, text, teal, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const solidBg = isLight ? "#fff" : "#252627";
@@ -648,10 +648,6 @@ function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard
   const [dirty, setDirty] = useState(false);
   // Default ON: hand-creating a column per assignment is the thing this is meant to avoid.
   const [createMissing, setCreateMissing] = useState(true);
-  // Default OFF, and it stays off for PHY 215: the instructor matches points possible by hand in
-  // Blackboard so the raw marks read identically on both platforms. Scaling is the fallback for
-  // anyone who would rather not, not the house route.
-  const [scaleToColumn, setScaleToColumn] = useState(false);
 
   const columns = link.columns || [];
   const map = link.map || {};
@@ -700,7 +696,12 @@ function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard
 
   // Built on every render so the counts under the toggle are the real contents of the file the
   // button would download, not a second estimate that could disagree with it.
-  const preview = buildBlackboardCsv({ roster, assignments, link, scoreMap, excusedMap, createMissing, scaleToColumn });
+  const preview = buildBlackboardCsv({ roster, assignments, link, scoreMap, excusedMap, zeroMap, createMissing });
+  // Cells Newton has excused, which Blackboard's own file format cannot be told about — the one
+  // thing about this upload that stays manual. Listed with what Blackboard held at the last
+  // import, since a stale score under an exemption looks like an ordinary grade over there.
+  const exemptions = pendingExemptions({ roster, assignments, link, excusedMap });
+  const exemptionsToClear = exemptions.filter(x => x.bbShows !== "" && x.bbShows !== undefined);
 
   const handleDownload = async () => {
     if (dirty) await handleSave();
@@ -785,15 +786,9 @@ function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard
                   <p style={{ color: text, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
                     Points differ on {preview.pointMismatches.length} matched assignment{preview.pointMismatches.length > 1 ? "s" : ""}: {preview.pointMismatches.map(m => `${m.assignment.title} is /${m.assignment.maxPts} here and /${m.col.points} in Blackboard`).join("; ")}.
                   </p>
-                  <label style={{ display: "flex", gap: 10, alignItems: "flex-start", cursor: "pointer", marginTop: 8 }}>
-                    <input type="checkbox" checked={scaleToColumn} onChange={e => setScaleToColumn(e.target.checked)} style={{ marginTop: 2, accentColor: teal, cursor: "pointer" }} />
-                    <span style={{ fontSize: 12.5, lineHeight: 1.5, color: text }}>
-                      Scale the scores to match Blackboard's points
-                      <span style={{ display: "block", color: muted, marginTop: 3 }}>
-                        An 8/10 uploads as 80 into a column Blackboard made worth 100, so the percentage behind the Overall Grade is right without editing the column. Leave this off if you would rather the raw marks match Newton, and set each column's points in Blackboard instead. Either way the numbers agree again the moment the points do.
-                      </span>
-                    </span>
-                  </label>
+                  <p style={{ color: muted, fontSize: 12.5, lineHeight: 1.5, margin: "6px 0 0" }}>
+                    Scores always upload as the marks you see here, so set each column's points total in Blackboard to match. Until you do, that column's share of its category is wrong in Blackboard alone.
+                  </p>
                 </div>
               )}
               {unusedColumns.length > 0 && (
@@ -817,7 +812,7 @@ function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard
               {/* Step 3 — download */}
               <h4 style={{ color: text, fontWeight: 700, fontSize: 14, margin: "18px 0 6px" }}>3. Download and upload it</h4>
               <p style={{ color: muted, fontSize: 13, lineHeight: 1.5, margin: "0 0 10px" }}>
-                In Blackboard, go to Grade Center, then Work Offline, then Upload, and choose the file this button saves. Excused assignments are left blank, since a grade upload cannot set Blackboard's exempt flag; mark those exempt in Blackboard by hand.
+                In Blackboard, go to Grade Center, then Work Offline, then Upload, and choose the file this button saves.
               </p>
               <div style={{ display: "flex", gap: 14, flexWrap: "wrap", fontSize: 12.5, color: muted, marginBottom: 10 }}>
                 <span>{preview.studentCount} of {roster.length} students</span>
@@ -829,10 +824,32 @@ function BlackboardModal({ roster, assignments, scoreMap, excusedMap, blackboard
                   Blackboard will create: {preview.created.map(a => a.title).join(", ")}. Set each one's points total in Blackboard afterwards, then download and import the Grade Center again so they link for next time.
                 </p>
               )}
-              {preview.scaled.length > 0 && (
-                <p style={{ color: teal, fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
-                  Scaled to Blackboard's points: {preview.scaled.map(x => `${x.assignment.title} (/${x.assignment.maxPts} to /${x.col.points})`).join(", ")}.
-                </p>
+              {/* The one part of this upload that cannot be automated. Blackboard's exempt flag
+                  is a property of the cell, absent from both directions of the file format, so
+                  the file leaves an excused cell blank and a blank changes nothing over there.
+                  Listing what Blackboard still shows is the point: a leftover score under an
+                  exemption is invisible in Blackboard, where it reads as an ordinary grade. */}
+              {exemptions.length > 0 && (
+                <div style={{ border: "1px solid #facc1555", background: "#facc1512", borderRadius: 8, padding: "10px 12px", margin: "0 0 10px" }}>
+                  <p style={{ color: text, fontSize: 12.5, lineHeight: 1.5, margin: 0 }}>
+                    Exempt {exemptions.length === 1 ? "this cell" : `these ${exemptions.length} cells`} in Blackboard by hand, after the upload. A grade upload cannot set Blackboard's exempt flag, so Newton leaves the cell blank and Blackboard keeps whatever it already holds.
+                  </p>
+                  <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+                    {exemptions.map(x => (
+                      <li key={`${x.studentId}|${x.assignmentId}`} style={{ color: muted, fontSize: 12.5, lineHeight: 1.6 }}>
+                        {x.studentName} <span style={{ color: text }}>{x.column.title}</span>
+                        {x.bbShows === undefined ? " (not in the last import)"
+                          : x.bbShows === "" ? " (already empty in Blackboard)"
+                          : <span style={{ color: "#facc15" }}> (Blackboard shows {x.bbShows})</span>}
+                      </li>
+                    ))}
+                  </ul>
+                  {exemptionsToClear.length > 0 && link.importedAt && (
+                    <p style={{ color: muted, fontSize: 11.5, lineHeight: 1.5, margin: "8px 0 0" }}>
+                      Blackboard's values are as of the import on {new Date(link.importedAt).toLocaleDateString()}.
+                    </p>
+                  )}
+                </div>
               )}
               {preview.skippedEmpty.length > 0 && (
                 <p style={{ color: muted, fontSize: 12.5, lineHeight: 1.5, margin: "0 0 10px" }}>
@@ -983,7 +1000,7 @@ export function Gradebook({
   // `buildScoreMatrix` (analytics.js) so the gradebook grid and the Analytics tab's correlations
   // are computed from ONE derivation and cannot drift. See that file for the map shapes and the
   // rule that an integrity flag never withholds credit until the instructor upholds it.
-  const { scoreMap, excusedMap, flaggedMap, absentMap, pendingMap, subsByStudent } = buildScoreMatrix({
+  const { scoreMap, excusedMap, flaggedMap, absentMap, pendingMap, zeroMap, subsByStudent } = buildScoreMatrix({
     roster, assignments, submissions, gradeOverrides, attendance,
   });
 
@@ -1251,9 +1268,12 @@ export function Gradebook({
       ["Student", ...assignments.map(a => `${a.title} (/${a.maxPts})`), "Overall %"],
       ...sorted.map(stu => [
         stu.altName || stu.fullName,
+        // A recorded zero prints as 0, exactly as the cell on screen does and exactly as the
+        // Overall column has always counted it. A blank here means no grade yet, nothing more.
         ...assignments.map(a =>
           excusedMap[stu.studentId]?.[a.id] ? "EX"
           : scoreMap[stu.studentId]?.[a.id] != null ? scoreMap[stu.studentId][a.id]
+          : zeroMap[stu.studentId]?.[a.id] ? 0
           : ""
         ),
         overallGrades[stu.studentId]?.overall != null
@@ -1268,7 +1288,7 @@ export function Gradebook({
   // Blackboard upload file. The shape rules and the reasons behind them live in
   // src/blackboard.js; this only gathers the inputs and hands the result to the browser.
   const exportBlackboard = () => {
-    const res = buildBlackboardCsv({ roster, assignments, link: blackboard || {}, scoreMap, excusedMap });
+    const res = buildBlackboardCsv({ roster, assignments, link: blackboard || {}, scoreMap, excusedMap, zeroMap });
     download(gradebookFilename(courseCode, "blackboard"), res.csv);
     return res;
   };
@@ -1328,7 +1348,7 @@ export function Gradebook({
         {filterBar}
         <div style={{ ...s.card, padding: 40, textAlign: "center", color: muted }}>No students enrolled in this class yet.</div>
         {showSettings && <GradeSettingsModal gradeCategories={gradeCategories} onSave={onSaveGradeCategories} onClose={() => setShowSettings(false)} />}
-        {showBlackboard && <BlackboardModal roster={roster || []} assignments={assignments} scoreMap={scoreMap} excusedMap={excusedMap} blackboard={blackboard} onSave={onSaveBlackboardLink} courseCode={courseCode} onClose={() => setShowBlackboard(false)} />}
+        {showBlackboard && <BlackboardModal roster={roster || []} assignments={assignments} scoreMap={scoreMap} excusedMap={excusedMap} zeroMap={zeroMap} blackboard={blackboard} onSave={onSaveBlackboardLink} courseCode={courseCode} onClose={() => setShowBlackboard(false)} />}
       </div>
     );
   }
@@ -1515,18 +1535,10 @@ export function Gradebook({
                     // in the arithmetic; printing an em dash made the grade look unexplained. The
                     // rule is shared with the student's own grades list (analytics.js) so the two
                     // cannot say different things about the same blank cell, and it is derived,
-                    // never stored - granting an extension un-zeroes the cell by itself.
-                    const isZeroed = isMissing && isRecordedZero({
-                      ...a,
-                      // The deadline this student is working to, not the class's - an extension
-                      // must not be overwritten by a zero while it is still running.
-                      dueDate: effectiveDue(a.dueDate, (gradeOverrides?.[stu.studentId] || {})[a.id]?.dueDate),
-                    }, {
-                      hasScore: false,
-                      isExcused,
-                      hasSubmission: !!subsByStudent[stu.studentId]?.[a.id],
-                      now,
-                    });
+                    // never stored - granting an extension un-zeroes the cell by itself. It comes
+                    // off `buildScoreMatrix` so this cell, the CSV and the Blackboard upload all
+                    // print the same zero.
+                    const isZeroed = isMissing && !!zeroMap[stu.studentId]?.[a.id];
                     const isEditing = editingCell?.studentId === stu.studentId && editingCell?.assignmentId === a.id;
 
                     if (isEditing) {

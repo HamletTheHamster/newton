@@ -17,9 +17,18 @@
 //      DEFAULT points total, which will not be the one you wanted — Ultra creates it worth 100,
 //      Original creates a 0-point text column that can't feed a calculated total at all. The
 //      upload format carries no points field (the `[Total Pts: …]` part of a header is written on
-//      download and ignored on upload), so this cannot be set from here; either fix the column in
-//      Blackboard or use `scaleToColumn` below. Verified against Ultra on 2026-09-02: a column
-//      created by upload came back at 100 points.
+//      download and ignored on upload), so this cannot be set from here: the column's points are
+//      fixed in Blackboard, where it is two clicks per column. Verified against Ultra on
+//      2026-09-02: a column created by upload came back at 100 points.
+//
+//      SCORES ALWAYS GO UP RAW. There was once a `scaleToColumn` option that multiplied a grade
+//      into a mismatched column's scale (8/10 → 80 in a /100 column). It was removed on
+//      2026-09-23 because it can only ever scale SOME columns: the factor is available only
+//      where Blackboard has reported that column's points on a download, so a category holding
+//      one linked /100 column and one column Blackboard has not been downloaded since creating
+//      came out with one assignment counting ten times the other — inside a category, which is
+//      exactly where it is least visible. A uniform raw upload is wrong in a way that is
+//      obvious and fixable in two clicks; a partial rescale is wrong in a way that looks right.
 //
 // Both facts live only in a Blackboard download, which is why the flow is: import the download
 // once (`readBlackboardExport`) to learn usernames + column ids, then export against that link
@@ -146,21 +155,24 @@ export function normalizeTitle(title) {
 // and a wrong pairing would post one student's grades under another's name.
 export function readBlackboardExport(text, roster = []) {
   const rows = parseCsv(text);
-  if (!rows.length) return { columns: [], links: [], unmatchedStudents: [], unmatchedRows: [], error: "The file is empty." };
+  if (!rows.length) return { columns: [], links: [], values: {}, unmatchedStudents: [], unmatchedRows: [], error: "The file is empty." };
 
   const headers = rows[0].map(h => h.trim());
   const idx = name => headers.findIndex(h => h.toLowerCase() === name);
   const userIdx = idx("username");
   if (userIdx < 0) {
-    return { columns: [], links: [], unmatchedStudents: [], unmatchedRows: [], error: "No \"Username\" column found. Export the FULL Grade Center from Blackboard (Work Offline > Download), not a single column." };
+    return { columns: [], links: [], values: {}, unmatchedStudents: [], unmatchedRows: [], error: "No \"Username\" column found. Export the FULL Grade Center from Blackboard (Work Offline > Download), not a single column." };
   }
   const lastIdx = idx("last name"), firstIdx = idx("first name"), sidIdx = idx("student id");
 
-  const columns = [];
-  headers.forEach(h => {
+  // Columns, and where each one's values sit in a row — the position is kept so the grades can
+  // be read too. They are not used to grade anything: they are how `pendingExemptions` can say
+  // what Blackboard still holds in a cell Newton has excused.
+  const columns = [], colAt = [];
+  headers.forEach((h, i) => {
     if (IDENTITY_HEADERS.has(h.toLowerCase())) return;
     const col = parseColumnHeader(h);
-    if (col) columns.push(col);
+    if (col) { columns.push(col); colAt.push([i, col.bbId]); }
   });
 
   // Roster lookups. A student ID may be stored with or without its leading zeros depending on
@@ -173,7 +185,7 @@ export function readBlackboardExport(text, roster = []) {
     byName.set(nameKey(stu.firstName, stu.lastName), stu);
   }
 
-  const links = [], unmatchedRows = [], claimed = new Set();
+  const links = [], unmatchedRows = [], claimed = new Set(), values = {};
   for (const row of rows.slice(1)) {
     const username = String(row[userIdx] || "").trim();
     if (!username) continue;
@@ -184,12 +196,15 @@ export function readBlackboardExport(text, roster = []) {
     if (stu && !claimed.has(stu.studentId)) {
       claimed.add(stu.studentId);
       links.push({ studentId: stu.studentId, username, bbName: `${first} ${last}`.trim(), studentId_bb: sid });
+      const cells = {};
+      for (const [i, bbId] of colAt) cells[bbId] = String(row[i] ?? "").trim();
+      values[stu.studentId] = cells;
     } else {
       unmatchedRows.push({ username, name: `${first} ${last}`.trim(), studentId: sid });
     }
   }
   const unmatchedStudents = (roster || []).filter(stu => !claimed.has(stu.studentId));
-  return { columns, links, unmatchedStudents, unmatchedRows, error: null };
+  return { columns, links, values, unmatchedStudents, unmatchedRows, error: null };
 }
 
 // Suggest a Newton-assignment → Blackboard-column pairing by normalized title. Calculated
@@ -229,8 +244,11 @@ export function mergeImport(prev, result, assignments = [], sourceFile = "", now
   );
   const usernames = { ...((prev && prev.usernames) || {}) };
   for (const l of result.links) usernames[l.studentId] = l.username;
+  // Values are REPLACED, not merged, unlike everything else here. They are a snapshot of what
+  // Blackboard held at `importedAt` and are only ever read beside that timestamp; merging an
+  // older file's cells in would produce a grid that was never true of Blackboard at any moment.
   return {
-    link: { columns: result.columns, map: { ...kept, ...fresh }, usernames, importedAt: now.toISOString(), sourceFile },
+    link: { columns: result.columns, map: { ...kept, ...fresh }, usernames, values: result.values || {}, importedAt: now.toISOString(), sourceFile },
     newlyMatched: Object.keys(fresh).length,
     keptMatches: Object.keys(kept).length,
   };
@@ -255,52 +273,58 @@ export function formatScore(n) {
   return String(Math.round(Number(n) * 100) / 100);
 }
 
-// scoreMap / excusedMap are the shared [studentId][assignmentId] grids from analytics.js, so an
-// exported value is the same effective score the gradebook cell and the student's grades list
-// show — one derivation, no third opinion.
+// scoreMap / excusedMap / zeroMap are the shared [studentId][assignmentId] grids from
+// analytics.js, so an exported value is the same effective score the gradebook cell and the
+// student's grades list show — one derivation, no third opinion.
+//
+// A RECORDED ZERO (`zeroMap`: past due, nothing handed in) exports as a real `0`. It has no
+// entry in `scoreMap` — Newton keeps "no score" and "a zero" apart on purpose — but Newton's own
+// arithmetic has always counted it as a zero, and a blank cell does not mean zero to Blackboard:
+// under "points earned out of total graded points" a blank drops out of the denominator, so
+// missing work would RAISE the Blackboard grade while lowering the Newton one. The 0 is what
+// makes the two agree.
 //
 // An EXCUSED assignment exports as an empty cell. Blackboard's exempt flag is a per-cell
-// property that a grade upload cannot set, so the honest options are "blank" or "a number that
-// isn't true"; blank it is, and the caller is told to exempt those cells in Blackboard by hand.
-export function buildBlackboardCsv({ roster = [], assignments = [], link = {}, scoreMap = {}, excusedMap = {}, createMissing = false, scaleToColumn = false }) {
+// property that a grade upload cannot set — verified on 2026-09-23 by exempting a cell in Ultra
+// and downloading the Grade Center again: the cell came back holding its score, byte for byte
+// unchanged, so the format has no channel for it in either direction. The honest options are
+// "blank" or "a number that isn't true"; blank it is, and `pendingExemptions` gives the caller
+// the list to exempt in Blackboard by hand.
+export function buildBlackboardCsv({ roster = [], assignments = [], link = {}, scoreMap = {}, excusedMap = {}, zeroMap = {}, createMissing = false }) {
   const columns = link.columns || [];
   const map = link.map || {};
   const usernames = link.usernames || {};
   const byBbId = new Map(columns.map(c => [c.bbId, c]));
 
+  // "Has anything to upload" includes a recorded zero: a zero IS a grade, and an assignment the
+  // whole class has missed is exactly the one whose column needs creating.
   const anyScore = a => (roster || []).some(stu =>
-    usernames[stu.studentId] && !excusedMap[stu.studentId]?.[a.id] && scoreMap[stu.studentId]?.[a.id] != null);
+    usernames[stu.studentId] && !excusedMap[stu.studentId]?.[a.id]
+    && (scoreMap[stu.studentId]?.[a.id] != null || zeroMap[stu.studentId]?.[a.id]));
 
   // Three fates for an assignment.
   //  · LINKED   — routes into an existing Blackboard column via its id. Always exported.
   //  · CREATED  — no column yet, and `createMissing` is on: exported under its bare title so
   //               Blackboard creates the column. It arrives at Blackboard's DEFAULT points total
   //               (Ultra: 100; Original: a 0-point text column), never Newton's, because the
-  //               upload format has no points field. Scores go up RAW here — the column's real
-  //               points are unknowable until the next download, and guessing "it'll be 100"
-  //               would multiply every grade by ten the day that default changes.
+  //               upload format has no points field. Set the column's points in Blackboard
+  //               afterwards; `pointMismatches` is the punch list for that.
   //  · EMPTY    — no column yet and nobody has a score. Blackboard only creates a column if at
   //               least one student has a grade in it, so exporting this one would do nothing
   //               while looking like it did. Held back and reported instead of quietly ignored.
-  const exported = [], skippedAssignments = [], created = [], skippedEmpty = [], pointMismatches = [], scaled = [];
+  const exported = [], skippedAssignments = [], created = [], skippedEmpty = [], pointMismatches = [];
   for (const a of assignments) {
     const col = byBbId.get(map[a.id]);
     if (col) {
-      const mismatch = col.points != null && Number(col.points) > 0 && Number(col.points) !== Number(a.maxPts);
-      if (mismatch) pointMismatches.push({ assignment: a, col });
-      // `scale` converts Newton's raw points into the linked column's scale, so an 8/10 quiz
-      // lands as 80 in a column Blackboard created at 100 and the PERCENTAGE — which is what
-      // feeds the Overall Grade — comes out right without anyone editing the column. The factor
-      // is only ever taken from a points total Blackboard itself reported on a download; a
-      // column Newton has not seen the points of is never scaled by a guess.
-      const scale = scaleToColumn && mismatch && Number(a.maxPts) > 0 ? Number(col.points) / Number(a.maxPts) : 1;
-      exported.push({ assignment: a, col, header: formatColumnHeader(col), scale });
-      if (scale !== 1) scaled.push({ assignment: a, col, scale });
+      if (col.points != null && Number(col.points) > 0 && Number(col.points) !== Number(a.maxPts)) {
+        pointMismatches.push({ assignment: a, col });
+      }
+      exported.push({ assignment: a, col, header: formatColumnHeader(col) });
     } else if (!createMissing) {
       skippedAssignments.push(a);
     } else if (anyScore(a)) {
       created.push(a);
-      exported.push({ assignment: a, col: null, header: newColumnHeader(a), scale: 1 });
+      exported.push({ assignment: a, col: null, header: newColumnHeader(a) });
     } else {
       skippedEmpty.push(a);
     }
@@ -315,10 +339,11 @@ export function buildBlackboardCsv({ roster = [], assignments = [], link = {}, s
   const header = ["Last Name", "First Name", "Username", "Student ID", ...exported.map(e => e.header)];
   const body = withUser.map(stu => [
     stu.lastName || "", stu.firstName || "", usernames[stu.studentId], stu.studentId || "",
-    ...exported.map(({ assignment, scale }) => {
+    ...exported.map(({ assignment }) => {
       if (excusedMap[stu.studentId]?.[assignment.id]) return "";
       const raw = scoreMap[stu.studentId]?.[assignment.id];
-      return raw == null ? "" : formatScore(Number(raw) * scale);
+      if (raw != null) return formatScore(Number(raw));
+      return zeroMap[stu.studentId]?.[assignment.id] ? "0" : "";
     }),
   ]);
 
@@ -332,8 +357,54 @@ export function buildBlackboardCsv({ roster = [], assignments = [], link = {}, s
     skippedEmpty,
     skippedStudents,
     pointMismatches,
-    scaled,
   };
+}
+
+// ── Exemptions ───────────────────────────────────────────────────────────────
+// The cells Newton has excused that the instructor still has to exempt IN Blackboard, by hand.
+//
+// This list exists because the exemption cannot be written. Blackboard's exempt flag is a
+// per-cell property of the gradebook, not a grade: it is absent from the download (a cell
+// exempted in Ultra downloads with its score unchanged — tested) and therefore has no spelling
+// in the upload, which is the same format read the other way. Nothing Newton can put in a cell
+// means "exempt": a blank leaves whatever Blackboard already holds, and a number is a grade.
+//
+// So the honest deliverable is the punch list, and what makes it worth having is the second
+// column: `bbShows`, the value that cell held in the last imported download. A stale score
+// sitting under an exemption Newton granted is invisible in Blackboard — it looks like an
+// ordinary grade — and it is the exact failure this is here to catch (PHY 215, Lab 3b: excused
+// in Newton on 2026-09-23, still 0.00 in Blackboard).
+//
+// Only LINKED assignments are listed. An unlinked one has no Blackboard column to exempt in, and
+// an excused cell is never what causes a column to be created.
+export function pendingExemptions({ roster = [], assignments = [], link = {}, excusedMap = {} }) {
+  const map = link.map || {};
+  const usernames = link.usernames || {};
+  const values = link.values || {};
+  const byBbId = new Map((link.columns || []).map(c => [c.bbId, c]));
+  const out = [];
+  for (const stu of roster) {
+    if (!usernames[stu.studentId]) continue;
+    for (const a of assignments) {
+      if (!excusedMap[stu.studentId]?.[a.id]) continue;
+      const bbId = map[a.id];
+      const col = bbId ? byBbId.get(bbId) : null;
+      if (!col) continue;
+      const shown = values[stu.studentId]?.[bbId];
+      out.push({
+        studentId: stu.studentId,
+        studentName: stu.fullName || `${stu.firstName || ""} ${stu.lastName || ""}`.trim(),
+        assignmentId: a.id,
+        assignmentTitle: a.title,
+        column: col,
+        // The value Blackboard held at the last import: a number still to be cleared by
+        // exempting, "" for a cell that was already empty, or undefined when this pairing was
+        // not in that download (nothing is claimed about it).
+        bbShows: shown === undefined ? undefined : shown,
+      });
+    }
+  }
+  return out;
 }
 
 // ── Filenames ────────────────────────────────────────────────────────────────

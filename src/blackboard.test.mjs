@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   parseCsv, toCsv, parseColumnHeader, formatColumnHeader, isCalculatedColumn,
   normalizeTitle, readBlackboardExport, suggestColumnMap, buildBlackboardCsv,
-  mergeImport, pairColumn, newColumnHeader,
+  mergeImport, pairColumn, newColumnHeader, pendingExemptions,
   formatScore, timeStamp, gradebookFilename,
 } from "./blackboard.js";
 
@@ -408,70 +408,118 @@ test("a created column re-links by name on the NEXT import, with no hand-pairing
   assert.deepEqual(out.created, []);
 });
 
-// ── Scaling to the Blackboard column's points ────────────────────────────────
-// Blackboard creates an uploaded column at ITS default points total (Ultra: 100), and the upload
-// format has no field to say otherwise. Scaling is the alternative to editing every column by
-// hand: send 80 into a /100 column for an 8/10 quiz so the percentage feeding the Overall Grade
-// is right either way.
-function scaleFixture() {
+// ── Recorded zeros ───────────────────────────────────────────────────────────
+// A past-due assignment with nothing handed in has no entry in `scoreMap` — Newton keeps "no
+// score" and "a zero" apart — but the grade arithmetic has always counted it as a zero. Sending
+// a blank to Blackboard is NOT sending a zero: under "points earned out of total graded points"
+// a blank leaves the item out of the denominator, so the missing work would RAISE the Blackboard
+// grade while lowering the Newton one, and the two gradebooks would disagree by exactly the work
+// a student failed to do.
+test("a recorded zero uploads as a real 0, not a blank", () => {
   const f = fixture();
-  // Blackboard created "Quiz 1" at 100 points; Newton grades it out of 10.
-  f.link = { ...f.link, columns: f.link.columns.map(c => c.bbId === "1281892" ? { ...c, points: 100 } : c) };
-  return f;
+  f.zeroMap = { "0433673": { hw1: true } };          // Gnandt: past due, nothing handed in
+  const rows = parseCsv(buildBlackboardCsv(f).csv).slice(1);
+  assert.equal(rows[1][5], "0");
+});
+
+test("an excused cell stays blank even if it is also past due", () => {
+  const f = fixture();
+  f.zeroMap = { "0433673": { lab_1a: true, hw1: true } };
+  const rows = parseCsv(buildBlackboardCsv(f).csv).slice(1);
+  assert.equal(rows[1][6], "", "excused outranks the zero — a blank is the only honest cell");
+});
+
+test("a real score always outranks a zero flag", () => {
+  const f = fixture();
+  f.zeroMap = { "0442474": { q1: true } };
+  assert.equal(parseCsv(buildBlackboardCsv(f).csv)[1][4], "10");
+});
+
+test("a cell with no score and no zero flag stays blank", () => {
+  const rows = parseCsv(buildBlackboardCsv(fixture()).csv).slice(1);
+  assert.equal(rows[1][5], "", "Gnandt's HW1 is not yet due — nothing to say about it");
+});
+
+test("a recorded zero is enough to have Blackboard create the column", () => {
+  // Nobody has a score on q2, but the whole class has missed it. That is precisely the column
+  // that needs creating — holding it back would leave the zeros nowhere to land.
+  const f = fixture();
+  f.scoreMap = { ...f.scoreMap, "0442474": { ...f.scoreMap["0442474"], q2: undefined } };
+  f.zeroMap = { "0442474": { q2: true }, "0433673": { q2: true } };
+  const r = buildBlackboardCsv({ ...f, createMissing: true });
+  assert.deepEqual(r.created.map(a => a.id), ["q2"]);
+  const col = parseCsv(r.csv)[0].indexOf("Quiz 2: Electric Charge");
+  assert.equal(parseCsv(r.csv)[1][col], "0");
+});
+
+// ── Exemptions ───────────────────────────────────────────────────────────────
+// Blackboard's exempt flag cannot be uploaded and does not even survive a download (a cell
+// exempted in Ultra comes back holding its score). So the excused cell goes up blank, Blackboard
+// keeps whatever it had, and the instructor gets a punch list instead of a promise.
+const BB_GRADED = toCsv([
+  ["Last Name", "First Name", "Username", "Student ID", "Last Access", "Availability",
+   "Quiz 1 [Total Pts: 10 Score] |1281892", "HW1 [Total Pts: 10 Score] |1281893",
+   "Lab 1a [Total Pts: 10 Score] |1281896", "Midterm Exam [Total Pts: 100 Score] |1281894",
+   "Overall Grade [Total Pts: up to 55 Letter] |1281890"],
+  ["Chavez", "Peter", "peter.chavez", "0442474", "2026-09-01 20:20:47", "Yes", "10.00", "8.33", "10.00", "87.00", "A"],
+  ["Gnandt", "Wesley", "wesley.gnandt", "0433673", "2026-09-01 18:53:47", "Yes", "7.50", "", "0.00", "91.00", "B"],
+  ["Patel", "Kunj", "kunj.patel2", "0439413", "2026-09-01 22:28:34", "Yes", "0.00", "", "", "", "F"],
+]);
+
+test("readBlackboardExport reads each matched student's cell values by column id", () => {
+  const r = readBlackboardExport(BB_GRADED, ROSTER);
+  assert.equal(r.values["0433673"]["1281892"], "7.50");
+  assert.equal(r.values["0433673"]["1281896"], "0.00");
+  assert.equal(r.values["0433673"]["1281893"], "", "an empty cell is recorded as empty, not missing");
+  assert.equal(r.values["9999999"], undefined, "nobody Blackboard does not have");
+});
+
+test("mergeImport replaces the value snapshot rather than merging it", () => {
+  // Values are only ever read beside `importedAt`. Merging an older file's cells in would build
+  // a grid that was never true of Blackboard at any single moment.
+  const prev = { columns: [], map: {}, usernames: {}, values: { "0442474": { "1281892": "3" } } };
+  const { link } = mergeImport(prev, readBlackboardExport(BB_GRADED, ROSTER), ASSIGNMENTS, "gc.csv");
+  assert.equal(link.values["0442474"]["1281892"], "10.00");
+});
+
+function exemptFixture() {
+  const f = fixture();
+  const res = readBlackboardExport(BB_GRADED, ROSTER);
+  const { link } = mergeImport(f.link, res, ASSIGNMENTS, "gc.csv");
+  return { roster: ROSTER, assignments: ASSIGNMENTS, link, excusedMap: f.excusedMap };
 }
 
-test("scaleToColumn off sends raw points and reports the mismatch", () => {
-  const r = buildBlackboardCsv({ ...scaleFixture(), scaleToColumn: false });
-  assert.deepEqual(r.pointMismatches.map(m => m.assignment.id), ["q1"]);
-  assert.deepEqual(r.scaled, []);
-  assert.equal(parseCsv(r.csv)[1][4], "10");   // 10/10 raw into a /100 column
+test("pendingExemptions lists the excused cell with what Blackboard still shows", () => {
+  const [x, ...rest] = pendingExemptions(exemptFixture());
+  assert.deepEqual(rest, []);
+  assert.equal(x.studentName, "Wes Gnandt");
+  assert.equal(x.assignmentId, "lab_1a");
+  assert.equal(x.column.title, "Lab 1a");
+  assert.equal(x.bbShows, "0.00", "the stale score under the exemption is the whole point");
 });
 
-test("scaleToColumn on converts to the column's scale", () => {
-  const r = buildBlackboardCsv({ ...scaleFixture(), scaleToColumn: true });
-  const rows = parseCsv(r.csv).slice(1);
-  assert.equal(rows[0][4], "100");   // Chavez 10/10 → 100/100
-  assert.equal(rows[1][4], "75");    // Gnandt 7.5/10 → 75/100
-  assert.equal(rows[2][4], "0");     // Patel 0/10 → 0, still a real zero
-  assert.deepEqual(r.scaled.map(x => x.assignment.id), ["q1"]);
+test("pendingExemptions marks a cell Blackboard already has empty", () => {
+  const f = exemptFixture();
+  f.excusedMap = { "0433673": { hw1: true } };
+  assert.equal(pendingExemptions(f)[0].bbShows, "");
 });
 
-test("scaling leaves a column whose points already agree completely alone", () => {
-  const r = buildBlackboardCsv({ ...scaleFixture(), scaleToColumn: true });
-  const rows = parseCsv(r.csv).slice(1);
-  assert.equal(rows[0][5], "8.33");  // HW1 is /10 both sides — untouched
-  assert.equal(rows[0][7], "87");    // Midterm is /100 both sides — untouched
+test("pendingExemptions says nothing about a pairing the last import did not cover", () => {
+  const f = exemptFixture();
+  f.link = { ...f.link, values: {} };
+  assert.equal(pendingExemptions(f)[0].bbShows, undefined);
 });
 
-test("scaling never touches a blank or an excused cell", () => {
-  const rows = parseCsv(buildBlackboardCsv({ ...scaleFixture(), scaleToColumn: true }).csv).slice(1);
-  assert.equal(rows[1][5], "");      // Gnandt never submitted HW1
-  assert.equal(rows[1][6], "");      // Gnandt excused from Lab 1a
+test("pendingExemptions skips an assignment with no Blackboard column", () => {
+  const f = exemptFixture();
+  f.excusedMap = { "0442474": { q2: true } };   // q2 has no linked column
+  assert.deepEqual(pendingExemptions(f), []);
 });
 
-test("a column Newton has never seen the points of is NOT scaled by a guess", () => {
-  // A column being created this very upload has no known points total — assuming Blackboard's
-  // current default would multiply every grade by ten the day that default changes.
-  const r = buildBlackboardCsv({ ...scaleFixture(), createMissing: true, scaleToColumn: true });
-  const header = parseCsv(r.csv)[0];
-  const col = header.indexOf("Quiz 2: Electric Charge");
-  assert.equal(parseCsv(r.csv)[1][col], "9");   // raw, not 90
-  assert.deepEqual(r.scaled.map(x => x.assignment.id), ["q1"]);
-});
-
-test("a zero-point column is not treated as a scale (it would divide grades away)", () => {
-  const f = fixture();
-  f.link = { ...f.link, columns: f.link.columns.map(c => c.bbId === "1281892" ? { ...c, points: 0 } : c) };
-  const r = buildBlackboardCsv({ ...f, scaleToColumn: true });
-  assert.deepEqual(r.scaled, []);
-  assert.equal(parseCsv(r.csv)[1][4], "10");
-});
-
-test("scaling self-corrects once the column is fixed in Blackboard", () => {
-  // Instructor sets the column back to /10; the next import reports 10, and scaling stops.
-  const r = buildBlackboardCsv({ ...fixture(), scaleToColumn: true });
-  assert.deepEqual(r.scaled, []);
-  assert.equal(parseCsv(r.csv)[1][4], "10");
+test("pendingExemptions skips a student Blackboard does not have", () => {
+  const f = exemptFixture();
+  f.excusedMap = { "9999999": { lab_1a: true } };
+  assert.deepEqual(pendingExemptions(f), []);
 });
 
 // ── Scores and filenames ─────────────────────────────────────────────────────
