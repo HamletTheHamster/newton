@@ -300,3 +300,45 @@ $+0.0115$, 0 Wb), all of 27.15 (160 μT into the page, 111 ns), 27.29(a) (4.81 k
 (yes, yes), both of 27.42 ($a$ positive; 3.21 kg), both of 27.47 ($A_2$; 291 rad/s²), both of
 27.57 ($8.31\times10^6$ m/s, 0.139 T), 27.58(a)/(b) ($1.5\times10^{-16}$ s, 1.1 mA), 27.69's
 magnitude ($Mg\tan\theta/(BL)$) and 27.70 (18.1 m/s²).
+
+---
+
+## HW8 — Sources of Magnetic Field (verified 2026-09-23)
+
+Every value independently re-derived from the problem statements before the key was opened, and
+every direction computed as a cross product rather than asserted. The two semicircle results
+(28.37, 28.74) were checked against a numerical Biot–Savart line integral, and every field-point
+geometry was read off the served figure crop rather than assumed. Assigned problems: 28.1, 28.15,
+28.17, 28.24, 28.31, 28.37, 28.51, 28.72, 28.74, 28.79.
+
+**Two boxed values need correcting and one direction is missing.** 28.1(a)'s field points the
+wrong way and 28.31(a)'s force is off by a factor of 100; both are the kind of slip a student
+checking their own correct work against the key would "fix" into a wrong answer, so both are
+high priority.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| **28.1 (a)** — $\vec B$ at $x = 0.500$ m | $(19.2\ \mu\text{T})\,\hat z$ | **$(-19.2\ \mu\text{T})\,\hat z$**, i.e. $-1.92\times10^{-5}\,\hat k$ T | **Yes (sign)** | $\vec v\times\hat r = \hat\jmath\times\hat\imath = -\hat k$, not $+\hat k$; the right-hand rule around a $+y$ current puts $\vec B$ in $-z$ on the $+x$ side. The key computes the magnitude correctly and then writes "from RHR" with the wrong sense. Its (c) and (d) are both right, so this is one slip, not a systematic convention. | ☐ |
+| **28.31 (a)** — force on a 1.20-m length | $600\ \mu\text{N}$ | **$6.00\ \mu\text{N}$** | **Yes (factor of 100)** | A transcription slip. The key's own expression, $(2\times10^{-7})(5.00)(2.00)(1.20)/(0.400)$, evaluates to $6.00\times10^{-6}$ N, and its part (b) ("$\times 4$") is boxed at $24.0\ \mu\text{N}$, which is $4\times6.00\ \mu\text{N}$. So both the arithmetic above the box and the part below it say $6.00$. | ☐ |
+| **28.74** — direction of $\vec B$ at $P$ | **not stated** | **Out of the page** (the inner semicircle carries its current counterclockwise and, being the smaller radius, dominates). | n/a (omission, not a number) | The problem asks for "the net magnetic field (magnitude **and direction**)". The key derives $\frac{\mu_0 I}{4}(a^{-1}-b^{-1})$ and stops. Same shape as the 26.71 and 27.69 omissions in HW6 and HW7. | ☐ |
+
+**Not a key error, but worth fixing in the prose — 28.17(b).** The key's comment reads "B-field
+5 m away from lightning is 20x stronger than 5 cm from 20A wire". The problem's household current
+is **10 A**, not 20 A. The factor of 20 is correct (0.80 mT against 40 μT); only the label is wrong.
+
+**Not a key error, but noted for context — 28.24's precision.** The key boxes $3.75\ \mu\text{T}$,
+three significant figures, from data whose height ($8.0$ m) and earth field ($0.50$ gauss) are both
+two. The app reveals $3.8\times10^{-6}$ T and $7.5\%$; the value is the same and both spellings
+grade correct.
+
+**Not a key error, but the set's one real trap — 28.72's figure.** The $10.0$ cm dimension runs
+from the **wire** to the bottom edge of the loop, not from the top edge, so the loop is $7.4$ cm
+tall and its far side is $0.100$ m from the wire (not $0.126$ m). The key reads it correctly. A
+student who reads $10.0$ cm as the loop's height gets $85.5\ \mu\text{N}$, which the app rejects.
+
+**Confirmed correct (no discrepancy):** 28.1(b)/(c)/(d) (0; $19.2\ \mu\text{T}\,\hat x$;
+$6.79\ \mu\text{T}\,\hat x$), 28.15 (17.6 μT into the page), both of 28.17 (0.80 mT; the household
+wire's 40 μT, 20× smaller), 28.24 (3.75 μT, 7.5%, no), 28.31(b) (24.0 μN) and 28.31(a)'s "repulsive",
+both of 28.37 ($\mu_0|I_1-I_2|/(4R)$; 0), all of 28.51 (3.72 MA, 249 kA, 237 A), 28.72's magnitude
+and direction (80 μN toward the wire), 28.74's magnitude ($\frac{\mu_0 I}{4}(a^{-1}-b^{-1})$), and
+all of 28.79 ($0$; $\frac{\mu_0 I}{2\pi r}\frac{r^2-a^2}{b^2-a^2}$; $\frac{\mu_0 I}{2\pi r}$).

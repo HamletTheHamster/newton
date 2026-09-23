@@ -1663,4 +1663,186 @@ export const HOMEWORKS_PHYSICS2 = [
       },
     ],
   },
+  {
+    id: "hw8",
+    title: "Homework 8: Sources of Magnetic Field",
+    // WORDING: every prompt below is the Y&F problem text VERBATIM, with only the adaptations the
+    // app forces:
+    //   - "Fig. E28.15" / "Fig. E28.31" / "Fig. E28.37" / "Fig. P28.72" / "Fig. P28.74" becomes
+    //     "the figure" / "(see the figure)" (the served crops carry no caption).
+    //   - A sentence that asks one question of several cases (28.1's list of four field points,
+    //     28.51's "(a) ... ; (b) ... ; (c) ...", 28.79's three regions) is split so the shared
+    //     clause stays in the stem and each lettered clause becomes its own part. The colon that
+    //     ends 28.51's and 28.79's stem is the only punctuation added anywhere in the set.
+    //   - "magnitude and direction" (28.15, 28.72, 28.74) splits into a numeric or math magnitude
+    //     plus a text direction, since one item holds one value (the hw6 26.71 / hw7 27.15
+    //     treatment).
+    //   - 28.24's "Express your answer in teslas and as a percent of the earth's magnetic field"
+    //     splits at its own "and" into two blanks, each carrying the source's own verb.
+    //   - 28.1's fields and 28.37 / 28.74 / 28.79's derivations are expressions, so they are
+    //     `math` parts and the stem says what form to enter them in (as hw1 21.34 and hw7 27.1 do).
+    //   - Units live in `unit`, which renders beside the input box.
+    //   - Bold problem titles ("The Magnetic Field from a Lightning Bolt.", "EMF.") are kept as
+    //     plain text, as hw5/hw6/hw7 keep theirs. The textbook's BIO icon on 28.24 is a margin
+    //     glyph, not part of the sentence, so it is not transcribed.
+    problems: [
+      // 28.1 — B = (mu0/4pi) q v x rhat / r^2 for a point charge, q = +6.00 uC, v = 8.00e6 j.
+      //   (a) rhat = i:  j x i = -k  ->  B = -1.92e-5 k T.
+      //   (b) rhat = -j: j x -j = 0  ->  B = 0 exactly (the field point is ON the velocity line).
+      //   (c) rhat = k:  j x k = +i  ->  B = +1.92e-5 i T.
+      //   (d) rhat = (0,-1,1)/sqrt2, r^2 = 0.500 m^2, sin 45 deg -> B = +6.79e-6 i T.
+      // The answers are vectors, so all four parts are `math` in unit-vector form (as hw7 27.1).
+      // NOTE: the instructor key boxes (a) as +19.2 uT z-hat; the sign is wrong (see the course
+      // doc and answer-key-discrepancies.md). (c) and (d) agree with the key.
+      {
+        id: "hw8_p1",
+        prompt: "A $+6.00\\text{-}\\mu\\text{C}$ point charge is moving at a constant $8.00\\times10^{6}\\text{ m/s}$ in the $+y$-direction, relative to a reference frame. At the instant when the point charge is at the origin of this reference frame, what is the magnetic-field vector $\\vec B$ it produces at the following points: (Enter each field in T in unit-vector form, for example $(-1.20\\times10^{-5})\\,\\hat{\\imath} + (4.50\\times10^{-5})\\,\\hat{k}$.)",
+        parts: [
+          { id: "hw8_p1a", prompt: "(a) $x = 0.500\\text{ m}$, $y = 0$, $z = 0$", answerType: "math" },
+          { id: "hw8_p1b", prompt: "(b) $x = 0$, $y = -0.500\\text{ m}$, $z = 0$", answerType: "math" },
+          { id: "hw8_p1c", prompt: "(c) $x = 0$, $y = 0$, $z = +0.500\\text{ m}$", answerType: "math" },
+          { id: "hw8_p1d", prompt: "(d) $x = 0$, $y = -0.500\\text{ m}$, $z = +0.500\\text{ m}$", answerType: "math" },
+        ],
+      },
+      // 28.15 — two 2.00-mm current elements, each 3.00 cm from the bend, P midway between them.
+      // With the bend at the origin, the vertical segment is at (0, -3.00 cm) and the horizontal
+      // one at (3.00 cm, 0), so P = (1.50, -1.50) cm and r^2 = 2(1.50 cm)^2 = 4.50e-4 m^2 for
+      // both. Both dl x rhat point INTO the page and the angle is 45 deg in each case, so the two
+      // contributions are equal: B = 2 (1e-7)(28.0)(2.00e-3) sin45 / 4.5e-4 = 17.6 uT.
+      {
+        id: "hw8_p2",
+        figure: "/homeworkFigures/physics2/HW8/figE28-15.png", figureWidth: 340,  // natural 552x428
+        prompt: "A wire carrying a $28.0\\text{-A}$ current bends through a right angle. Consider two $2.00\\text{-mm}$ segments of wire, each $3.00\\text{ cm}$ from the bend (see the figure).",
+        parts: [
+          { id: "hw8_p2a", prompt: "Find the magnitude of the magnetic field these two segments produce at point $P$, which is midway between them.", answerType: "numeric", unit: "μT" },
+          { id: "hw8_p2b", prompt: "Find the direction of the magnetic field these two segments produce at point $P$, which is midway between them.", answerType: "text" },
+        ],
+      },
+      // 28.17 — B = mu0 I/(2 pi r) twice. (a) 20 kA at 5.0 m = 8.0e-4 T = 0.80 mT. The household
+      // wire at 5.0 cm gives 40 uT, so the bolt's field is 20x larger.
+      // DELIBERATE DEPARTURE FROM THE VERBATIM-WORDING RULE, made on the instructor's explicit
+      // instruction (2026-09-23): the source's (b) is a comparison only, and grading it as prose
+      // alone let a student who never computed the household field bluff "much larger". The
+      // 40 uT is now its own numeric blank AHEAD of the comparison, so the number has to be
+      // produced before it is talked about. Its prompt is built entirely from the source's own
+      // words: the verb is (a)'s ("how large a magnetic field would you experience") and the
+      // clause is (b)'s ("by being 5.0 cm from a long, straight household current of 10 A").
+      // Both halves keep the source's letter (b), the hw7 27.15 / 28.31(a) split convention.
+      // Do NOT revert this to a single text part: it is the instructor's call, not the author's.
+      {
+        id: "hw8_p3",
+        prompt: "The Magnetic Field from a Lightning Bolt. Lightning bolts can carry currents up to approximately $20\\text{ kA}$. We can model such a current as the equivalent of a very long, straight wire.",
+        parts: [
+          { id: "hw8_p3a", prompt: "(a) If you were unfortunate enough to be $5.0\\text{ m}$ away from such a lightning bolt, how large a magnetic field would you experience?", answerType: "numeric", unit: "mT" },
+          { id: "hw8_p3b_m", prompt: "(b) How large a magnetic field would you experience by being $5.0\\text{ cm}$ from a long, straight household current of $10\\text{ A}$?", answerType: "numeric", unit: "μT" },
+          { id: "hw8_p3b_c", prompt: "(b) How does this field compare to one you would experience by being $5.0\\text{ cm}$ from a long, straight household current of $10\\text{ A}$?", answerType: "text" },
+        ],
+      },
+      // 28.24 — B = mu0(150)/(2 pi (8.0)) = 3.75e-6 T, which is 7.5% of the earth's 0.50 G
+      // (5.0e-5 T). Two sig figs throughout: the height 8.0 m and the 0.50 gauss are both 2 sf.
+      // (The instructor key boxes 3.75 uT, one figure more than the data support; the value is
+      // the same.) The closing "Does this seem to be cause for worry?" is a `text` part.
+      {
+        id: "hw8_p4",
+        prompt: "EMF. Currents in dc transmission lines can be $100\\text{ A}$ or more. Some people have expressed concern that the electromagnetic fields (EMFs) from such lines near their homes could cause health dangers.",
+        parts: [
+          { id: "hw8_p4a", prompt: "For a line with current $150\\text{ A}$ and at a height of $8.0\\text{ m}$ above the ground, what magnetic field does the line produce at ground level? Express your answer in teslas.", answerType: "numeric", unit: "T" },
+          { id: "hw8_p4b", prompt: "Express your answer as a percent of the earth's magnetic field, which is $0.50\\text{ gauss}$.", answerType: "numeric", unit: "%" },
+          { id: "hw8_p4c", prompt: "Does this seem to be cause for worry?", answerType: "text" },
+        ],
+      },
+      // 28.31 — F = mu0 I1 I2 L /(2 pi r) = (2e-7)(5.00)(2.00)(1.20)/(0.400) = 6.00e-6 N.
+      // The currents are ANTIPARALLEL in the figure, so the force is repulsive. (b) doubling both
+      // currents quadruples the force: 24.0 uN.
+      // NOTE: the instructor key boxes 600 uN for (a); its own arithmetic and its (b) = 24.0 uN
+      // both give 6.00 uN, so the 600 is a transcription slip (logged in the discrepancies doc).
+      {
+        id: "hw8_p5",
+        figure: "/homeworkFigures/physics2/HW8/figE28-31.png", figureWidth: 400,  // natural 644x346
+        prompt: "Two long, parallel wires are separated by a distance of $0.400\\text{ m}$ (see the figure). The currents $I_1$ and $I_2$ have the directions shown.",
+        parts: [
+          { id: "hw8_p5a_m", prompt: "(a) Calculate the magnitude of the force exerted by each wire on a $1.20\\text{-m}$ length of the other.", answerType: "numeric", unit: "μN" },
+          { id: "hw8_p5a_d", prompt: "(a) Is the force attractive or repulsive?", answerType: "text" },
+          { id: "hw8_p5b", prompt: "(b) Each current is doubled, so that $I_1$ becomes $10.0\\text{ A}$ and $I_2$ becomes $4.00\\text{ A}$. Now what is the magnitude of the force that each wire exerts on a $1.20\\text{-m}$ length of the other?", answerType: "numeric", unit: "μN" },
+        ],
+      },
+      // 28.37 — the straight leads lie along the line through P, so they contribute nothing there.
+      // In the figure I_1 runs over the TOP of the circle from left to right (clockwise, B into
+      // the page at P) and I_2 runs around the BOTTOM from left to right (counterclockwise, B out
+      // of the page). Each half turn gives mu0 I/(4R), so the two oppose:
+      // B_P = mu0 |I_1 - I_2| / (4 R), which is 0 when I_1 = I_2.
+      // There is no context sentence in the source to serve as a stem, so the stem carries only
+      // the app-forced note about the form of the answer.
+      {
+        id: "hw8_p6",
+        figure: "/homeworkFigures/physics2/HW8/figE28-37.png", figureWidth: 400,  // natural 634x370
+        prompt: "(Enter each answer as an expression in terms of $\\mu_0$, $R$, $I_1$ and $I_2$.)",
+        parts: [
+          { id: "hw8_p6a", prompt: "Calculate the magnitude of the magnetic field at point $P$ of the figure in terms of $R$, $I_1$, and $I_2$.", answerType: "math" },
+          { id: "hw8_p6b", prompt: "What does your expression give when $I_1 = I_2$?", answerType: "math" },
+        ],
+      },
+      // 28.51 — invert each field formula for I at B = 37.2 T.
+      //   (a) B = mu0 I/(2 pi r):  I = 2 pi r B/mu0 = 3.72e6 A.
+      //   (b) B = mu0 N I/(2a):    I = 2 a B/(mu0 N) = 2.49e5 A.
+      //   (c) B = mu0 n I with n = 40000/0.320 = 1.25e5 /m:  I = 237 A.
+      // The unit is A for all three (the key boxes MA / kA / A): a blank labelled A is the number
+      // the student computes, and scientific notation is accepted as typed.
+      {
+        id: "hw8_p7",
+        prompt: "A magnetic field of $37.2\\text{ T}$ has been achieved at the MIT Francis Bitter National Magnetic Laboratory. Find the current needed to achieve such a field:",
+        parts: [
+          { id: "hw8_p7a", prompt: "(a) $2.00\\text{ cm}$ from a long, straight wire", answerType: "numeric", unit: "A" },
+          { id: "hw8_p7b", prompt: "(b) at the center of a circular coil of radius $42.0\\text{ cm}$ that has $100$ turns", answerType: "numeric", unit: "A" },
+          { id: "hw8_p7c", prompt: "(c) near the center of a solenoid with radius $2.40\\text{ cm}$, length $32.0\\text{ cm}$, and $40{,}000$ turns", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 28.72 — READ THE FIGURE: the 10.0 cm dimension runs from the WIRE down to the bottom edge
+      // of the loop (not the loop's height), and the 2.6 cm runs from the wire to the top edge, so
+      // the loop is 7.4 cm tall and its two long edges are at 0.026 m and 0.100 m from the wire.
+      // The near edge carries current parallel to the wire (attracted, pulled up), the far edge
+      // antiparallel (repelled, pushed down), and the two short edges cancel:
+      // F = (mu0 I_w I_l L/2 pi)(1/0.026 - 1/0.100) = 79.7 uN toward the wire. Two sig figs, since
+      // the 2.6 cm is 2 sf.
+      {
+        id: "hw8_p8",
+        figure: "/homeworkFigures/physics2/HW8/figP28-72.png", figureWidth: 400,  // natural 624x482
+        prompt: "The long, straight wire $AB$ shown in the figure carries a current of $14.0\\text{ A}$. The rectangular loop whose long edges are parallel to the wire carries a current of $5.00\\text{ A}$.",
+        parts: [
+          { id: "hw8_p8a", prompt: "Find the magnitude of the net force exerted on the loop by the magnetic field of the wire.", answerType: "numeric", unit: "μN" },
+          { id: "hw8_p8b", prompt: "Find the direction of the net force exerted on the loop by the magnetic field of the wire.", answerType: "text" },
+        ],
+      },
+      // 28.74 — the straight leads and the two short radial pieces all lie along lines through P,
+      // so only the two semicircles contribute, each mu0 I/(4R) at its center. In the figure the
+      // current runs around the INNER semicircle (radius a) right-to-left over the top, which is
+      // counterclockwise (field OUT of the page), and around the OUTER one (radius b) left-to-right
+      // over the top, which is clockwise (field INTO the page). Since a < b the inner term wins:
+      // B = (mu0 I/4)(1/a - 1/b) = mu0 I (b - a)/(4 a b), out of the page.
+      // The instructor key gives the magnitude but never states the direction, which the problem
+      // asks for outright (logged in the discrepancies doc).
+      {
+        id: "hw8_p9",
+        figure: "/homeworkFigures/physics2/HW8/figP28-74.png", figureWidth: 340,  // natural 446x336
+        prompt: "The wire semicircles shown in the figure have radii $a$ and $b$. (Enter the magnitude as an expression in terms of $\\mu_0$, $I$, $a$ and $b$.)",
+        parts: [
+          { id: "hw8_p9a", prompt: "Calculate the magnitude of the net magnetic field that the current in the wires produces at point $P$.", answerType: "math" },
+          { id: "hw8_p9b", prompt: "Calculate the direction of the net magnetic field that the current in the wires produces at point $P$.", answerType: "text" },
+        ],
+      },
+      // 28.79 — Ampere's law on a circle of radius r, with J = I/(pi(b^2 - a^2)).
+      //   (a) r < a: no enclosed current, B = 0.
+      //   (b) a < r < b: I_encl = I (r^2 - a^2)/(b^2 - a^2), so B = mu0 I (r^2 - a^2)/(2 pi r (b^2 - a^2)).
+      //   (c) r > b: all of I is enclosed, B = mu0 I/(2 pi r).
+      {
+        id: "hw8_p10",
+        prompt: "A conductor is made in the form of a hollow cylinder with inner and outer radii $a$ and $b$, respectively. It carries a current $I$ uniformly distributed over its cross section. Derive expressions for the magnitude of the magnetic field in the regions: (Enter each expression in terms of $\\mu_0$, $I$, $a$, $b$ and $r$.)",
+        parts: [
+          { id: "hw8_p10a", prompt: "(a) $r < a$", answerType: "math" },
+          { id: "hw8_p10b", prompt: "(b) $a < r < b$", answerType: "math" },
+          { id: "hw8_p10c", prompt: "(c) $r > b$", answerType: "math" },
+        ],
+      },
+    ],
+  },
 ];

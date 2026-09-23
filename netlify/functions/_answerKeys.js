@@ -671,6 +671,104 @@ export const ANSWER_KEYS = {
       // directed away from the rest of the circuit ((-y) x (-z) = +x).
       hw7_p10: { answerType: "numeric", answer: 18.11077, sigFigs: 3, unit: "m/s²", nonNegative: true },
     },
+    hw8: {
+      // Y&F Ch. 28. Every value re-derived by script from the problem statements before the
+      // instructor key was opened (see docs/courses/phy215.md § hw8); mu0 = 4 pi x 10^-7 T·m/A,
+      // so mu0/(4 pi) = 1e-7 and mu0/(2 pi) = 2e-7 exactly.
+      // 28.1 — B = (mu0/4 pi) q v x rhat / r^2 with q = +6.00 uC and v = (8.00e6 m/s) j.
+      //   (a) rhat = i:   j x i = -k, r^2 = 0.250 m^2  ->  B = -1.92e-5 k T.
+      //   (b) rhat = -j:  j x (-j) = 0                 ->  B = 0 exactly (P is on the velocity line).
+      //   (c) rhat = k:   j x k = +i, r^2 = 0.250 m^2  ->  B = +1.92e-5 i T.
+      //   (d) rhat = (0,-1,1)/sqrt2, r^2 = 0.500 m^2, sin 45 deg -> B = +6.79e-6 i T.
+      // The instructor key boxes (a) as +19.2 uT z-hat: the sign is wrong (j x i = -k, and the
+      // right-hand rule around a +y current puts B in -z on the +x side). Its (c) and (d) agree.
+      hw8_p1a: { answerType: "math", answer: "(-1.92\\times10^{-5})\\,\\hat{k}\\ \\text{T}" },
+      hw8_p1b: { answerType: "math", answer: "0" },
+      hw8_p1c: { answerType: "math", answer: "(1.92\\times10^{-5})\\,\\hat{\\imath}\\ \\text{T}" },
+      hw8_p1d: { answerType: "math", answer: "(6.79\\times10^{-6})\\,\\hat{\\imath}\\ \\text{T}" },
+      // 28.15 — bend at the origin, vertical segment at (0, -3.00 cm) carrying current +y,
+      // horizontal segment at (3.00 cm, 0) carrying current +x, P midway at (1.50, -1.50) cm.
+      // r^2 = 2(1.50 cm)^2 = 4.50e-4 m^2 for both, and the angle between dl and rhat is 45 deg in
+      // both cases, so the two contributions are equal and both point INTO the page:
+      // B = 2 (1e-7)(28.0)(2.00e-3)(sin 45 deg)/(4.50e-4) = 1.7599e-5 T = 17.6 uT.
+      hw8_p2a: { answerType: "numeric", answer: 17.59910, sigFigs: 3, unit: "μT", nonNegative: true },
+      hw8_p2b: { answerType: "text", answer: "Into the page. Put the bend at the origin, with the vertical wire along the $y$-axis carrying current in the $+y$-direction and the horizontal wire along the $x$-axis carrying current in the $+x$-direction. The vertical segment is then at $(0,\\ -3.00\\text{ cm})$ and the horizontal segment at $(3.00\\text{ cm},\\ 0)$, so $P$, midway between them, is at $(1.50\\text{ cm},\\ -1.50\\text{ cm})$. For the vertical segment $d\\vec l$ points along $+y$ and $\\hat r$ points up and to the right at $45°$, so $d\\vec l\\times\\hat r$ points into the page. For the horizontal segment $d\\vec l$ points along $+x$ and $\\hat r$ points down and to the left at $45°$, so $d\\vec l\\times\\hat r$ points into the page as well. The two segments therefore reinforce rather than cancel, and the total field at $P$ is into the page (perpendicular to the plane of the figure, away from the viewer)." },
+      // 28.17 — B = mu0 I/(2 pi r) = (2e-7) I / r.
+      //   (a) (2e-7)(20e3)/(5.0) = 8.0e-4 T = 0.80 mT.
+      //   (b) (2e-7)(10)/(0.050) = 4.0e-5 T = 40 uT, so the bolt's field is 20 times larger.
+      // Two sig figs: the data (20 kA, 5.0 m, 5.0 cm, 10 A) are 2 sf.
+      // The 40 uT is an instructor-added numeric blank ahead of the comparison (see physics2.js);
+      // the comparison itself stays `text`. Because the number is now produced in its own blank,
+      // the comparison's reference says outright that the ratio alone is a complete answer, per
+      // Authoring step 12 - otherwise a reference that opens with the arithmetic makes the grader
+      // demand the arithmetic a second time.
+      hw8_p3a: { answerType: "numeric", answer: 0.8, sigFigs: 2, unit: "mT", nonNegative: true },
+      hw8_p3b_m: { answerType: "numeric", answer: 40.0, sigFigs: 2, unit: "μT", nonNegative: true },
+      hw8_p3b_c: { answerType: "text", answer: "The lightning bolt's field is about $20$ times larger. The question asks how the two compare, so the comparison on its own is a complete answer. The two fields are $8.0\\times10^{-4}\\text{ T} = 800\\ \\mu\\text{T}$ for the bolt at $5.0\\text{ m}$ and $4.0\\times10^{-5}\\text{ T} = 40\\ \\mu\\text{T}$ for the household wire at $5.0\\text{ cm}$, a ratio of $20$, even though you are $100$ times farther from the bolt than from the wire. The reason is that $B$ grows in direct proportion to $I$ but falls off only as $1/r$: the current is $2000$ times larger and the distance only $100$ times larger, so the net factor is $2000/100 = 20$." },
+      // 28.24 — B = (2e-7)(150)/(8.0) = 3.75e-6 T. The earth's 0.50 gauss is 0.50e-4 T = 5.0e-5 T,
+      // so the line's field is 100(3.75e-6)/(5.0e-5) = 7.5% of it. Two sig figs: the height 8.0 m
+      // and the 0.50 gauss are both 2 sf. (The instructor key boxes 3.75 uT, one figure more than
+      // the data support; the value itself is the same.)
+      hw8_p4a: { answerType: "numeric", answer: 3.75e-6, sigFigs: 2, unit: "T", sci: true, nonNegative: true },
+      hw8_p4b: { answerType: "numeric", answer: 7.5, sigFigs: 2, unit: "%", nonNegative: true },
+            // The source asks for a judgment and nothing more, so a bare "no" is a complete answer;
+      // the reference says so in its own words, because a reference that leads with the
+      // justification makes the grader demand the justification (verified: a bare "No." was
+      // rejected 4 times out of 5 against an earlier wording of this entry).
+hw8_p4c: { answerType: "text", answer: "No. The question asks for the judgment itself, so no on its own is a complete answer. What supports it is the comparison already made above: the line produces $3.8\\times10^{-6}\\text{ T}$ at ground level, only about $7.5\\%$ of the earth's own magnetic field, which everyone is immersed in continuously. A field that small beside the natural background it adds to is not a plausible cause for worry on the basis of its magnitude." },
+      // 28.31 — F = mu0 I1 I2 L/(2 pi r) = (2e-7) I1 I2 L / r.
+      //   (a) (2e-7)(5.00)(2.00)(1.20)/(0.400) = 6.00e-6 N = 6.00 uN. The currents are
+      //       ANTIPARALLEL in the figure (I1 to the right, I2 to the left), so it is repulsive.
+      //   (b) doubling both currents quadruples the force: 2.40e-5 N = 24.0 uN.
+      // The instructor key boxes 600 uN for (a). Its own arithmetic gives 6.00e-6 N, and its
+      // (b) = 24.0 uN is exactly 4 x 6.00 uN, so the 600 is a transcription slip.
+      hw8_p5a_m: { answerType: "numeric", answer: 6.0, sigFigs: 3, unit: "μN", nonNegative: true },
+      hw8_p5a_d: { answerType: "text", answer: "Repulsive. The two currents are antiparallel: $I_1$ flows to the right and $I_2$ flows to the left. Parallel currents attract and antiparallel currents repel. Checking it directly with the right-hand rule: the field of the upper wire at the position of the lower wire points into the page, and the force on the lower wire is $\\vec F = I_2\\vec L\\times\\vec B$ with $\\vec L$ to the left and $\\vec B$ into the page, which is directed downward, away from the upper wire. By Newton's third law the force on the upper wire is upward, away from the lower one, so the wires push each other apart." },
+      hw8_p5b: { answerType: "numeric", answer: 24.0, sigFigs: 3, unit: "μN", nonNegative: true },
+      // 28.37 — the straight leads lie along the line through P, so they contribute nothing there
+      // (dl x rhat = 0). Each semicircle contributes mu0 I/(4R) at the center. In the figure I_1
+      // runs over the TOP from left to right, which is clockwise (B into the page at P), and I_2
+      // runs around the BOTTOM from left to right, which is counterclockwise (B out of the page),
+      // so the two oppose: B_P = mu0 |I_1 - I_2|/(4R), and 0 when I_1 = I_2.
+      hw8_p6a: { answerType: "math", answer: "\\frac{\\mu_0\\,|I_1 - I_2|}{4R}" },
+      hw8_p6b: { answerType: "math", answer: "0" },
+      // 28.51 — invert each field formula at B = 37.2 T.
+      //   (a) B = mu0 I/(2 pi r):  I = 2 pi r B/mu0 = (0.0200)(37.2)/(2e-7) = 3.72e6 A.
+      //   (b) B = mu0 N I/(2a):    I = 2 a B/(mu0 N) = 2(0.420)(37.2)/((4 pi e-7)(100)) = 2.4866e5 A.
+      //   (c) B = mu0 n I, n = 40000/0.320 = 1.25e5 /m:  I = 37.2/((4 pi e-7)(1.25e5)) = 236.8 A.
+      hw8_p7a: { answerType: "numeric", answer: 3.72e6, sigFigs: 3, unit: "A", sci: true, nonNegative: true },
+      hw8_p7b: { answerType: "numeric", answer: 248663.7, sigFigs: 3, unit: "A", sci: true, nonNegative: true },
+      hw8_p7c: { answerType: "numeric", answer: 236.8226, sigFigs: 3, unit: "A", nonNegative: true },
+      // 28.72 — from the figure, the 10.0 cm dimension runs from the WIRE to the bottom edge of
+      // the loop and the 2.6 cm from the wire to the top edge, so the long edges are 0.026 m and
+      // 0.100 m from the wire (the loop is 7.4 cm tall, not 10.0). The near edge carries current
+      // parallel to the wire and is attracted; the far edge is antiparallel and is repelled; the
+      // forces on the two short edges are equal, opposite and horizontal, so they cancel:
+      // F = (2e-7)(14.0)(5.00)(0.200)(1/0.026 - 1/0.100) = 7.969e-5 N = 79.7 uN toward the wire.
+      // Two sig figs, since the 2.6 cm is 2 sf. (A student who treats 10.0 cm as the loop height
+      // puts the far edge at 0.126 m and gets 85.5 uN, which the +/-2% band rejects.)
+      hw8_p8a: { answerType: "numeric", answer: 79.69231, sigFigs: 2, unit: "μN", nonNegative: true },
+      hw8_p8b: { answerType: "text", answer: "Upward in the figure, toward the straight wire $AB$. The near long edge of the loop, $2.6\\text{ cm}$ from the wire, carries its current in the same direction as the wire's current, and parallel currents attract, so that edge is pulled up toward the wire. The far long edge, $10.0\\text{ cm}$ from the wire, carries its current in the opposite direction, so it is repelled and pushed down. The forces on the two short edges are horizontal, equal in magnitude and opposite in direction, so they cancel. Because the near edge sits where the wire's field $\\mu_0 I/(2\\pi r)$ is stronger, the upward pull is the larger of the two and the net force on the loop is toward the wire." },
+      // 28.74 — the straight leads and the two short radial pieces lie along lines through P, so
+      // only the semicircles contribute, each mu0 I/(4R) at its center. In the figure the current
+      // runs around the INNER semicircle (radius a) right-to-left over the top, i.e.
+      // counterclockwise, giving a field OUT of the page, and around the OUTER semicircle
+      // (radius b) left-to-right over the top, i.e. clockwise, giving a field INTO the page. Since
+      // a < b the inner term is the larger: B = (mu0 I/4)(1/a - 1/b), out of the page. The
+      // instructor key gives the magnitude and never states the direction, which the problem asks
+      // for outright.
+      hw8_p9a: { answerType: "math", answer: "\\frac{\\mu_0 I}{4}\\left(\\frac{1}{a} - \\frac{1}{b}\\right) = \\frac{\\mu_0 I (b - a)}{4ab}" },
+      hw8_p9b: { answerType: "text", answer: "Out of the page. The two straight sections and the two short radial pieces all lie along lines that pass through $P$, so for them $d\\vec l\\times\\hat r = 0$ and they contribute nothing at $P$. Each semicircle contributes half of a full loop's field at its center, $\\mu_0 I/(4R)$. In the figure the current runs around the inner semicircle (radius $a$) from right to left over the top, which is counterclockwise, so by the right-hand rule its field at $P$ points out of the page; it runs around the outer semicircle (radius $b$) from left to right over the top, which is clockwise, so its field at $P$ points into the page. The two therefore oppose, and since $a < b$ the inner semicircle's $\\mu_0 I/(4a)$ is the larger of the two. The net field $\\frac{\\mu_0 I}{4}\\left(\\frac{1}{a}-\\frac{1}{b}\\right)$ points out of the page." },
+      // 28.79 — Ampere's law on a circle of radius r concentric with the cylinder, with the
+      // current density J = I/(pi(b^2 - a^2)) uniform over the conducting material.
+      //   (a) r < a: the path encloses no current, so B (2 pi r) = 0 and B = 0.
+      //   (b) a < r < b: I_encl = J pi (r^2 - a^2) = I (r^2 - a^2)/(b^2 - a^2), so
+      //       B = mu0 I (r^2 - a^2) / (2 pi r (b^2 - a^2)).
+      //   (c) r > b: the whole current is enclosed, so B = mu0 I/(2 pi r), the same as a thin wire.
+      hw8_p10a: { answerType: "math", answer: "0" },
+      hw8_p10b: { answerType: "math", answer: "\\frac{\\mu_0 I}{2\\pi r}\\cdot\\frac{r^2 - a^2}{b^2 - a^2}" },
+      hw8_p10c: { answerType: "math", answer: "\\frac{\\mu_0 I}{2\\pi r}" },
+    },
   },
 };
 

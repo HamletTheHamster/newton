@@ -434,6 +434,19 @@ The procedure:
    `answerType` (`text`/`graph`/`vector`/`math`) — see the Workflow Rules in `CLAUDE.md`.
 10. **Size every figure** — see below.
 11. **Use the source problem's wording VERBATIM** — see below.
+12. **Write a `text` reference at the length the source's question deserves, and say so when a
+    one-word answer is complete.** Claude grades `text` and `math` against the reference, and it
+    reads the *shape* of the reference as the shape of the expected answer. A reference that leads
+    with a justification the source never asked for therefore turns that justification into a
+    requirement: PHY 215 `hw8`'s 28.24 asks "Does this seem to be cause for worry?" and nothing
+    more, and its first reference (a correct "No." followed by four sentences of comparison)
+    **rejected a bare "No." four times out of five**, replying "you've got the right conclusion, but
+    can you justify it?". Do not fix this by shortening the reference — step 4 wants the full
+    reasoning on the reveal. Fix it by saying inside the reference that the short answer is
+    complete ("No. The question asks for the judgment itself, so no on its own is a complete
+    answer. What supports it is …"), which restores the bare answer without weakening the reveal or
+    accepting a wrong one. **Test it**: run each bare-answer `text` item through the real grader
+    three times, since one pass does not establish that a Claude verdict is stable.
 
 ### Wording — transcribe the problem, don't rewrite it
 
@@ -561,7 +574,8 @@ date there.
      why): [courses/phy115.md](courses/phy115.md).
    - **PHY 215 (`physics2`)** — `hw1` (Ch. 21), `hw2` (Ch. 22, Gauss's law), `hw3` (Ch. 23,
      electric potential), `hw4` (Ch. 24, capacitance and dielectrics), `hw5` (Ch. 25, current,
-     resistance and emf) and `hw6` (Ch. 26, direct-current circuits) are authored and
+     resistance and emf), `hw6` (Ch. 26, direct-current circuits), `hw7` (Ch. 27, magnetic field
+     and magnetic forces) and `hw8` (Ch. 28, sources of magnetic field) are authored and
      verified; later weeks are added as each is prepped.
      Per-assignment notes: [courses/phy215.md](courses/phy215.md). `hw4` is the first set in
      either course that is **entirely numeric** and has **no** graphical part — Ch. 24 has no field
@@ -570,7 +584,15 @@ date there.
      **verbatim problem wording** (see below). `hw5` and `hw6` are entirely numeric for the same
      reason; `hw6` is the largest set so far at **42 items**, because Ch. 26 problems repeatedly ask
      one question of several circuit elements at once and the "one blank per object" rule expands
-     each into a blank per resistor.
+     each into a blank per resistor. `hw8` is the opposite extreme and the most **symbolic** set in
+     either course: four of its ten problems ask for an expression rather than a number, so `math`
+     ties numeric at 10 of its 27 items, and it has no graphical part because nothing in Ch. 28's
+     assigned problems asks for a drawn diagram. It also carries the **one approved departure from
+     the verbatim-wording rule** in either course: on the instructor's explicit instruction, 28.17(b)
+     gained a numeric blank for the household field ahead of the source's comparison question, so
+     the number has to be computed rather than asserted. The added prompt is assembled from the
+     source's own words and is documented in [courses/phy215.md](courses/phy215.md) so a later
+     author does not revert it as an authoring slip.
 2. ~~**Instructor grading-settings UI**~~ ✅ Done — "⚙ Settings" / "⚙ Custom" button on
    homework rows in the Assignments tab opens `HwGradingModal` (6 editable fields).
    Overrides stored at `classes/{classId}/homeworkSettings/{hwId}`, merged into
