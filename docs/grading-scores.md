@@ -267,6 +267,23 @@ Three things differ from quiz/homework and every reader must respect them:
   session is subject to the lecture-absence policy above, which is the one case where a
   manual row appears in the student's grades list with no score entered.
 
+**Adding one by hand** is the Gradebook's `+ Assignment` button (title, grade category,
+points), and it is the only way a session the seeded schedule does not contain gets a column —
+`src/lab-schedule.js` enumerates the term's labs when the class is seeded and there is no add
+control there. A one-off extra lab is therefore a hand-added manual assignment in the
+Laboratory category, named so it does not renumber the printed lab manual (PHY 215's `Lab 6bb`,
+a modified rerun of Lab 6b, is the worked example).
+
+`submitNewAssignment` gives it an **`order` at the end of its chosen category**, not the
+`order`-less 9999 fallback it used to take. Two things went wrong without one: a new lab sorted
+past the Final Exam at the far right of the grid, and every hand-added assignment shared the
+same 9999, so their relative positions were whatever the sort happened to do. The number is read
+off the **stored** `order`s of the manual assignments already in that category rather than off
+the displayed columns, because `Attendance.jsx` sorts its lab picker by `ma.order` straight out
+of the node and never sees the gradebook's drag-reorder overrides — a lab's order has to sit on
+the same scale as its neighbours', or linking today's roll call to it means hunting at the wrong
+end of the list. Dragging the column afterwards moves it in the gradebook only.
+
 Scores are entered either cell-by-cell or, for a whole column at once, through
 `BulkScoreModal` (the "enter scores" link in a manual column's header). Bulk save goes
 through `onSaveBulkOverrides` → App.jsx's `saveOverridesForStudents`, which writes the whole

@@ -1237,13 +1237,30 @@ export function Gradebook({
     await onSaveBulkOverrides(next, `✓ ${n} score${n === 1 ? "" : "s"} saved: ${asgn?.title || "assignment"}`);
   };
 
+  // Where a hand-added assignment lands. Without an `order` of its own it falls to
+  // buildGradebookAssignments' 9999 fallback, which parks it past every seeded column — a new lab
+  // sorts after the Final Exam rather than among the labs — and gives EVERY hand-added assignment
+  // the same number, so their relative order is whatever the sort happens to do. Appending inside
+  // the chosen category fixes both. The stored orders come first because Attendance sorts its lab
+  // list by `ma.order` straight out of the node and never sees the gradebook's drag-reorder
+  // overrides: a lab's order has to sit on the same scale as its neighbours', or linking today's
+  // roll call to it means hunting for it at the wrong end of the list.
+  const nextOrderInCat = catId => {
+    const stored = Object.values(manualAssignments || {})
+      .filter(ma => ma && (ma.catId || "cat_quiz") === catId && isFinite(ma.order))
+      .map(ma => ma.order);
+    if (stored.length) return Math.max(...stored) + 1;
+    const shown = assignments.filter(a => a.catId === catId && isFinite(a.order)).map(a => a.order);
+    return shown.length ? Math.max(...shown) + 1 : 9999;
+  };
+
   const submitNewAssignment = async () => {
     const t = newAsgTitle.trim();
     if (!t) return;
     const pts = parseFloat(newAsgPts);
     const id = newId("asgn");
     // maxPtsSet: the instructor chose these points, so the exam migration never rewrites them.
-    const next = { ...(manualAssignments || {}), [id]: { id, title: t, catId: newAsgCat, maxPts: isFinite(pts) && pts > 0 ? pts : 10, maxPtsSet: true } };
+    const next = { ...(manualAssignments || {}), [id]: { id, title: t, catId: newAsgCat, maxPts: isFinite(pts) && pts > 0 ? pts : 10, maxPtsSet: true, order: nextOrderInCat(newAsgCat) } };
     await onSaveManualAssignments(next);
     setAddingAssignment(false); setNewAsgTitle(""); setNewAsgCat("cat_quiz"); setNewAsgPts("10");
   };
