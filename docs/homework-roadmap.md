@@ -544,6 +544,14 @@ labels, a multi-panel figure) genuinely needs it. Scale to the figure's *content
 pixel count. The image keeps `maxWidth: 100%` and `height: auto`, so an explicit width never
 breaks the mobile layout or distorts the aspect ratio.
 
+`figureWidth` reaches **two** readers, not one. Besides the runner, it is denormalized onto the
+submission record beside `figure` (`HomeworkRunner`'s submit builder and `auto-submit.js`) and
+read by the submission viewer and the study copy a student downloads from it — neither of which can
+see the course file. Records written before that denormalization carry no width, so `ProblemFigure`
+(`StudySheet.jsx`, shared with the viewer) bounds an unsized figure to **480px tall** and lets the aspect ratio pick
+the width. That fallback is a backstop for old records, not a substitute: it cannot know that a
+tall/narrow figure wanted 180px, so a newly authored problem still sets `figureWidth`.
+
 **When the textbook's figure is wrong, draw your own.** Step 2 of the procedure (check the figure
 against what you solved) exists to catch a figure that contradicts the problem, and it does happen:
 Y&F's Fig. P22.43 draws a positive ball deflected *toward* a positively charged sheet, i.e.

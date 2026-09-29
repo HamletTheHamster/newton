@@ -656,10 +656,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         ...(it.answerType === "fbd" ? { fbd: it.fbd } : {}),
       }));
       const pEarned = parseFloat(partRows.reduce((s2, r) => s2 + r.earned, 0).toFixed(3));
+      // `figureWidth` rides along with `figure` for the same reason the prompt does: the record
+      // has to stay readable on its own, and a figure with no width renders at the natural pixel
+      // size of a textbook screenshot (see CLAUDE.md). The submission viewer and its PDF are the
+      // only readers, and neither can see the course file.
       if (p.parts && p.parts.length) {
-        return { id: p.id, prompt: p.prompt, figure: p.figure || null, parts: partRows, earned: pEarned, max: 1 };
+        return { id: p.id, prompt: p.prompt, figure: p.figure || null, figureWidth: p.figureWidth || null, parts: partRows, earned: pEarned, max: 1 };
       }
-      return { ...partRows[0], id: p.id, prompt: p.prompt, figure: p.figure || null, max: 1, earned: pEarned };
+      return { ...partRows[0], id: p.id, prompt: p.prompt, figure: p.figure || null, figureWidth: p.figureWidth || null, max: 1, earned: pEarned };
     });
     // Copied onto the submission because `clearDraft` removes the live node at this point;
     // from here the submission is the only record of how the work was done — including, for a

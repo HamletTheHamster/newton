@@ -167,10 +167,12 @@ export function buildAutoSubmission({ homework, student, draft, telemetry = null
       ...(it.answerType === "fbd" ? { fbd: it.fbd } : {}),
     }));
     const pEarned = parseFloat(partRows.reduce((s2, r) => s2 + r.earned, 0).toFixed(3));
+    // `figureWidth` rides along with `figure` — a figure with no width renders at the natural
+    // pixel size of a textbook screenshot, and the viewer cannot see the course file.
     if (p.parts && p.parts.length) {
-      return { id: p.id, prompt: p.prompt, figure: p.figure || null, parts: partRows, earned: pEarned, max: 1 };
+      return { id: p.id, prompt: p.prompt, figure: p.figure || null, figureWidth: p.figureWidth || null, parts: partRows, earned: pEarned, max: 1 };
     }
-    return { ...partRows[0], id: p.id, prompt: p.prompt, figure: p.figure || null, max: 1, earned: pEarned };
+    return { ...partRows[0], id: p.id, prompt: p.prompt, figure: p.figure || null, figureWidth: p.figureWidth || null, max: 1, earned: pEarned };
   });
 
   const at = (deadline instanceof Date && !isNaN(deadline)) ? deadline.toISOString() : new Date().toISOString();

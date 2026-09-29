@@ -59,3 +59,35 @@ button, input, select, textarea { font-family: inherit; }
    whole purpose is being dragged. Only on :focus-visible, so a mouse drag stays quiet. */
 .gs-slider:focus { outline: none; }
 .gs-slider:focus-visible { outline: 2px solid var(--gs-accent); outline-offset: 3px; border-radius: 999px; }
+
+/* Print-to-PDF of the downloadable study copy (src/print.js + src/components/StudySheet.jsx,
+   mounted by SubmissionView.jsx). The sheet is hidden on screen and portalled to <body>, so
+   that NO scroll container and no position:fixed ancestor sits between it and the page box -
+   either of those clips a document that runs past one page. It appears only while we are the
+   ones printing (`newton-printing`), so a student's own Cmd+P still prints the app exactly as
+   it did before. */
+.print-sheet { display: none; }
+@media print {
+  @page { margin: 14mm; }
+  /* The dark page background lives on <html> and IS the page canvas, so it has to go too or
+     it prints as a black band wherever the sheet does not reach the bottom of a page. */
+  html.newton-printing, body.newton-printing { background: #fff !important; }
+  body.newton-printing > * { display: none !important; }
+  body.newton-printing > .print-sheet { display: block !important; }
+  .print-sheet {
+    background: #fff;
+    color: #1c1d1f;
+    /* Color carries meaning here - the teal ANSWER label, the amber "review" tag, the rules
+       that separate an answer from its question - and browsers drop backgrounds and adjust
+       colors on a print unless asked not to. */
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Entry animations start from `opacity: 0`, and a print is one snapshot: the quiz result card
+     (`fadeSlideUp`) printed as an empty gap. Nothing in a PDF is animated, so the sheet renders
+     every element at its finished state. */
+  .print-sheet *, .print-sheet *::before, .print-sheet *::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}

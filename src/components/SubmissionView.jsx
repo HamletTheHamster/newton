@@ -1,12 +1,21 @@
-import { useState } from "react";
-import { useTheme } from "../theme.js";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useTheme, ThemeContext, buildTheme } from "../theme.js";
 import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore, onTimeCreditIds, partIsOnTime } from "../homework.js";
 import { dueToDate } from "../utils.js";
+import { printSheet, printFilename, waitForImages } from "../print.js";
 import { ChatMessages } from "./ChatMessages.jsx";
+import { StudySheet, ProblemFigure } from "./StudySheet.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
 import { VectorField } from "./VectorField.jsx";
 import { FBDField } from "./FBDField.jsx";
+
+// The PDF is printed on paper, which is light whatever the app is set to. Built once: the
+// printable sheet hands this to its own ThemeContext so every shared component inside it
+// (MathText, the plot fields, ChatMessages) renders its light palette with no print-only
+// branch anywhere in those components.
+const PRINT_THEME = buildTheme(true);
 
 // One gradable item (a whole problem or a part) in a homework submission breakdown.
 // When `onEditChange` is provided the earned value becomes an editable number input
@@ -103,9 +112,124 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned, 
             {onTime ? "On time, full credit" : `Late, counts ${(shownEarned * 0.5).toFixed(2)} pt`}
           </span>
         )}
-        {!correct && !isPlot && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}>{row.correctAnswer}</strong>}</span>}
+        {/* The revealed key goes through MathText whatever its type. A `text` reference answer is
+            written in the same house style as a prompt, so ~50 of them carry `$…$` math, and
+            printing `$q\vec E$` at a student is worse than printing nothing. MathText passes a
+            string with no delimiters through unchanged, so plain keys are unaffected. The
+            student's OWN answer is deliberately left literal: that field is what they typed. */}
+        {!correct && !isPlot && row.correctAnswer != null && <span>Key: {row.answerType === "math" ? <MathText>{`$${row.correctAnswer}$`}</MathText> : <strong style={{ color: text }}><MathText>{row.correctAnswer}</MathText></strong>}</span>}
       </div>
     </div>
+  );
+}
+
+// ---- Shared submission body -------------------------------------------------------
+// These two are COMPONENTS, not JSX built in the modal's own scope, because the printable sheet
+// renders them under a light ThemeContext of its own. An inline style computed in the parent's
+// scope keeps the PARENT's palette, which printed dark cards under light text.
+
+// The banners that explain an unusual score: a hand-rebuilt record, a record the deadline sweep
+// wrote, and a late submission carrying parts that were finished on time.
+function SubmissionNotices({ submission, onTimeParts, toStudent }) {
+  const { s, text, muted, isLight } = useTheme();
+  const auto = submission.autoSubmitted || null;
+  return (
+    <>
+      {/* A record rebuilt by hand after the original was lost. Says so plainly, and says
+          which parts are real: without this the missing per-problem breakdown below reads
+          as a bug, and the fields that ARE genuine look no different from invented ones. */}
+      {submission.reconstructed && (
+        <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>Reconstructed record</span>
+          <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>{submission.reconstructed.note}</span>
+          {submission.reconstructed.at && (
+            <span style={{ color: muted, fontSize: 11 }}>Rebuilt {new Date(submission.reconstructed.at).toLocaleString()}</span>
+          )}
+        </div>
+      )}
+      {/* Written by the deadline sweep because the student never pressed Finish & Submit. The
+          banner has to carry three facts that nothing else on this screen can: why a record
+          exists that the student did not make, that it is worth nothing until the written work
+          is handed in, and that handing it in keeps full credit on the parts already finished
+          (which is the whole reason the record was written down rather than the work being
+          lost at midnight). */}
+      {auto && (
+        <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(251,191,36,0.4)", background: isLight ? "rgba(251,191,36,0.07)" : "rgba(251,191,36,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13 }}>
+            {toStudent ? "Saved at the deadline: your written work is still needed" : "Auto-submitted at the deadline: no written work"}
+          </span>
+          <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
+            {auto.resolved != null && auto.totalItems != null ? `${auto.resolved} of ${auto.totalItems} parts were finished when the deadline passed, and ` : ""}
+            {toStudent
+              ? "this record was saved so that work would not be lost. It does not count towards your grade yet: homework counts once you upload your handwritten work. Open the assignment again, finish anything you still want to answer, and upload your written work. The parts you finished before the deadline keep full credit."
+              : "this record was saved so the work would not be lost. Nothing was uploaded and the integrity check never ran, so it scores 0 until the written work is handed in. The assignment is still open, and the parts finished before the deadline keep full credit when it is."}
+          </span>
+          <span style={{ color: muted, fontSize: 11 }}>Recorded {new Date(auto.at || submission.timestamp).toLocaleString()}</span>
+        </div>
+      )}
+      {/* A late submission carrying on-time parts. The banner exists because the score is not
+          simply "half of what you earned" any more, and an unexplained number invites email. */}
+      {onTimeParts > 0 && (
+        <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
+          <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>
+            {onTimeParts} part{onTimeParts === 1 ? "" : "s"} kept full credit
+          </span>
+          <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
+            {onTimeParts === 1 ? "This part was" : "These parts were"} already finished when the deadline passed, so the late penalty does not apply to {onTimeParts === 1 ? "it" : "them"}. Everything answered afterwards is at half credit.
+          </span>
+        </div>
+      )}
+    </>
+  );
+}
+
+// The per-problem/per-part breakdown (homework) or the graded dialogue (quiz). The printable
+// sheet always passes `editable: false`, whoever opened the modal, so a number input can never
+// be frozen into a PDF.
+function SubmissionWork({ submission, editable, draftParts, setItemDraft, earnedFor, showPartDeadline, onTimeIds, resolvedAtOf }) {
+  const { s, text, muted } = useTheme();
+  const isHomework = submission.type === "homework";
+  return (
+    isHomework ? (
+      (submission.problems || []).map((p, i) => {
+        const parts = p.parts || [p];
+        const labels = p.parts ? "abcdefgh".split("") : [null];
+        // Recompute displayed problem earned from drafts
+        const problemEarned = editable
+          ? parts.reduce((sum, row) => {
+              const raw = draftParts[row.id];
+              const val = raw !== undefined ? parseFloat(raw) : NaN;
+              return sum + (!isNaN(val) ? Math.max(0, Math.min(row.max ?? 1, val)) : (row.earned ?? 0));
+            }, 0)
+          : parts.reduce((sum, row) => sum + earnedFor(row), 0);
+        return (
+          <div key={p.id || i} style={{ ...s.card, padding: 16 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ color: text, fontWeight: 700, fontSize: 14 }}>Problem {i + 1}</span>
+              <span style={{ color: muted, fontFamily: "monospace", fontSize: 13 }}>{problemEarned.toFixed(2)} / {(p.max ?? 1).toFixed(2)}</span>
+            </div>
+            {/* Above the prompt, the order the runner posed it in. A single-part problem keeps its
+                prompt on the row below, so this sits above that too. */}
+            {p.figure && <ProblemFigure src={p.figure} width={p.figureWidth} />}
+            {p.parts && p.prompt && <div style={{ color: text, fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}><MathText>{p.prompt}</MathText></div>}
+            {parts.map((row, j) => (
+              <HomeworkItemRow
+                key={row.id || j}
+                row={row}
+                label={labels[j]}
+                editEarned={editable ? (draftParts[row.id] !== undefined ? draftParts[row.id] : String(row.earned ?? 0)) : undefined}
+                onEditChange={editable ? val => setItemDraft(row.id, val) : undefined}
+                displayEarned={editable ? undefined : earnedFor(row)}
+                onTime={showPartDeadline ? partIsOnTime(row, onTimeIds) : null}
+                resolvedAt={showPartDeadline ? resolvedAtOf(row.id) : null}
+              />
+            ))}
+          </div>
+        );
+      })
+    ) : submission.dialogue?.length > 0
+      ? <ChatMessages messages={submission.dialogue} />
+      : <div style={{ ...s.card, padding: 32, textAlign: "center", color: muted }}>No dialogue saved for this submission.</div>
   );
 }
 
@@ -118,7 +242,7 @@ function HomeworkItemRow({ row, label, editEarned, onEditChange, displayEarned, 
 // any extension). It is what tells a late homework which of its parts were finished on time, so
 // the header score here matches the gradebook cell and the student's grades row.
 export function SubViewModal({ submission, studentName, assignmentTitle, onClose, override = {}, onSavePartScores, onSetIntegrityReview, showIntegrity = true, audience = "instructor", due = null }) {
-  const { s, muted, border, text, card, bg, isLight } = useTheme();
+  const { s, muted, border, text, card, bg, teal, isLight } = useTheme();
   const cellBorder = `1px solid ${border}`;
   const isHomework = submission.type === "homework";
   // No breakdown means nothing to score part by part, so the editing controls would be a
@@ -203,18 +327,56 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
     } finally { setSaving(false); }
   };
 
+  // ---- Downloadable PDF ------------------------------------------------------------
+  // The sheet is mounted only once asked for, so a submission nobody downloads never pays for a
+  // second pass over its KaTeX and SVG. Once mounted it stays, so a second download is immediate.
+  const [sheetMounted, setSheetMounted] = useState(false);
+  const wantPrint = useRef(false);
+  const sheetRef = useRef(null);
+  const runPrint = async () => {
+    // The sheet's own <img> elements are not the ones already on screen, so a print fired in the
+    // same frame can catch a quiz drawing still blank.
+    await waitForImages(sheetRef.current);
+    printSheet(printFilename(assignmentTitle, studentName));
+  };
+  const handleDownload = () => {
+    if (sheetMounted) { runPrint(); return; }
+    wantPrint.current = true;
+    setSheetMounted(true);
+  };
+  useEffect(() => {
+    if (!sheetMounted || !wantPrint.current) return;
+    // One frame so the freshly mounted sheet has been laid out before the dialog snapshots it.
+    // The flag is cleared INSIDE the frame, not here: StrictMode runs this effect twice in dev
+    // and cancels the first frame, so clearing it up front would leave nothing to print.
+    const id = requestAnimationFrame(() => { wantPrint.current = false; runPrint(); });
+    return () => cancelAnimationFrame(id);
+  }, [sheetMounted]);
+
+  const scoreLine = (
+    <>
+      Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
+      {!resolved.excused && resolved.effective != null && Math.abs(resolved.effective - submission.score) > 0.0001 ? " · adjusted by instructor" : ""}
+      {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? (isHomework ? " (late)" : " (late, 50% penalty)") : ""} · Handed in {new Date(submission.timestamp).toLocaleString()}{submission.late && dueAt && !isNaN(dueAt.getTime()) ? ` · Due ${dueAt.toLocaleString()}` : ""}
+    </>
+  );
+
   return (
     <div style={{ position: "fixed", inset: 0, background: bg, display: "flex", flexDirection: "column", zIndex: 60 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: card, borderBottom: cellBorder, padding: "14px 20px", flexShrink: 0 }}>
         <div>
           <div style={{ color: text, fontWeight: 700, fontSize: 15 }}>{studentName} · {assignmentTitle}</div>
-          <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>
-            Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
-            {!resolved.excused && resolved.effective != null && Math.abs(resolved.effective - submission.score) > 0.0001 ? " · adjusted by instructor" : ""}
-            {isHomework && submission.rawScore != null ? ` (${submission.rawScore}/${submission.nativeTotal} pts)` : ""}{submission.late ? (isHomework ? " (late)" : " (late, 50% penalty)") : ""} · Handed in {new Date(submission.timestamp).toLocaleString()}{submission.late && dueAt && !isNaN(dueAt.getTime()) ? ` · Due ${dueAt.toLocaleString()}` : ""}
-          </div>
+          <div style={{ color: muted, fontSize: 12, marginTop: 2 }}>{scoreLine}</div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Offered to BOTH sides, and it is the same document for both: for the student a set
+              of worked problems to revise from, for the instructor the assignment with its answer
+              key, ready to hand out once the deadline has passed. Named for what it produces, not
+              for the screen it is on - it is not a print of this page. */}
+          <button onClick={handleDownload}
+            style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 12, color: teal, borderColor: `${teal}66` }}>
+            Download study copy
+          </button>
           {canEdit && hasOverrides && (
             <button onClick={handleReset} disabled={saving}
               style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 12, color: "#f87171", borderColor: "#f8717155" }}>
@@ -231,51 +393,11 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
         </div>
       </div>
       <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", display: "flex", flexDirection: "column", gap: 14, maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box" }}>
-        {/* A record rebuilt by hand after the original was lost. Says so plainly, and says
-            which parts are real: without this the missing per-problem breakdown below reads
-            as a bug, and the fields that ARE genuine look no different from invented ones. */}
-        {submission.reconstructed && (
-          <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>Reconstructed record</span>
-            <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>{submission.reconstructed.note}</span>
-            {submission.reconstructed.at && (
-              <span style={{ color: muted, fontSize: 11 }}>Rebuilt {new Date(submission.reconstructed.at).toLocaleString()}</span>
-            )}
-          </div>
-        )}
-        {/* Written by the deadline sweep because the student never pressed Finish & Submit. The
-            banner has to carry three facts that nothing else on this screen can: why a record
-            exists that the student did not make, that it is worth nothing until the written work
-            is handed in, and that handing it in keeps full credit on the parts already finished
-            (which is the whole reason the record was written down rather than the work being
-            lost at midnight). */}
-        {auto && (
-          <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(251,191,36,0.4)", background: isLight ? "rgba(251,191,36,0.07)" : "rgba(251,191,36,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ color: "#fbbf24", fontWeight: 700, fontSize: 13 }}>
-              {toStudent ? "Saved at the deadline: your written work is still needed" : "Auto-submitted at the deadline: no written work"}
-            </span>
-            <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
-              {auto.resolved != null && auto.totalItems != null ? `${auto.resolved} of ${auto.totalItems} parts were finished when the deadline passed, and ` : ""}
-              {toStudent
-                ? "this record was saved so that work would not be lost. It does not count towards your grade yet: homework counts once you upload your handwritten work. Open the assignment again, finish anything you still want to answer, and upload your written work. The parts you finished before the deadline keep full credit."
-                : "this record was saved so the work would not be lost. Nothing was uploaded and the integrity check never ran, so it scores 0 until the written work is handed in. The assignment is still open, and the parts finished before the deadline keep full credit when it is."}
-            </span>
-            <span style={{ color: muted, fontSize: 11 }}>Recorded {new Date(auto.at || submission.timestamp).toLocaleString()}</span>
-          </div>
-        )}
-        {/* A late submission carrying on-time parts. The banner exists because the score is not
-            simply "half of what you earned" any more, and an unexplained number invites email. */}
-        {onTimeParts > 0 && (
-          <div style={{ ...s.card, padding: "12px 16px", border: "1px solid rgba(96,165,250,0.4)", background: isLight ? "rgba(96,165,250,0.07)" : "rgba(96,165,250,0.09)", display: "flex", flexDirection: "column", gap: 6 }}>
-            <span style={{ color: "#60a5fa", fontWeight: 700, fontSize: 13 }}>
-              {onTimeParts} part{onTimeParts === 1 ? "" : "s"} kept full credit
-            </span>
-            <span style={{ color: text, fontSize: 13, lineHeight: 1.5 }}>
-              {onTimeParts === 1 ? "This part was" : "These parts were"} already finished when the deadline passed, so the late penalty does not apply to {onTimeParts === 1 ? "it" : "them"}. Everything answered afterwards is at half credit.
-            </span>
-          </div>
-        )}
-        {/* Submitted written work + (instructor-only) integrity review (homework only) */}
+        <SubmissionNotices submission={submission} onTimeParts={onTimeParts} toStudent={toStudent} />
+        {/* Submitted written work + (instructor-only) integrity review (homework only).
+            Deliberately NOT inside `SubmissionNotices`/`SubmissionWork`, which are what the
+            printable sheet renders: the PDF is the questions and the answers, and a student's
+            own uploaded pages of handwriting do not belong in a copy of them. */}
         {isHomework && (
           <div style={{ ...s.card, padding: 16, display: "flex", flexDirection: "column", gap: 12, border: showIntegrity && integrity?.flagged ? "1px solid rgba(251,191,36,0.45)" : cellBorder }}>
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
@@ -326,44 +448,24 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
             )}
           </div>
         )}
-        {isHomework ? (
-          (submission.problems || []).map((p, i) => {
-            const parts = p.parts || [p];
-            const labels = p.parts ? "abcdefgh".split("") : [null];
-            // Recompute displayed problem earned from drafts
-            const problemEarned = canEdit
-              ? parts.reduce((sum, row) => {
-                  const raw = draftParts[row.id];
-                  const val = raw !== undefined ? parseFloat(raw) : NaN;
-                  return sum + (!isNaN(val) ? Math.max(0, Math.min(row.max ?? 1, val)) : (row.earned ?? 0));
-                }, 0)
-              : parts.reduce((sum, row) => sum + earnedFor(row), 0);
-            return (
-              <div key={p.id || i} style={{ ...s.card, padding: 16 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                  <span style={{ color: text, fontWeight: 700, fontSize: 14 }}>Problem {i + 1}</span>
-                  <span style={{ color: muted, fontFamily: "monospace", fontSize: 13 }}>{problemEarned.toFixed(2)} / {(p.max ?? 1).toFixed(2)}</span>
-                </div>
-                {p.parts && p.prompt && <div style={{ color: text, fontSize: 14, lineHeight: 1.5, marginBottom: 6 }}><MathText>{p.prompt}</MathText></div>}
-                {parts.map((row, j) => (
-                  <HomeworkItemRow
-                    key={row.id || j}
-                    row={row}
-                    label={labels[j]}
-                    editEarned={canEdit ? (draftParts[row.id] !== undefined ? draftParts[row.id] : String(row.earned ?? 0)) : undefined}
-                    onEditChange={canEdit ? val => setItemDraft(row.id, val) : undefined}
-                    displayEarned={canEdit ? undefined : earnedFor(row)}
-                    onTime={showPartDeadline ? partIsOnTime(row, onTimeIds) : null}
-                    resolvedAt={showPartDeadline ? resolvedAtOf(row.id) : null}
-                  />
-                ))}
-              </div>
-            );
-          })
-        ) : submission.dialogue?.length > 0
-          ? <ChatMessages messages={submission.dialogue} />
-          : <div style={{ ...s.card, padding: 32, textAlign: "center", color: muted }}>No dialogue saved for this submission.</div>}
+        <SubmissionWork
+          submission={submission} editable={canEdit} draftParts={draftParts} setItemDraft={setItemDraft}
+          earnedFor={earnedFor} showPartDeadline={showPartDeadline} onTimeIds={onTimeIds} resolvedAtOf={resolvedAtOf} />
       </div>
+      {/* The printable sheet. It is a STUDY document (`StudySheet`), not a print of this screen:
+          the grade lives here, the problems and their answers live there. Portalled to <body> so
+          that neither this fixed-position modal nor its scrolling body sits between it and the
+          page box - a print clips at the first such ancestor, which would cost every page after
+          the first - and rendered under its own light theme, because paper is light whatever the
+          app is set to. */}
+      {sheetMounted && createPortal(
+        <div className="print-sheet" ref={sheetRef}>
+          <ThemeContext.Provider value={PRINT_THEME}>
+            <StudySheet submission={submission} assignmentTitle={assignmentTitle} studentName={studentName} />
+          </ThemeContext.Provider>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }

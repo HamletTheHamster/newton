@@ -125,6 +125,38 @@ production bundle is a classic way to ship this broken. Add `worktest.html` to
 copied into `public/`, and confirm with `git status` — a 145 MB student PDF in `public/` would be
 committed, and it is a student's own work.
 
+## The submission PDF — verifying the print without a print dialog
+
+`window.print()` opens a native dialog that blocks the tab, so the student's "Download PDF"
+(`src/print.js`) cannot be exercised by clicking it from an automation session. Print it with
+headless Chrome instead, which runs the real `@media print` rules and hands back a PDF you can read:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  --headless=new --disable-gpu --virtual-time-budget=6000 \
+  --print-to-pdf=out.pdf --no-pdf-header-footer "file:///…/page.html"
+pdftotext out.pdf -          # what actually printed
+pdftoppm -png -r 80 out.pdf p    # what it looks like
+```
+
+Four things cost real time the first time round:
+
+- **Point it at a `file://` page, not the dev server.** A `--print-to-pdf` against `vite dev` works
+  until the HMR websocket connects, then hangs forever: virtual time waits on the open connection.
+  Build a throwaway harness page (`rollupOptions.input`, plus `output.inlineDynamicImports`) and
+  inline the JS and CSS into one HTML file, so `file://` needs no fetch. `base: "./"` keeps the
+  KaTeX font URLs resolvable beside it.
+- **`--print-to-pdf` snapshots early.** Anything set up on a `setTimeout` may miss the snapshot
+  entirely; drive the harness from a `useEffect` with no timers, and stub `window.print` so nothing
+  tries to open a dialog.
+- **Kill stray Chrome between runs** (`pkill -9 -f headless`). A `SIGKILL`ed instance leaves helpers
+  behind that make every later launch hang with `Trying to load the allocator multiple times`, which
+  looks exactly like a bug in the page.
+- **Read the rendered page, not just the text.** Two of the three real defects found this way were
+  invisible to `pdftotext`: cards printing dark under light text (inline styles built in the modal's
+  scope kept the modal's palette), and a black band below the sheet (the dark background lives on
+  `<html>`, which is the page canvas).
+
 ## Blackboard export — verifying without risking the real gradebook
 
 The Blackboard sync (Gradebook → **Blackboard**) is the one feature whose output lands in a system

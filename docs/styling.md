@@ -123,6 +123,32 @@ The five colors used to be redeclared in `Gradebook.jsx`, `StudentGrades.jsx`,
 lime in the calendar and To Do rail. **Adding or changing a category color means editing that one
 file**; the `fallback` argument stays per-caller, since it's usually that screen's theme teal.
 
+### Printing a submission to PDF — the one place with real `@media print` rules
+
+The "Download PDF" button on a submission (`SubmissionView.jsx` + `src/print.js`) prints the app's
+own DOM rather than a hand-built print document, because the thing being printed is KaTeX math and
+live SVG plots whose look is the graded answer. The rules live at the bottom of
+[`src/index.css`](../src/index.css) and are the only media queries in the project (everything else is
+JS-driven — see Mobile / Responsive below). Four of them are load-bearing:
+
+- `.print-sheet { display: none }` on screen, revealed only under `body.newton-printing` inside
+  `@media print`. A student's own Cmd+P therefore still prints the app exactly as it did before.
+- `body.newton-printing > * { display: none !important }` — the sheet is `createPortal`'d to
+  `<body>`, so hiding body's other children is all the isolation needed. Doing it with `visibility`
+  instead would leave the `position: fixed` modal and its scroll container in the box tree, and a
+  print clips at the first such ancestor.
+- `html.newton-printing, body.newton-printing { background: #fff !important }` — the app's dark
+  background is set on `<html>` and **is the page canvas**, so without this it printed as a black
+  band on every page the sheet does not fill to the bottom.
+- `print-color-adjust: exact` on the sheet, plus `animation: none` on everything inside it. Color is
+  content here (the teal student bubble, the green "Correct", the amber late badge) and browsers drop
+  backgrounds from a print by default, which left white text on white. The animation reset is for the
+  opposite failure: an entry animation starts at `opacity: 0`, and a print is one snapshot, so the
+  quiz result card printed as an empty gap.
+
+Page breaks are the sheet's own business: `StudySheet` puts `breakInside: "avoid"` on each problem
+block inline, so a problem is not torn from its figure or its answer. There is no class for it.
+
 ### Module-level utility functions
 
 Functions defined at module scope (outside any component) cannot call `useTheme()`. In `Gradebook.jsx`, the helpers `catColor`, `overallColor`, and `cellFg` import `TEAL` and `MUTED` at module level and keep using those uppercase constants (`catColor` is now a thin wrapper passing `TEAL` as the fallback to the shared `categoryColor`). Only inside component functions can `useTheme()` be called.
