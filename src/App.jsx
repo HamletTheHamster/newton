@@ -879,6 +879,60 @@ export default function App() {
     };
   }, [studentPortalActive, currentClassId, loggedInStudent?.studentId, refreshClassContent, refreshOwnSubmissions]);
 
+  // Re-pull the CLASS's submissions for the instructor's own screens.
+  //
+  // App.jsx used to load this node once per class and never again, which made the Gradebook a
+  // snapshot of whenever the tab was opened. `Assignments.jsx` worked around that view-locally
+  // (its `liveSubs`), so on 2026-10-05 the two instructor views disagreed about the same
+  // homework: Assignments said submitted while the Gradebook showed a blank cell with no
+  // submission behind it, because the record had landed at 23:33 the night before, after the tab
+  // loaded. A deadline night is exactly when an instructor sits on an open gradebook, so the
+  // stale half is the one that had to change.
+  //
+  // Adopted WHOLESALE, for the reason `refreshOwnSubmissions` gives: every write to this node is
+  // a single-key write awaited BEFORE local state adopts it, so RTDB is never behind this session
+  // and a fresh read cannot revert an edit of ours. `replaceAllSubmissions` is held to that same
+  // ordering so the invariant has no exception.
+  //
+  // `Assignments.jsx` keeps its own paired read regardless: it JOINS submissions against
+  // hwProgress, and a join needs both halves from one instant, not from two timers.
+  const refreshSubmissions = useCallback(async cid => {
+    if (!cid) return;
+    let node;
+    // A failed read keeps what is on screen. It must never empty the grid, which would read as
+    // the whole class having handed in nothing.
+    try { node = await fbGet(classPath(cid, 'submissions')); }
+    catch (e) { console.warn("Submission refresh failed:", e?.message || e); return; }
+    if (node === undefined) return;
+    const next = flattenSubs(node);
+    // Adopt only when something actually changed, or the 60s poll re-renders the whole grid every
+    // minute. The signature covers a REGRADE of a record as well as a new one: an auto-submission
+    // keeps its id when the sweep rewrites it, so comparing ids alone would miss a score change.
+    const sig = list => (list || []).map(s => `${s.id}:${s.score}:${s.timestamp || ""}`).sort().join("|");
+    if (sig(next) === sig(submissionsRef.current)) return;
+    submissionsRef.current = next;
+    setSubmissions(next);
+    updateClassCache(cid, 'submissions', subsByStudentMap(next));
+  }, []);
+
+  // Instructor side only, and deliberately separate from `refreshClassContent`, which is the
+  // student portal's poll of instructor-authored content. This is the mirror image: the one node
+  // the instructor reads but students write.
+  useEffect(() => {
+    if (screen !== "instructor" || !currentClassId) return;
+    const cid = currentClassId;
+    const pull = () => { if (document.visibilityState === "visible") refreshSubmissions(cid); };
+    pull();
+    const timer = setInterval(pull, 60000);
+    document.addEventListener("visibilitychange", pull);
+    window.addEventListener("focus", pull);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", pull);
+      window.removeEventListener("focus", pull);
+    };
+  }, [screen, currentClassId, refreshSubmissions]);
+
   // The signed-in student's own read receipts, fetched once per (class, student). The cancel
   // flag matters on a class switch: a fetch still in flight for the class they just left must
   // never be adopted, or its receipts would be read against the new class's announcements.
@@ -1648,10 +1702,14 @@ export default function App() {
   const replaceAllSubmissions = async newSubs => {
     const cid = requireClass();
     const byStudent = subsByStudentMap(newSubs);
+    // Write BEFORE adopting, like every other writer of this node. It was the only one doing the
+    // reverse, and that exception is what would let `refreshSubmissions` poll an in-flight
+    // clear-all and put the submissions back. It is also the house rule: a failed write must not
+    // look saved (CLAUDE.md § Write discipline).
+    await fbSave(classPath(cid, 'submissions'), Object.keys(byStudent).length ? byStudent : null);
     submissionsRef.current = newSubs;
     setSubmissions(newSubs);
     updateClassCache(cid, 'submissions', byStudent);
-    await fbSave(classPath(cid, 'submissions'), Object.keys(byStudent).length ? byStudent : null);
   };
 
   // Merge submissions in without removing anything — used by the backup import, which

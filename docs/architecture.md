@@ -59,6 +59,32 @@ To keep an already-open student session from going stale, `refreshClassContent(c
 - A failed fetch yields `undefined` and that node is **skipped** (not blanked); `null` means the node genuinely doesn't exist and normalizes to `{}`. `modules` is adopted only when RTDB returns an array — an absent `modules` node means "not seeded yet", which is `loadClassData`'s job (seeding here would race it).
 - **When adding a new instructor-authored node**, add it here too (a fourth place alongside the three in CLAUDE.md § *Adding new Firebase per-class state*) if students consume it.
 
+#### The instructor's half — `refreshSubmissions`
+
+`refreshClassContent` polls the nodes the *instructor* authors, for *students*. The mirror image
+also needs polling: `submissions` is the one node students write and the instructor reads, and
+App.jsx used to load it once per class and never again. The Gradebook was therefore a snapshot of
+whenever the tab was opened.
+
+`Assignments.jsx` had already hit this and fixed it view-locally (`liveSubs`), which left the two
+instructor views disagreeing. On **2026-10-05** a homework submitted at 23:33 the previous night
+showed as *submitted* in Assignments and as a **blank cell with no submission behind it** in the
+Gradebook — the same tab, the same class, the same record. A deadline night is precisely when an
+instructor sits on an open gradebook, so the stale half is the one that had to change.
+
+`refreshSubmissions` (App.jsx, beside `refreshOwnSubmissions`) now re-reads the node on entry, on
+focus and every 60s while the instructor screen is open, and it is adopted **wholesale**. That is
+safe for one reason, and it is a reason that has to be maintained: **every writer of `submissions`
+awaits its write before local state adopts it**, so RTDB is never behind the session and a fresh
+read cannot revert an edit of ours. `replaceAllSubmissions` was the lone exception — it set state
+and then awaited — and was reordered as part of this change. A failed read is a no-op (it must
+never empty the grid), and an unchanged read is a no-op too, compared by an `id:score:timestamp`
+signature so the poll does not re-render the whole grid every minute, and so a regrade that keeps
+its id is still noticed.
+
+`Assignments.jsx` keeps its own paired read: it *joins* submissions against `hwProgress`, and a
+join needs both halves from the same instant rather than from two independent timers.
+
 ### Write discipline — concurrent sessions
 
 The same absence of a listener that makes polling necessary also makes **every whole-object write a data-loss risk**. `fbSet` PUTs: it replaces the node rather than merging, so a session writing a composite value it built from its own snapshot deletes anything another session added in between — silently, with no error.
