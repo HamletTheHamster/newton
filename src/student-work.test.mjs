@@ -126,11 +126,34 @@ test("keyForSubmission falls back to the id for one that isn't stored yet", () =
   assert.equal(keyForSubmission(null, "sub_new"), "sub_new");
 });
 
-test("submissionMergePatch targets the existing key, so an import updates instead of duplicating", () => {
+// `database.rules.json` refuses any write whose key is not the record's own `id`, which is what
+// makes the whole-array PUT impossible. An import therefore CANNOT address a positional key: it
+// writes the id-keyed record and retires the positional copy in the same patch.
+test("submissionMergePatch writes at the id and retires the legacy positional copy", () => {
   const live = { a: [sub("a", "sub_1", "q1")] };
   const patch = submissionMergePatch([{ ...sub("a", "sub_1", "q1"), score: 8 }], live);
-  assert.deepEqual(Object.keys(patch), ["a/0"]);
-  assert.equal(patch["a/0"].score, 8);
+  assert.deepEqual(Object.keys(patch).sort(), ["a/0", "a/sub_1"]);
+  assert.equal(patch["a/sub_1"].score, 8);
+  assert.equal(patch["a/0"], null, "the positional duplicate must be retired, not left behind");
+});
+
+// The client-side mirror of the security rule. If this ever fails, the restore is rejected whole.
+test("submissionMergePatch keys every written record by its own id", () => {
+  const live = { a: [sub("a", "sub_1", "q1"), sub("a", "sub_2", "hw1")] };
+  const patch = submissionMergePatch([sub("a", "sub_1", "q1"), sub("a", "sub_2", "hw1"), sub("c", "sub_3", "q2")], live);
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === null) continue;
+    assert.equal(key, `${value.studentId}/${value.id}`, `"${key}" is not addressed by its id, so the rule would reject it`);
+  }
+});
+
+// The positional key is only ever vacated, never reused, because every write is id-keyed. That is
+// what makes the null above safe rather than a prune of something local state merely thinks absent.
+test("submissionMergePatch emits no null when the record is already id-keyed", () => {
+  const live = { a: { sub_1: sub("a", "sub_1", "q1") } };
+  const patch = submissionMergePatch([{ ...sub("a", "sub_1", "q1"), score: 7 }], live);
+  assert.deepEqual(Object.keys(patch), ["a/sub_1"]);
+  assert.equal(patch["a/sub_1"].score, 7);
 });
 
 test("submissionMergePatch uses the id when the student has no node yet", () => {

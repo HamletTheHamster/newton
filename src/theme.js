@@ -60,3 +60,15 @@ export function buildTheme(light) {
 
 export const ThemeContext = createContext(buildTheme(false));
 export const useTheme = () => useContext(ThemeContext);
+
+// The saved light/dark preference, falling back to the OS setting. Shared because it is read in
+// two places that must agree: `App.jsx`, which owns the toggle, and the stale-build notice in
+// `main.jsx`, which is mounted OUTSIDE App (staleness is a property of the document, not of a
+// screen) and so cannot reach App's theme through context.
+export function initialLightMode() {
+  try {
+    const saved = localStorage.getItem("newton_light_mode");
+    if (saved !== null) return saved === "1";
+    return window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
+  } catch { return false; }
+}

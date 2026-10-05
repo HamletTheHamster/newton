@@ -67,6 +67,50 @@ This is not hypothetical. On **2026-09-06** a student submitted homework at 19:2
 
 The rules that came out of it are in [CLAUDE.md](../CLAUDE.md) § *Write discipline*, and the shapes and patch builders live in `src/student-work.js` (tested by `src/student-work.test.mjs`). In short: address the smallest thing you are changing; use `fbUpdate` (REST PATCH, deep-path keys) when a write must span several; treat whole-node PUTs as deliberate destruction; and make restores merge. Uploaded written work in Storage was untouched throughout — Storage objects are only ever deleted by an explicit roster removal, which is why the student's five photographed pages survived the record that pointed at them.
 
+### Stale clients — the 2026-09-29 recurrence
+
+The 2026-09-06 fix removed the destructive write from the code, but it could not remove it from
+code **already running**. On **2026-09-29 at 22:35** seven of one student's submission records
+(`q1`, `hw1`, `q2`, `hw2`, `q3`, `hw3`, `q4`) were destroyed by a tab executing a **pre-2026-09-06
+bundle**: the student reached Newton through a link pasted into a Blackboard module, and Blackboard
+served the app as it stood when that module was built. Submitting Quiz 5 re-PUT
+`submissions/{studentId}` as a one-element array, which is why that student's positional key `0`
+holds `q5` while every other student's holds `q1` — the surviving fingerprint of the write.
+
+Nothing was recoverable from the app: the pre-fix path had no archive step, so `submissionsArchive`
+was empty. The scores were restored by hand from a Blackboard Grade Center export taken on
+2026-09-23. `hw1` and `q1` had appeared intact throughout, because clicking those cells had
+committed `gradeOverrides` scores on blur — the identical misleading symptom as 2026-09-06.
+
+Three layers now stand between a stale client and the same loss, and they are deliberately not
+all in the app:
+
+1. **`database.rules.json` refuses any write to `submissions/{studentId}/{submissionId}` whose key
+   is not the record's own `id`.** This is the only layer a stale bundle cannot route around, and
+   it is what makes the whole-array PUT *structurally* impossible rather than merely absent from
+   current code: an array can only ever write integer keys (`0`, `1`, …), which never equal a
+   `sub_*` or `auto_*` id, so the write is rejected outright instead of replacing the node. The
+   rule is `!newData.exists() || $submissionId === newData.child('id').val()`; the `!newData.exists()`
+   clause keeps deletions working, since `deleteSubmissions`, `replaceAllSubmissions` and
+   `removeStudent` all write `null`, and a legacy positional key may still legitimately be deleted.
+   Every writer upholds the invariant: `addSubmission` addresses `sub.id` (and retires a legacy
+   positional copy of the same record once the id-keyed write lands), `buildAutoSubmission`'s id is
+   `auto_{hwId}`, which is the key the sweep writes, and `submissionMergePatch` keys by `s.id`.
+2. **The app notices it is behind and stops** — `src/app-version.js` plus
+   `src/components/StaleBuildNotice.jsx`. A build id (Netlify's `COMMIT_REF`) is baked into the
+   bundle and written to `version.json` beside it by the same build; the running session compares
+   the two on load, on focus and every fifteen minutes, and blocks on a reload prompt when they
+   differ. This can only ever catch a bundle new enough to contain the check, so it contains future
+   snapshots and is never the guard itself.
+3. **Cache headers stop a build being pinned at all** (`netlify.toml`). `index.html` is the only
+   file with a stable name, so it is the only one a cache can anchor an old build to; it now always
+   revalidates, while the content-hashed assets it names stay immutable.
+
+The Blackboard link has been disabled, which removes the source of the snapshot but not the class
+of failure: the layers above are what make it safe for a student to reach Newton from a stale
+embed. A positional key holding anything other than that student's first submission is the
+signature of this bug, and is worth checking across the class if it is ever suspected again.
+
 `metadata.courseType` (`"physics1"` = PHY 115, `"physics2"` = PHY 215, …) selects which course content is used at runtime via `quizzesForCourse(courseType)` and `modulesForCourse(courseType)` in `src/courses/index.js` (course files in the same directory). It is the canonical course identifier everywhere: it also keys the server-side answer key (`ANSWER_KEYS[courseType]` in `netlify/functions/_answerKeys.js`) and names the per-course figure directory (`public/homeworkFigures/<courseType>/HWn/`). Course *identity* (the user-facing label, which also feeds Claude as grading context) lives in `src/course-meta.js` — a content-free module so the Netlify grading function can import it without bundling course content. Instructor source material (quiz documents, homework screenshots, answer keys, lecture notes) stays out of the repo in `source/<courseCode>/{quizzes,hw/HWn,lectures}/` (gitignored); see [courses/phy115.md](courses/phy115.md) and [courses/phy215.md](courses/phy215.md). `metadata.active` controls whether students see the class in name search. The single instructor login (in `settings/`) accesses all classes through a switcher dropdown in the instructor header; each class's roster, submissions, due dates, and gradebook are isolated.
 
 ## Authentication

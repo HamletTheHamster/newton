@@ -22,3 +22,33 @@ See `package.json` for all npm scripts and `netlify.toml` for Netlify build conf
 ## Deploy
 
 Push to `main` → Netlify CI builds and deploys automatically. No manual deploy step needed.
+
+**Firebase rules are NOT part of that.** `database.rules.json` and `storage.rules` ship only via
+`firebase deploy --only database` / `--only storage`. A push that depends on a rules change is
+half a deploy until the rules go up separately.
+
+**Pick the day.** Homework is due Monday nights, so students have tabs open and are mid-assignment
+then. Avoid deploying Mondays, and prefer a morning earlier in the week. From the commit that added
+`StaleBuildNotice` onward this matters more than it used to: a deploy now ends with every open
+session blocked on a reload prompt the next time it is focused (nothing is lost, drafts autosave,
+but it interrupts). The notice only exists in bundles built after it landed, so the first deploy
+carrying it cannot interrupt anyone; every deploy after it can.
+
+### Pending: stale-client protection (committed 2026-10-05, NOT deployed)
+
+Three layers that stop a stale bundle destroying submission records, written up in
+[architecture.md](architecture.md) § *Stale clients*. Held back deliberately to avoid an active
+homework day. To finish the deploy:
+
+1. `firebase deploy --only database` — ships the `submissions` key rule. **This is the layer that
+   actually does the work**, and it is the one a git push does not carry.
+2. `node scripts/verify-submissions-rule.mjs` — verifies the rule before students rely on it,
+   since it was never testable locally (the RTDB emulator needs Java, which is not installed). It
+   writes only to `submissions/_ruletest`, a studentId no roster entry matches, and deletes it
+   afterwards: it confirms id-keyed writes are allowed, the whole-array PUT is refused, records
+   survive the refusal, and deletion still works. A failure here blocks hand-ins outright, so
+   revert the rules rather than leaving it.
+3. `git push` — ships the version gate and the cache headers.
+
+Order is safe either way: a tab running current code writes id-keyed already, so the rule does not
+reject anything a present-day session does.

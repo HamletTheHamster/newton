@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import QRCode from "qrcode";
 
-import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext } from "./theme.js";
+import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext, initialLightMode } from "./theme.js";
 import { fbGet, fbSet, fbUpdate, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage, fbListStorage } from "./firebase.js";
 import { flattenSubs, subsByStudentMap, submissionMergePatch, keyForSubmission } from "./student-work.js";
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
@@ -286,13 +286,7 @@ export default function App() {
   const [editingEmail, setEditingEmail] = useState(null); const [emailInput, setEmailInput] = useState("");
   const [newPw1, setNewPw1] = useState(""); const [newPw2, setNewPw2] = useState(""); const [pwChangeMsg, setPwChangeMsg] = useState("");
   const [stuEmailDraft, setStuEmailDraft] = useState(""); const [stuEmailMsg, setStuEmailMsg] = useState("");
-  const [lightModeState, setLightModeStateRaw] = useState(() => {
-    try {
-      const saved = localStorage.getItem("newton_light_mode");
-      if (saved !== null) return saved === "1";
-      return window.matchMedia?.("(prefers-color-scheme: light)").matches ?? false;
-    } catch { return false; }
-  });
+  const [lightModeState, setLightModeStateRaw] = useState(initialLightMode);
   const lightMode = lightModeState;
   const setLightMode = v => {
     setLightModeStateRaw(v);
@@ -1590,15 +1584,29 @@ export default function App() {
   const addSubmission = async sub => {
     const cid = requireClass();
     if (!sub?.studentId || !sub?.id) throw new Error("Submission is missing its student or id, so it was not saved.");
-    // A brand new submission's id is unique, so its key is its id — but a RETRY (the failure
-    // banner, or the localStorage stash flushing next session) may be re-saving one that did
-    // land, and under the legacy array shape that copy sits at a positional key. Resolving the
-    // key means the retry updates it in place instead of adding a duplicate.
+    // The key is ALWAYS the submission's own id, and `database.rules.json` enforces it: a write
+    // whose key is not the record's `id` is refused. That is what makes the pre-2026-09-06
+    // whole-array PUT structurally impossible from ANY client, however old the bundle it runs —
+    // an array can only write integer keys ("0", "1", …), which never equal a `sub_*`/`auto_*`
+    // id, so the write is rejected outright instead of replacing the node and dropping the
+    // records already in it. On 2026-09-29 a tab served by Blackboard from a pre-fix snapshot
+    // did exactly that and destroyed seven records; the rule is the half a stale client cannot
+    // route around, so this function must never address anything but the id.
     let live = null;
-    try { live = await fbGet(classPath(cid, `submissions/${sub.studentId}`)); } catch { /* fall back to the id */ }
+    try { live = await fbGet(classPath(cid, `submissions/${sub.studentId}`)); } catch { /* best effort */ }
     // Write FIRST, then adopt into local state — a failed save must not look saved. The
     // caller (quiz finish / homework finish) surfaces the throw and keeps its retry path.
-    await fbSave(classPath(cid, `submissions/${sub.studentId}/${keyForSubmission(live, sub.id)}`), sub);
+    await fbSave(classPath(cid, `submissions/${sub.studentId}/${sub.id}`), sub);
+    // A RETRY (the failure banner, or the localStorage stash flushing next session) may be
+    // re-saving a record that landed under the legacy array shape, where its key is a POSITION
+    // and not its id. Writing at the id leaves that copy behind, so drop it now that the
+    // id-keyed write has landed: the record migrates onto the invariant the first time it is
+    // touched, and the ordering means a failure here leaves a duplicate rather than a hole.
+    const legacyKey = keyForSubmission(live, sub.id);
+    if (legacyKey !== sub.id) {
+      try { await fbSave(classPath(cid, `submissions/${sub.studentId}/${legacyKey}`), null); }
+      catch (e) { console.warn("Could not remove the legacy positional copy of this submission:", e?.message || e); }
+    }
     const next = [...submissionsRef.current.filter(s => s.id !== sub.id), sub];
     submissionsRef.current = next;
     setSubmissions(next);

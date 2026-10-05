@@ -10,3 +10,22 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Caching posture for a single-page app. `index.html` is the only file whose NAME is stable, so
+# it is the one a cache can pin an old build to: everything it pulls in is content-hashed, and a
+# webview holding a stale copy of it goes on loading that build's assets long after a deploy.
+# That is how a pre-2026-09-06 bundle was still running on 2026-09-29 (served inside Blackboard)
+# and destroyed seven submission records. So the entry point must always revalidate, while the
+# hashed assets it names can be cached forever.
+#
+# Netlify applies every matching block in order and the later one wins per header, so the
+# specific `/assets/*` rule below deliberately follows the catch-all.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache, must-revalidate"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

@@ -72,13 +72,25 @@ export function keyForSubmission(perStudentNode, subId) {
 // Used by the backup import, which must ADD to the node and never replace it — a backup is by
 // definition older than the live data, so a replacing restore would delete every submission
 // handed in since it was taken.
-// `node` is the live `submissions` node, used only to address a submission that already
-// exists at a legacy positional key — without it an import would write a second copy of it.
+// Every key is the submission's own id, because `database.rules.json` refuses a write whose
+// key is not the record's `id` — the rule that makes a whole-array PUT impossible also means an
+// import may not address a legacy POSITIONAL key, or the whole patch is rejected and the restore
+// silently does nothing.
+// `node` is the live `submissions` node, read immediately before the write. It is used to spot a
+// record that already sits at a positional key, so the patch can retire that copy in the same
+// breath as it writes the id-keyed one, instead of leaving a duplicate behind.
+//
+// This is the ONE sanctioned null in a merge patch (see CLAUDE.md § Write discipline). The ban
+// exists to stop a patch pruning what LOCAL STATE believes is absent; this null is evidence-based
+// and self-limiting: `keyForSubmission` returns a key only when the record there carries this
+// exact id, and new writes are always id-keyed, so a position can be vacated but never reused.
 export function submissionMergePatch(subs, node) {
   const patch = {};
   for (const s of (subs || [])) {
     if (!s || typeof s !== "object" || !s.studentId || !s.id) continue;
-    patch[`${s.studentId}/${keyForSubmission(node?.[s.studentId], s.id)}`] = s;
+    patch[`${s.studentId}/${s.id}`] = s;
+    const legacyKey = keyForSubmission(node?.[s.studentId], s.id);
+    if (legacyKey !== s.id) patch[`${s.studentId}/${legacyKey}`] = null;
   }
   return patch;
 }

@@ -9,7 +9,13 @@
         },
         "roster": {},
         "studentPws": {},
-        "submissions": {},
+        "submissions": {
+          "$studentId": {
+            "$submissionId": {
+              ".validate": "!newData.exists() || $submissionId === newData.child('id').val()"
+            }
+          }
+        },
         "submissionsArchive": {},
         "checkedSubs": {},
         "dueDates": {},
