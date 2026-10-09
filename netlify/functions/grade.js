@@ -1,6 +1,7 @@
 // Server-side homework grading endpoint for numeric / text / math problems. The answer key
 // (netlify/functions/_answerKeys.js) is bundled into THIS function and never shipped to the
-// browser, so students can't read answers from the client JS bundle or the public repo. Graph /
+// browser, so students can't read answers from the client JS bundle. (The repo itself is public
+// and this key is committed to it — a deliberate choice; see _answerKeys.js.) Graph /
 // vector / fbd problems are still graded deterministically on the client (their key geometry lives
 // in the course file) — those never hit this endpoint.
 //

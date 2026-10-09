@@ -601,6 +601,35 @@ schedule that rations attempts on real homework only obstructs the revision the 
 `revealCredit` stays at **0** so the finish screen stays honest: a problem whose answer you asked
 for is not a problem you can do, and the summary says so in those words.
 
+### A student who started late, or not at all
+
+Three cases, and they are distinguished by what record exists rather than by what the student
+remembers doing:
+
+1. **No record at all** (never opened it, or opened it and finished nothing — the deadline sweep
+   only banks a receipt when a draft holds *finished* work). Nothing of theirs to rank, so the
+   guide falls back to the problems the class found hardest and says so: the per-problem line
+   reads "which you did not hand in" instead of "one of your lowest-scoring problems".
+2. **A deadline auto-submission receipt.** That record carries real per-problem credit for
+   whatever they did finish, so they are ranked on their own work like anyone else: problems
+   finished well drop out, problems never reached sit at 0 and come first. This falls out of the
+   receipt already existing and needs no special case.
+3. **An ordinary hand-in.** The normal path.
+
+**The class-difficulty average in case 1 counts only the students who ATTEMPTED each problem.**
+This is not a refinement; without it the fallback is actively wrong. Every submission carries a
+row for every problem in the set, and the ones the student never reached are written at
+`earned: 0` — an auto-submission receipt is made almost entirely of them. Averaging those in
+reads "nobody got to it" as "everybody found it hard", and since running out of time tracks
+POSITION, the bias is systematic: the last problems of every set look like the hardest, and the
+student who handed nothing in — the only student this ranking is ever used for — gets sent to
+re-work problem 10 of each homework instead of the genuinely hard ones. A problem fewer than
+three students reached is left out of the map entirely, and unknown difficulty sorts after every
+known one, because not knowing whether a problem is hard is not evidence that it is.
+
+A student who handed nothing in for any covered homework therefore gets the full set (three per
+homework, so eighteen for the midterm guide), all labelled as not handed in.
+
 ### The student has to know where the problems came from
 
 This is a requirement, not polish. A set chosen for the whole class says *this is what the midterm

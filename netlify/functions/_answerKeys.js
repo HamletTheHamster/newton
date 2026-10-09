@@ -1,8 +1,17 @@
 // SERVER-ONLY homework answer key. The leading underscore tells Netlify to treat this as an
 // importable helper, NOT a deployed function endpoint. It is imported only by grade.js — never by
 // any client module — so these answers are bundled into the grading function and are NEVER shipped
-// to the browser. This is the whole point of server-side grading: a student perusing the public
-// repo or the client JS bundle can no longer read numeric/text/math answers.
+// to the browser. This is the point of server-side grading: the answers are not in the client JS
+// bundle, so they cannot be read with DevTools or pulled out of a deployed asset.
+//
+// WHAT IT DOES NOT PROTECT, DELIBERATELY: this repository is PUBLIC, and this file is committed
+// to it, so anyone who thinks to look can read every answer on GitHub. That is a considered
+// choice by the instructor (2026-10-09), not an oversight — the project is kept visible on
+// purpose, and a student who goes looking for the repository has worked harder than the problem
+// set asks. Do not "fix" it by gitignoring this file: Netlify builds the grading function from
+// the repo, so removing it ships a grader with no answer key. If a future course needs the
+// answers genuinely withheld, the repo has to go private or the key has to move to a Netlify
+// environment variable.
 //
 // Only numeric / text / math items appear here. Graph / vector / fbd problems are graded
 // deterministically and locally on the client (their `key` geometry lives in the course file), an

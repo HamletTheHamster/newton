@@ -29,10 +29,10 @@ import { itemsOf } from "./homework.js";
 const MASTERED = 0.999;
 
 // Class-difficulty ranking is only used where the student has no submission of their own, and
-// only once enough of the class has handed in to mean anything. Three is the same floor
-// `pearson` uses in analytics.js, for the same reason: below it, one student's bad afternoon is
+// only for a problem enough of the class actually ATTEMPTED. Three is the same floor `pearson`
+// uses in analytics.js, for the same reason: below it, one student's bad afternoon is
 // indistinguishable from a hard problem.
-export const MIN_SUBS_FOR_DIFFICULTY = 3;
+export const MIN_ATTEMPTERS_FOR_DIFFICULTY = 3;
 
 export const STUDY_PER_HW = 3;
 
@@ -76,25 +76,59 @@ export function problemScores(submission) {
   return out;
 }
 
-// Mean fraction earned per problem across the class, for the no-submission fallback. Submissions
-// must already be scoped to this homework's real students (src/roster-scope.js) by the caller -
-// a test account's blank submission would otherwise read as the hardest problem in the set.
+// The gradable rows of one problem in a submission record: its parts, or the problem row itself
+// when it has none. The two shapes come straight from `buildSubmission` (HomeworkRunner).
+const rowItems = row => (row?.parts?.length ? row.parts : [row]);
+
+// Did this student actually work this problem, as opposed to never reaching it?
+//
+// Three different marks count, because three kinds of item record their work differently: an
+// attempt (numeric/text/math go through Submit), a resolved status (a graph/vector/fbd item
+// live-grades with no Submit at all, so it can be `correct` with `attempts` still 0), and typed
+// or drawn input that was never resolved. Any one of them on any item means the problem was
+// engaged with.
+export function problemAttempted(row) {
+  return rowItems(row).some(it => {
+    if (!it) return false;
+    if ((Number(it.attempts) || 0) > 0) return true;
+    if (it.status && it.status !== "open") return true;
+    return typeof it.studentAnswer === "string" && it.studentAnswer.trim() !== "";
+  });
+}
+
+// Mean fraction earned per problem across the class, for the no-submission fallback.
+//
+// Averaged ONLY over the students who attempted each problem, which is the whole point. Every
+// submission record carries a row for every problem in the set, including the ones the student
+// never reached: `buildSubmission` writes them at `earned: 0`, and a deadline auto-submission
+// (src/auto-submit.js) is made almost entirely of them. Averaging those in reads "nobody got to
+// it" as "everybody found it hard", and because running out of time is correlated with POSITION,
+// the bias is systematic: the last problems of every set would look like the hardest ones, and a
+// student who handed nothing in - the only student this ranking is used for - would be sent to
+// re-work problem 10 of each homework instead of the genuinely hard ones.
+//
+// A problem fewer than `MIN_ATTEMPTERS_FOR_DIFFICULTY` students reached is left OUT of the map
+// rather than given a noisy average over one or two of them. `rankProblems` treats a missing
+// entry as unknown difficulty, not as easy.
+//
+// Submissions must already be scoped to this homework's real students (src/roster-scope.js) by
+// the caller - a test account's blank submission would otherwise read as a hard problem.
 export function classDifficulty(submissions = []) {
   const sums = {};
-  let n = 0;
   for (const sub of submissions) {
-    const scores = problemScores(sub);
-    if (!Object.keys(scores).length) continue;
-    n++;
-    for (const [pid, sc] of Object.entries(scores)) {
-      (sums[pid] || (sums[pid] = { total: 0, count: 0 })).total += sc.frac;
-      sums[pid].count++;
+    for (const row of sub?.problems || []) {
+      if (!row?.id || !problemAttempted(row)) continue;
+      const max = Number(row.max) || 1;
+      const frac = max > 0 ? (Number(row.earned) || 0) / max : 0;
+      (sums[row.id] || (sums[row.id] = { total: 0, count: 0 })).total += frac;
+      sums[row.id].count++;
     }
   }
-  if (n < MIN_SUBS_FOR_DIFFICULTY) return null;
   const out = {};
-  for (const [pid, { total, count }] of Object.entries(sums)) out[pid] = count ? total / count : 0;
-  return out;
+  for (const [pid, { total, count }] of Object.entries(sums)) {
+    if (count >= MIN_ATTEMPTERS_FOR_DIFFICULTY) out[pid] = total / count;
+  }
+  return Object.keys(out).length ? out : null;
 }
 
 // Weakest first. Ties are broken by class difficulty (the harder problem first) and then by the
@@ -110,10 +144,22 @@ export function rankProblems({ homework, submission, difficulty = null }) {
     frac: have ? (scores[p.id]?.frac ?? 0) : null,
     classFrac: difficulty?.[p.id] ?? null,
   }));
+  // Sorted on an explicit key rather than a chain of conditionals, because the chain was not a
+  // total order: with a SPARSE difficulty map (which is now the normal case - a problem too few
+  // students reached has no entry) it compared one pair by class difficulty and the next by
+  // position, which is not transitive and lets the result depend on the input order. The key is
+  // [own score, difficulty known, difficulty, position], and "unknown difficulty" sorts after
+  // every known one: not knowing whether a problem is hard is not evidence that it is.
+  const key = r => [
+    r.frac == null ? 0 : r.frac,
+    r.classFrac == null ? 1 : 0,
+    r.classFrac == null ? 0 : r.classFrac,
+    r.order,
+  ];
   rows.sort((a, b) => {
-    if (a.frac != null && b.frac != null && a.frac !== b.frac) return a.frac - b.frac;
-    if (a.classFrac != null && b.classFrac != null && a.classFrac !== b.classFrac) return a.classFrac - b.classFrac;
-    return a.order - b.order;
+    const ka = key(a), kb = key(b);
+    for (let i = 0; i < ka.length; i++) if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    return 0;
   });
   return rows;
 }

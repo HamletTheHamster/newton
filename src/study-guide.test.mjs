@@ -10,7 +10,7 @@ import assert from "node:assert/strict";
 import {
   problemScores, classDifficulty, rankProblems, pickStudyProblems,
   buildStudyAssignment, variantSeed, studyGuideSize, isEmptyGuide,
-  MIN_SUBS_FOR_DIFFICULTY, STUDY_GRADING, STUDY_PER_HW, SELECTION_NOTE,
+  MIN_ATTEMPTERS_FOR_DIFFICULTY, problemAttempted, STUDY_GRADING, STUDY_PER_HW, SELECTION_NOTE,
 } from "./study-guide.js";
 
 let passed = 0;
@@ -28,10 +28,22 @@ const hw = (id, n = 5) => ({
   })),
 });
 
-// A submission in the shape HomeworkRunner.buildSubmission writes.
+// A submission in the shape HomeworkRunner.buildSubmission writes. Every row it lists counts as
+// attempted (one graded attempt), which is what an ordinary hand-in looks like.
 const sub = (hwId, fracs) => ({
   id: "sub_1", studentId: "s1", quizId: hwId, type: "homework",
-  problems: Object.entries(fracs).map(([pid, frac]) => ({ id: pid, earned: frac, max: 1 })),
+  problems: Object.entries(fracs).map(([pid, frac]) => ({ id: pid, earned: frac, max: 1, attempts: 1, status: "correct" })),
+});
+
+// The record a student leaves when they run out of time: rows for every problem in the set, but
+// the ones they never reached carry no attempt, no status and no answer. A deadline
+// auto-submission (src/auto-submit.js) is made almost entirely of these.
+const partial = (hwId, fracs, unreached) => ({
+  id: "auto_1", studentId: "s9", quizId: hwId, type: "homework",
+  problems: [
+    ...Object.entries(fracs).map(([pid, frac]) => ({ id: pid, earned: frac, max: 1, attempts: 2, status: "correct" })),
+    ...unreached.map(pid => ({ id: pid, earned: 0, max: 1, attempts: 0, status: "open", studentAnswer: "" })),
+  ],
 });
 
 console.log("\nstudy-guide: per-problem scores");
@@ -93,8 +105,81 @@ test("with nothing to separate them, the homework's own order decides — so a g
 console.log("\nstudy-guide: class difficulty");
 
 test("below the floor there is no class difficulty, only null", () => {
-  const subs = Array.from({ length: MIN_SUBS_FOR_DIFFICULTY - 1 }, () => sub("hw1", { hw1_p1: 0 }));
+  const subs = Array.from({ length: MIN_ATTEMPTERS_FOR_DIFFICULTY - 1 }, () => sub("hw1", { hw1_p1: 0 }));
   assert.equal(classDifficulty(subs), null);
+});
+
+test("a problem the student never reached is not an attempt", () => {
+  assert.equal(problemAttempted({ id: "p", earned: 0, max: 1, attempts: 0, status: "open", studentAnswer: "" }), false);
+  assert.equal(problemAttempted({ id: "p", earned: 0, max: 1, attempts: 1, status: "open" }), true);
+  // A graph/vector/fbd item live-grades with no Submit, so it resolves with attempts still 0.
+  assert.equal(problemAttempted({ id: "p", attempts: 0, status: "correct" }), true);
+  // Typed but never submitted still counts as having worked it.
+  assert.equal(problemAttempted({ id: "p", attempts: 0, status: "open", studentAnswer: "2.4" }), true);
+  assert.equal(problemAttempted({ id: "p", attempts: 0, status: "open", studentAnswer: "   " }), false);
+  // Multipart: any part worked means the problem was worked.
+  assert.equal(problemAttempted({ id: "p", parts: [{ attempts: 0, status: "open" }, { attempts: 3, status: "open" }] }), true);
+  assert.equal(problemAttempted({ id: "p", parts: [{ attempts: 0, status: "open" }] }), false);
+  assert.equal(problemAttempted(null), false);
+});
+
+test("a problem nobody reached is not 'hard' — it is unknown, and left out of the map", () => {
+  // THE BUG THIS FIXES. Three students: all three found p1 hard, and two simply ran out of time
+  // before p2. Averaging the unreached rows in would score p2 at 0.33 and rank it alongside a
+  // problem the class genuinely could not do. Because running out of time tracks POSITION, that
+  // made the last problems of every set look like the hardest.
+  const subs = [
+    partial("hw1", { hw1_p1: 0.2 }, ["hw1_p2"]),
+    partial("hw1", { hw1_p1: 0.1 }, ["hw1_p2"]),
+    sub("hw1", { hw1_p1: 0.3, hw1_p2: 1 }),
+  ];
+  const d = classDifficulty(subs);
+  assert.ok(Math.abs(d.hw1_p1 - 0.2) < 1e-9);       // averaged over the three who attempted it
+  assert.equal("hw1_p2" in d, false);                // one attempter is not evidence
+});
+
+test("an attempted problem counts even when the student earned nothing on it", () => {
+  // Tried and failed is exactly the evidence this average wants; only never-reached is excluded.
+  const subs = [
+    partial("hw1", { hw1_p1: 0 }, ["hw1_p2"]),
+    partial("hw1", { hw1_p1: 0 }, ["hw1_p2"]),
+    partial("hw1", { hw1_p1: 0 }, ["hw1_p2"]),
+  ];
+  assert.equal(classDifficulty(subs).hw1_p1, 0);
+});
+
+test("the fallback no longer favours the end of the set", () => {
+  // End to end, for the only student this ranking is ever used for. Five problems; p2 and p4 are
+  // genuinely hard for everyone who reached them, while p5 was simply never reached by two of
+  // the three. The guide must send them to p2 and p4, not to p5.
+  const hw5 = { id: "hw1", title: "Homework 1", problems: ["hw1_p1","hw1_p2","hw1_p3","hw1_p4","hw1_p5"].map((id, i) => ({ id, prompt: `p${i+1}`, answerType: "numeric" })) };
+  const classSubs = [
+    partial("hw1", { hw1_p1: 1, hw1_p2: 0.2, hw1_p3: 1, hw1_p4: 0.3 }, ["hw1_p5"]),
+    partial("hw1", { hw1_p1: 1, hw1_p2: 0.1, hw1_p3: 1, hw1_p4: 0.2 }, ["hw1_p5"]),
+    sub("hw1", { hw1_p1: 1, hw1_p2: 0.3, hw1_p3: 1, hw1_p4: 0.4, hw1_p5: 1 }),
+  ];
+  const picks = pickStudyProblems({
+    covers: ["hw1"], homeworks: [hw5], submissionsByHw: {},
+    difficultyByHw: { hw1: classDifficulty(classSubs) },
+  });
+  assert.deepEqual(picks.map(p => p.problemId), ["hw1_p2", "hw1_p4", "hw1_p1"]);
+  assert.equal(picks.some(p => p.problemId === "hw1_p5"), false);
+});
+
+test("ranking is a total order even when only some problems have a difficulty", () => {
+  // A sparse difficulty map is now the normal case. The old comparator settled one pair by
+  // difficulty and the next by position, which is not transitive: the result could depend on the
+  // order the problems happened to arrive in. Same inputs shuffled must give the same guide.
+  const ids = ["hw1_p1","hw1_p2","hw1_p3","hw1_p4","hw1_p5"];
+  const homework = { id: "hw1", problems: ids.map(id => ({ id })) };
+  const difficulty = { hw1_p2: 0.4, hw1_p4: 0.1 };   // p1, p3, p5: too few attempters
+  const expected = rankProblems({ homework, submission: null, difficulty }).map(r => r.problemId);
+  assert.deepEqual(expected, ["hw1_p4", "hw1_p2", "hw1_p1", "hw1_p3", "hw1_p5"]);
+  const shuffled = { id: "hw1", problems: [ids[3], ids[0], ids[4], ids[1], ids[2]].map(id => ({ id })) };
+  const got = rankProblems({ homework: shuffled, submission: null, difficulty })
+    .map(r => r.problemId)
+    .filter(id => id === "hw1_p4" || id === "hw1_p2");
+  assert.deepEqual(got, ["hw1_p4", "hw1_p2"]);       // the known-difficulty pair keeps its order
 });
 
 test("at the floor it is the mean fraction earned per problem", () => {
