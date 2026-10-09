@@ -17,6 +17,7 @@ import {
   phaseForAttempt,
   evaluateHomeworkAnswer,
   revealHomeworkAnswers,
+  requestHomeworkHint,
   revealAnswerFor,
   checkWorkIntegrity,
   graphHasInput,
@@ -41,6 +42,8 @@ import {
   rescoreSubmission,
 } from "../../homework.js";
 import { onTimeIdsFromTelemetry, stampOnTimeParts } from "../../auto-submit.js";
+import { SELECTION_NOTE } from "../../study-guide.js";
+import { StudyCopyButton } from "../../components/StudyCopyButton.jsx";
 
 const GRAPHICAL = new Set(["graph", "vector", "fbd"]);
 
@@ -113,6 +116,19 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const solidBg = isLight ? "#fff" : "#252627";
   const G = homework.grading || HW_GRADING_DEFAULTS;
 
+  // A personalized STUDY GUIDE rather than a graded homework (src/study-guide.js). It carries no
+  // points, so the three things that exist to protect credit are all off: the written-work
+  // upload and its integrity check, the acknowledgment gate in front of them, and the submission
+  // itself. What stays on is everything that helps a student work: the draft (so a guide can be
+  // put down and picked up for as long as they like), hints without limit, and the answer on
+  // request. Flagged on the assignment rather than passed as a prop because the assignment is
+  // what App.jsx assembles - and `practice` is NOT the flag to reuse, since practice also turns
+  // off the draft, which would make a study guide un-resumable.
+  const study = !!homework.study;
+  // The written-work acknowledgment belongs to graded homework alone.
+  const needsAck = !practice && !study;
+  const ready = !needsAck || acked;
+
   const problems = homework.problems || [];
   const allItems = problems.flatMap(itemsOf);
   const total = problems.length;
@@ -129,6 +145,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const [gradePass, setGradePass] = useState({});  // { itemId: { [curveId|vectorId]: bool } } — per-piece verdict from the last graph/vector grade
   const [hintUsed, setHintUsed] = useState({});    // { itemId: true } — graphical item where a hint was taken (drops self-solve to hintCredit)
   const [history, setHistory] = useState({});      // { itemId: [Claude turns] }
+  const [hints, setHints] = useState({});          // { itemId: [hint text] } — asked-for hints, study guides only
+  const [hintBusy, setHintBusy] = useState(null);  // itemId whose hint is in flight
+  const [studyRecord, setStudyRecord] = useState(null); // the in-memory record a study guide prints from
   const [busy, setBusy] = useState(null);          // itemId currently evaluating
   const [done, setDone] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -233,7 +252,8 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const applyDraft = d => {
     setAnswers(d.answers || {}); setAttempts(savedAttempts); setStatus(d.status || {});
     setEarned(d.earned || {}); setFeedback(d.feedback || {}); setRevealed(d.revealed || {});
-    setGradePass(d.gradePass || {}); setHintUsed(d.hintUsed || {}); setHistory(d.history || {}); setIdx(d.idx || 0);
+    setGradePass(d.gradePass || {}); setHintUsed(d.hintUsed || {}); setHistory(d.history || {});
+    setHints(d.hints || {}); setIdx(d.idx || 0);
   };
 
   // Clearing the draft clears its progress summary too: from final submission on, the
@@ -289,7 +309,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // Deliberately ADDITIVE — no key is ever nulled. The per-item maps are only ever added to
   // by the runner, so nothing here needs deleting, and an answer the student typed and then
   // cleared is worth keeping anyway: a resumed draft should show what they last wrote.
-  const draftPatch = () => buildDraftPatch({ answers, attempts, status, earned, feedback, revealed, gradePass, hintUsed, history, idx });
+  const draftPatch = () => buildDraftPatch({ answers, attempts, status, earned, feedback, revealed, gradePass, hintUsed, history, hints, idx });
 
   const persistDraft = () => draftPath
     ? Promise.all([
@@ -397,9 +417,9 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // Focus the first open input when entering the runner or navigating to another problem.
   // No-ops while the resume modal / ack gate / loading screens are up (inputRef is unset).
   useEffect(() => {
-    if (!practice && !acked) return;
+    if (!ready) return;
     focusInput();
-  }, [idx, acked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [idx, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Engagement telemetry ────────────────────────────────────────────────────
   // Time is attributed to the deepest part the student can actually see, which is the same
@@ -414,8 +434,8 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   useEffect(() => {
     if (!telemetryPath) return;
     // Nothing is being worked until the student is past the resume modal and the ack gate.
-    tele("setItem", (draftLoading || pendingDraft || !acked) ? null : deepestVisibleId);
-  }, [deepestVisibleId, draftLoading, pendingDraft, acked]); // eslint-disable-line react-hooks/exhaustive-deps
+    tele("setItem", (draftLoading || pendingDraft || !ready) ? null : deepestVisibleId);
+  }, [deepestVisibleId, draftLoading, pendingDraft, ready]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!telemetryPath) return;
@@ -560,6 +580,57 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     setSubmitNonce(n => n + 1);
   };
 
+  // ── Asked-for help (study guides only) ───────────────────────────────────────
+  // A study guide gives as many hints per problem as a student wants and will show the answer
+  // whenever they ask, because nothing on it is graded (STUDY_GRADING, src/study-guide.js) and
+  // rationing either would only obstruct the revision it exists for. Both are free: neither
+  // touches the attempt count.
+  //
+  // Each hint is sent the hints already given on that item and asked to go a step further, so
+  // pressing again walks the method forward instead of repeating itself. The trail is kept
+  // visible (and saved on the draft) rather than replacing the last hint, so a student can see
+  // the path they have been led down.
+  const askHint = async item => {
+    if (hintBusy) return;
+    setHintBusy(item.id);
+    try {
+      const msg = await requestHomeworkHint({
+        item, hwId: homework.id, courseType,
+        studentAnswer: answers[item.id] || "",
+        priorHints: hints[item.id] || [],
+      });
+      if (msg) setHints(h => ({ ...h, [item.id]: [...(h[item.id] || []), msg] }));
+    } catch (err) {
+      setFeedback(f => ({ ...f, [item.id]: { text: "⚠️ " + (err?.message || "Couldn't reach the tutor.") + " Your work is saved, so try the hint again in a moment.", kind: "wrong" } }));
+    }
+    setHintBusy(null);
+  };
+
+  // Show the answer to a numeric/text/math item on request. The answer lives server-side, so
+  // this is the same `reveal` call a submitted homework makes to fill in its gradebook key -
+  // asked for one item instead of all of them. It resolves the item at `revealCredit` (0), which
+  // is what keeps the finish screen honest: a problem whose answer you asked for is not a
+  // problem you can do. Graphical items have had their own Show answer button all along.
+  const revealOnDemand = async item => {
+    if (busy) return;
+    setConfirmReveal(null);
+    setBusy(item.id);
+    try {
+      const got = await revealHomeworkAnswers({ courseType, hwId: homework.id, items: [item] });
+      const ans = got[item.id];
+      if (ans == null) throw new Error("The answer for this part couldn't be fetched.");
+      setRevealed(r => ({ ...r, [item.id]: ans }));
+      setStatus(st => ({ ...st, [item.id]: "revealed" }));
+      setEarned(e => ({ ...e, [item.id]: G.revealCredit * item.weight }));
+      setFeedback(f => ({ ...f, [item.id]: { text: "Here is the correct answer. Work back through it with the answer in front of you, then try the next problem without it.", kind: "revealed" } }));
+      tele("noteResolved", item.id);
+      setSubmitNonce(n => n + 1);
+    } catch (err) {
+      setFeedback(f => ({ ...f, [item.id]: { text: "⚠️ " + (err?.message || "Couldn't reach the grader.") + " Try again in a moment.", kind: "wrong" } }));
+    }
+    setBusy(null);
+  };
+
   const submitItem = async item => {
     if (busy) return;
     const ans = (answers[item.id] || "").trim();
@@ -671,8 +742,10 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
     const telemetry = telemetrySnapshot();
     const sub = {
       id: "sub_" + Date.now(),
-      studentName: loggedInStudent.fullName,
-      studentId: loggedInStudent.studentId,
+      // Defaulted rather than asserted: a study guide builds this same record in memory for
+      // the downloadable study copy, and an instructor previewing one has no student at all.
+      studentName: loggedInStudent?.fullName || "",
+      studentId: loggedInStudent?.studentId || "",
       quizId: homework.id,
       quizTitle: homework.title,
       type: "homework",
@@ -696,7 +769,26 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   };
 
   // Practice has no submission/proof step; graded homework goes through the work-upload step.
-  const finish = () => { if (practice) { setDone(true); return; } setSubmitStep(true); };
+  //
+  // A study guide ends at its own summary: there is no score to record, no written work to prove
+  // and no submission to write, so finishing is simply the moment the student asks to see how
+  // they did. The one thing it does fetch is the correct answers, exactly as a hand-in does, so
+  // the downloadable study copy can print the right answer under every problem - including the
+  // ones they got right and never saw an answer for. Best effort: a grader outage costs the
+  // printed answers, not the summary.
+  const finish = async () => {
+    if (study) {
+      setSaving(true);
+      const revealItems = allItems.filter(it => !GRAPHICAL.has(it.answerType));
+      const serverAnswers = await revealHomeworkAnswers({ courseType, hwId: homework.id, items: revealItems }).catch(() => ({}));
+      setStudyRecord(buildSubmission([], null, serverAnswers));
+      setSaving(false);
+      setDone(true);
+      return;
+    }
+    if (practice) { setDone(true); return; }
+    setSubmitStep(true);
+  };
 
   // ── Work-file handling (graded submit step) ───────────────────────────────────
   // Every attached file is normalized in the browser BEFORE it is staged (see work-files.js).
@@ -797,6 +889,42 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       <button onClick={() => setConfirmReveal(item)} className="hw-reveal-btn" style={{ ...s.btnGhost, width: "auto", padding: "7px 16px", color: muted }}>Show answer</button>
     </div>
   );
+
+  // Hint + Show-answer controls for a numeric/text/math item on a STUDY GUIDE, where both are
+  // free and unlimited. On graded homework these do not exist: a hint arrives there by failing
+  // three times and costs 20% of the item, which is the schedule that makes attempts worth
+  // something. Here there is nothing to protect, so the help is simply available.
+  const studyControls = item => (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+      <button
+        onClick={() => askHint(item)}
+        disabled={hintBusy === item.id}
+        className="hw-hint-btn"
+        style={{ ...s.btnPri, width: "auto", padding: "7px 16px", opacity: hintBusy === item.id ? 0.5 : 1 }}
+      >
+        {hintBusy === item.id ? "Thinking…" : (hints[item.id]?.length ? "💡 Another hint" : "💡 Hint")}
+      </button>
+      <button onClick={() => revealOnDemand(item)} disabled={busy === item.id} className="hw-reveal-btn" style={{ ...s.btnGhost, width: "auto", padding: "7px 16px", color: muted }}>Show answer</button>
+    </div>
+  );
+
+  // The hints a student has asked for on this item, kept in view in the order they arrived.
+  // They stack rather than replace because the point of asking again is to be taken a step
+  // further, and a student working a problem wants the whole path still in front of them.
+  const hintTrail = item => {
+    const list = hints[item.id] || [];
+    if (!list.length) return null;
+    return (
+      <div className="hw-no-copy" onCopy={e => e.preventDefault()} onCut={e => e.preventDefault()} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {list.map((h, i) => (
+          <div key={i} style={{ background: FB_COLOR.hint + "1f", border: `1px solid ${FB_COLOR.hint}55`, borderRadius: 10, padding: "10px 14px", fontSize: 14, color: text, lineHeight: 1.5 }}>
+            <span style={{ color: FB_COLOR.hint, fontWeight: 700 }}>💡 Hint{list.length > 1 ? ` ${i + 1}` : ""}: </span>
+            <MathText>{h}</MathText>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   // Quiet echo of what a numeric entry parsed to, shown only once the entry uses an exponent
   // form (an `e`, a caret, a ×, or a unicode superscript). Deliberately not an instruction:
@@ -911,12 +1039,19 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         {item.prompt && <Prompt>{item.prompt}</Prompt>}
         {item.freeHint && <FreeHint>{item.freeHint}</FreeHint>}
         {renderInput(item, focusable)}
-        {st !== "correct" && st !== "revealed" && GRAPHICAL.has(item.answerType) && (
+        {study && st !== "correct" && st !== "revealed" && !GRAPHICAL.has(item.answerType) && studyControls(item)}
+        {hintTrail(item)}
+        {!study && st !== "correct" && st !== "revealed" && GRAPHICAL.has(item.answerType) && (
           <div style={{ color: muted, fontSize: 12.5, lineHeight: 1.4 }}>
             Receive <strong style={{ color: text }}>full credit</strong> by completing it yourself, or take a hint for <span style={{ color: FB_COLOR.hint, fontWeight: 700 }}>{Math.round(G.hintCredit * 100)}%</span>, or <span style={{ color: FB_COLOR.wrong, fontWeight: 700 }}>click Show Answer for {G.revealCredit === 0 ? "no credit" : `${Math.round(G.revealCredit * 100)}%`}</span>.
           </div>
         )}
-        {st !== "correct" && st !== "revealed" && !GRAPHICAL.has(item.answerType) && (() => {
+        {study && st !== "correct" && st !== "revealed" && used > 0 && (
+          <div style={{ color: muted, fontFamily: "monospace", fontSize: 12 }}>
+            Attempt {used + 1} · as many tries as you like on a study guide
+          </div>
+        )}
+        {!study && st !== "correct" && st !== "revealed" && !GRAPHICAL.has(item.answerType) && (() => {
           const credit = creditForAttempt(used + 1, G);
           const cColor = credit >= 1 ? FB_COLOR.correct : FB_COLOR.hint;
           return (
@@ -987,16 +1122,33 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
         </div>
         <div style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 720, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ ...s.card, padding: 24, textAlign: "center" }}>
-            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{preview ? "Preview complete, nothing saved or graded" : practice ? "Practice complete, not submitted for a grade" : "Homework complete"}</div>
+            <div style={{ color: muted, fontSize: 13, marginBottom: 6 }}>{preview ? "Preview complete, nothing saved or graded" : study ? "Study guide finished, nothing graded or recorded" : practice ? "Practice complete, not submitted for a grade" : "Homework complete"}</div>
             <div style={{ color: text, fontWeight: 800, fontSize: 34 }}>{sub.rawScore.toFixed(2)} / {total}</div>
-            {!practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late: work you finished after the deadline earns half credit. Anything you had already finished before it keeps full credit.</div>}
+            {study && <div style={{ color: muted, fontSize: 13, marginTop: 8, lineHeight: 1.5 }}>That is how many you worked out without being shown the answer. A problem you revealed counts nothing here, which is the honest way to read it: those are the ones to take to office hours.</div>}
+            {!study && !practice && late && <div style={{ color: "#f87171", fontSize: 13, marginTop: 6 }}>⚠️ Late: work you finished after the deadline earns half credit. Anything you had already finished before it keeps full credit.</div>}
           </div>
+          {/* The study copy: the problems as they were posed to THIS student, with the correct
+              answer under each. It is the one artifact worth keeping from a study guide, and it
+              is built from the same record a submission would have been - see StudySheet, which
+              exists precisely because a grading screen withholds the answers you got right. */}
+          {study && studyRecord && (
+            <StudyCopyButton
+              record={studyRecord}
+              assignmentTitle={homework.title}
+              studentName={loggedInStudent?.fullName || ""}
+              label="Download study copy (the problems with their answers)"
+              style={{ ...s.btnSec }}
+            />
+          )}
           {problems.map((p, i) => {
             const its = itemsOf(p);
             const pe = its.reduce((sum, it) => sum + (earned[it.id] || 0), 0);
             return (
               <div key={p.id} style={{ ...s.card, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: text, fontSize: 14 }}>Problem {i + 1}</span>
+                <span style={{ color: text, fontSize: 14 }}>
+                  Problem {i + 1}
+                  {study && p._sourceTitle ? <span style={{ color: muted }}> · {p._sourceTitle}</span> : null}
+                </span>
                 <span style={{ color: muted, fontFamily: "monospace", fontSize: 13 }}>{pe.toFixed(2)} / 1.00</span>
               </div>
             );
@@ -1012,7 +1164,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
               <button onClick={async () => { await persistDraft(); onLeave(); }} disabled={saving} style={{ ...s.btnSec, opacity: saving ? 0.4 : 1 }}>Leave, my work is saved</button>
             </div>
           )}
-          {(practice || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>{backLabel}</button>}
+          {(practice || study || !saveError) && <button onClick={onLeave} style={{ ...s.btnPri }}>{backLabel}</button>}
         </div>
       </div>
     );
@@ -1132,7 +1284,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // resume-modal/submit-step returns, so it re-appears every time a student begins OR returns
   // to resume. Once acknowledged, the runner looks exactly as before (notice lives in the
   // collapsible grading card).
-  if (!practice && !acked) {
+  if (needsAck && !acked) {
     const resuming = Object.keys(status).length > 0 || Object.keys(attempts).length > 0;
     return (
       <div style={{ ...s.page, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
@@ -1256,9 +1408,14 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <div style={{ width: 1, height: 20, background: border }} />
           <div>
             <div style={{ color: text, fontWeight: 700, fontSize: 14, display: "flex", alignItems: "center", gap: 8 }}>
-              {homework.title}{practice && <span style={s.badge(teal)}>{preview ? "Preview" : "Practice"}</span>}
+              {homework.title}
+              {study && <span style={s.badge(teal)}>Study guide</span>}
+              {practice && <span style={s.badge(teal)}>{preview ? "Preview" : "Practice"}</span>}
             </div>
-            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>{whoLabel}{!practice && late ? " · ⚠️ past due (work from here on earns half credit)" : ""}</p>
+            <p style={{ ...s.muted, fontSize: 12, margin: 0 }}>
+              {whoLabel}
+              {study ? " · optional, not graded" : (!practice && late ? " · ⚠️ past due (work from here on earns half credit)" : "")}
+            </p>
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -1271,7 +1428,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           )}
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
             <div style={{ ...s.muted, fontFamily: "monospace" }}>Problem {idx + 1}/{total}</div>
-            <div style={{ color: teal, fontFamily: "monospace", fontSize: 12 }}>Score: {runningScore.toFixed(2)} / {total}</div>
+            <div style={{ color: teal, fontFamily: "monospace", fontSize: 12 }}>{study ? "Solved" : "Score"}: {runningScore.toFixed(2)} / {total}</div>
           </div>
         </div>
       </div>
@@ -1295,8 +1452,24 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
 
       {/* Body */}
       <div ref={bodyRef} style={{ flex: 1, overflowY: "auto", padding: "20px 16px", maxWidth: 960, width: "100%", margin: "0 auto", boxSizing: "border-box", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* A study guide's own card, in the slot the grading policy occupies on real homework. It
+            answers the question a student will certainly ask on opening it - where did these
+            problems come from? - and the answer matters, because a set chosen for the whole class
+            would say "this is what the midterm covers" while this says "this is where YOUR
+            homework was weakest". A student who mistook one for the other would revise the wrong
+            thing. The wording lives in src/study-guide.js beside the selection logic it
+            describes, so the two cannot drift. */}
+        {study && (
+          <div style={{ ...s.card, padding: "14px 18px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <div style={{ color: text, fontWeight: 700, fontSize: 14 }}>Built for you from your own homework</div>
+            <div style={{ color: muted, fontSize: 13, lineHeight: 1.6 }}>{SELECTION_NOTE}</div>
+            <div style={{ color: muted, fontSize: 13, lineHeight: 1.6 }}>
+              Nothing here is graded and nothing is recorded against you. Take as many tries as you need, ask for as many hints as you want, and show yourself the answer whenever you like. Your work is saved as you go, so you can leave and come back. There is no written work to upload and nothing to hand in.
+            </div>
+          </div>
+        )}
         {/* Grading-policy explainer — transparent, upfront, collapsible */}
-        <div style={{ ...s.card, padding: "12px 16px" }}>
+        {!study && <div style={{ ...s.card, padding: "12px 16px" }}>
           <button
             onClick={() => setShowGrading(v => !v)}
             style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", background: "none", border: "none", cursor: "pointer", color: text, fontWeight: 700, fontSize: 14, padding: 0 }}
@@ -1329,9 +1502,21 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
               </>
             );
           })()}
-        </div>
+        </div>}
 
         <div style={{ ...s.card, padding: 20, display: "flex", flexDirection: "column", gap: 14 }}>
+          {/* Where this problem came from, on the problem itself. The card at the top of the
+              guide explains the scheme once; this is the per-problem fact a student actually
+              acts on, and it is also where they are told the numbers are not the ones they saw
+              the first time - without which a student working from their old solution would
+              think the grader had broken. */}
+          {study && problem._sourceTitle && (
+            <div style={{ color: muted, fontSize: 12.5, lineHeight: 1.5 }}>
+              From {problem._sourceTitle}
+              {problem._pickSource === "missed" ? ", which you did not hand in" : ", one of your lowest-scoring problems"}
+              {problem._variant?.varied ? " · the numbers are new, so work it through from the start" : " · the original numbers"}
+            </div>
+          )}
           {problem.figure && (
             // `figureWidth` (CSS px) scales a figure whose natural pixel size reads too
             // large on the page — e.g. a 2x screenshot from the textbook. Without it the
@@ -1382,7 +1567,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
           <button onClick={() => setIdx(i => Math.max(0, i - 1))} disabled={idx === 0} style={{ ...s.btnSec, width: "auto", padding: "8px 16px", opacity: idx === 0 ? 0.4 : 1 }}>← Previous</button>
           {idx < total - 1
             ? <button onClick={() => guardedNav(() => setIdx(i => Math.min(total - 1, i + 1)))} className="hw-advance-btn" style={{ ...s.btnSec, width: "auto", padding: "8px 16px", ...glowStyle }}>Next →</button>
-            : <button onClick={() => guardedNav(finish)} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} className="hw-advance-btn" style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1, ...glowStyle }}>{saving ? "Submitting…" : practice ? "Finish" : "Finish & Submit"}</button>}
+            : <button onClick={() => guardedNav(finish)} disabled={!allResolved || saving} title={allResolved ? "" : "Resolve every problem first"} className="hw-advance-btn" style={{ ...s.btnPri, width: "auto", padding: "8px 20px", opacity: !allResolved || saving ? 0.4 : 1, ...glowStyle }}>{saving ? (study ? "Finishing…" : "Submitting…") : (practice || study) ? "Finish" : "Finish & Submit"}</button>}
         </div>
       </div>
     </div>

@@ -17,11 +17,11 @@ const EyeIcon = ({ hidden }) => hidden
   : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 
 export function Modules({
-  classId, modules, moduleConfig, pages, uploads, quizzes, homeworks = [], customQuizzes,
+  classId, modules, moduleConfig, pages, uploads, quizzes, homeworks = [], studyGuides = [], customQuizzes,
   dueDates, onSaveDueDates,
   onSaveModules, onSaveModuleConfig, onSavePage, onDeletePage,
   onSaveUpload, onDeleteUpload, onUploadFile, onDeleteStorage, onOpenPageEditor,
-  onOpenCustomQuizEditor, onDeleteCustomQuiz, onPreviewQuiz, onPreviewHomework, onViewPage,
+  onOpenCustomQuizEditor, onDeleteCustomQuiz, onPreviewQuiz, onPreviewHomework, onPreviewStudy, onViewPage,
 }) {
   const { s, muted, border, text, teal, bg } = useTheme();
   const lsKey = `newton_inst_modules_${classId}`;
@@ -49,6 +49,7 @@ export function Modules({
   const [addFile, setAddFile] = useState(null);
   const [addQuizPick, setAddQuizPick] = useState("");
   const [addHwPick, setAddHwPick] = useState("");
+  const [addStudyPick, setAddStudyPick] = useState("");
   const [addProgress, setAddProgress] = useState(0);
   const [addBusy, setAddBusy] = useState(false);
   const [addErr, setAddErr] = useState("");
@@ -81,7 +82,7 @@ export function Modules({
   const resetAddState = () => {
     setAddingTo(null); setAddType(null);
     setAddTitle(""); setAddUrl(""); setAddFile(null);
-    setAddQuizPick(""); setAddHwPick(""); setAddProgress(0); setAddBusy(false); setAddErr("");
+    setAddQuizPick(""); setAddHwPick(""); setAddStudyPick(""); setAddProgress(0); setAddBusy(false); setAddErr("");
   };
 
   useEffect(() => {
@@ -251,6 +252,18 @@ export function Modules({
     setAddErr("");
     if (!addHwPick) { setAddErr("Pick a homework."); return; }
     const items = [...(mod.items || []), { id: newId("it"), type: "homework", refId: addHwPick }];
+    await updateModule(mod.id, m => ({ ...m, items }));
+    resetAddState();
+  };
+
+  // A study guide item, like a homework item, references course-defined content by refId. What it
+  // references is a RULE rather than a problem set (src/study-guide.js): each student who opens
+  // it gets problems picked from their own homework record, so there is nothing for the
+  // instructor to author or edit here, and no due date to set on something ungraded.
+  const submitAddStudy = async (mod) => {
+    setAddErr("");
+    if (!addStudyPick) { setAddErr("Pick a study guide."); return; }
+    const items = [...(mod.items || []), { id: newId("it"), type: "study", refId: addStudyPick }];
     await updateModule(mod.id, m => ({ ...m, items }));
     resetAddState();
   };
@@ -519,10 +532,13 @@ export function Modules({
                   const schedulable = item.type === "quiz" || item.type === "homework";
                   const refQuiz = item.type === "quiz" ? quizzes.find(q => q.id === item.refId) : null;
                   const refHw = item.type === "homework" ? homeworks.find(h => h.id === item.refId) : null;
+                  const refStudy = item.type === "study" ? studyGuides.find(g => g.id === item.refId) : null;
                   const displayTitle = item.type === "quiz"
                     ? (refQuiz?.title || `Quiz (${item.refId})`)
                     : item.type === "homework"
                     ? (refHw?.title || `Homework (${item.refId})`)
+                    : item.type === "study"
+                    ? (refStudy?.title || `Study guide (${item.refId})`)
                     : (item.title || (item.type === "link" ? item.url : (upload?.name || "Untitled")));
 
                   const quizDueDate = schedulable ? (dueDates?.[item.refId] || null) : null;
@@ -531,11 +547,12 @@ export function Modules({
                   // Mirrors the student's ModuleItem meta line (counts · pts · due).
                   const nQ = refQuiz?.questions?.length || 0;
                   const nP = refHw?.problems?.length || 0;
-                  const metaBits = (nQ || nP || quizDueDate) ? (
+                  const metaBits = (nQ || nP || quizDueDate || refStudy) ? (
                     <div style={{ ...s.muted, fontSize: 11, marginTop: 2, display: "flex", flexWrap: "wrap", gap: 10 }}>
                       {!!nQ && <span>{nQ} question{nQ > 1 ? "s" : ""} · 10 pts</span>}
                       {refQuiz?.questions?.some(q => q.requiresImage) && <span style={{ color: "#a78bfa" }}>drawing</span>}
                       {!!nP && <span>{nP} problem{nP > 1 ? "s" : ""} · {nP} pts</span>}
+                      {refStudy && <span>Up to {refStudy.perHw} problem{refStudy.perHw === 1 ? "" : "s"} per student from each of {(refStudy.covers || []).length} homeworks · optional, ungraded</span>}
                       {quizDueDate && (
                         <span style={{ color: quizLate ? "#f87171" : "#4ade80", fontWeight: 500 }}>
                           {quizLate ? "Past due · " : "Due "}
@@ -560,6 +577,8 @@ export function Modules({
                       ? { onClick: () => onPreviewQuiz(refQuiz), hint: "Preview this quiz as a student" }
                     : item.type === "homework" && refHw && onPreviewHomework
                       ? { onClick: () => onPreviewHomework(refHw), hint: "Preview this homework as a student" }
+                    : item.type === "study" && refStudy && onPreviewStudy
+                      ? { onClick: () => onPreviewStudy(refStudy), hint: "Preview this study guide (the class's hardest problems, since a preview has no student record to rank)" }
                     : item.type === "page" && item.pageId && pages?.[item.pageId] && onViewPage
                       ? { onClick: () => onViewPage(pages[item.pageId]), hint: "View this page as a student" }
                     : item.type === "file" && upload?.downloadUrl
@@ -662,11 +681,13 @@ export function Modules({
                   file={addFile} setFile={setAddFile}
                   quizPick={addQuizPick} setQuizPick={setAddQuizPick}
                   hwPick={addHwPick} setHwPick={setAddHwPick}
+                  studyPick={addStudyPick} setStudyPick={setAddStudyPick} studyGuides={studyGuides}
                   quizzes={quizzes}
                   homeworks={homeworks}
                   customQuizzes={customQuizzes}
                   onCancel={resetAddState}
                   onSubmitHomework={() => submitAddHomework(mod)}
+                  onSubmitStudy={() => submitAddStudy(mod)}
                   onOpenPageEditor={() => onOpenPageEditor(mod.id, null, null)}
                   onCreateNewQuiz={() => onOpenCustomQuizEditor?.(mod.id)}
                   onDeleteCustomQuiz={onDeleteCustomQuiz}
@@ -796,13 +817,45 @@ function AddItemBar({
   mod, active, busy, progress, err,
   title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes, customQuizzes,
   hwPick, setHwPick, homeworks,
+  studyPick, setStudyPick, studyGuides,
   onCancel, onOpenPageEditor, onCreateNewQuiz, onDeleteCustomQuiz,
-  onSubmitQuiz, onSubmitHomework, onSubmitText, onSubmitLink, onSubmitFile,
+  onSubmitQuiz, onSubmitHomework, onSubmitStudy, onSubmitText, onSubmitLink, onSubmitFile,
 }) {
   const { s, muted, border, text, teal } = useTheme();
   const wrap = (child) => (
     <div style={{ borderTop: `1px solid ${border}`, padding: "12px 18px", background: "rgba(255,255,255,0.02)" }}>{child}</div>
   );
+
+  if (active === "study") {
+    return wrap(
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ border: `1px solid ${border}`, borderRadius: 8, overflow: "hidden", maxHeight: 220, overflowY: "auto" }}>
+          {(studyGuides || []).length === 0 ? (
+            <div style={{ padding: "10px 14px", color: muted, fontSize: 13 }}>No study guides are defined for this course.</div>
+          ) : (studyGuides || []).map(g => {
+            const selected = studyPick === g.id;
+            return (
+              <button
+                key={g.id}
+                onClick={() => setStudyPick(g.id)}
+                style={{ display: "block", width: "100%", background: selected ? "rgba(0,130,140,0.15)" : "transparent", border: "none", borderBottom: `1px solid ${border}`, color: selected ? teal : text, fontSize: 13, textAlign: "left", padding: "9px 14px", cursor: "pointer" }}
+              >
+                {g.title}
+                <span style={{ color: muted, fontSize: 11, display: "block", marginTop: 2 }}>
+                  Draws from {(g.covers || []).join(", ")}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onSubmitStudy} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13 }}>Add Study Guide</button>
+          <button onClick={onCancel} style={{ ...s.btnGhost, width: "auto" }}>Cancel</button>
+        </div>
+      </div>
+    );
+  }
 
   if (active === "homework") {
     return wrap(
@@ -1035,6 +1088,7 @@ function ModuleMenu({ releaseDate, locked, onSaveRelease, onRename, onAddItem, o
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
           <button onClick={() => onAddItem("quiz")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Quiz</button>
           <button onClick={() => onAddItem("homework")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Homework</button>
+          <button onClick={() => onAddItem("study")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Study guide</button>
           <button onClick={onOpenPageEditor} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Page</button>
           <button onClick={() => onAddItem("link")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ Link</button>
           <button onClick={() => onAddItem("file")} style={{ ...s.btnGhost, width: "auto", fontSize: 12, padding: "5px 10px" }}>+ File</button>

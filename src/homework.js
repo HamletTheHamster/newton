@@ -819,10 +819,30 @@ async function gradeViaServer(payload) {
 
 // Fetch the correct answers for a homework's numeric/text/math items (used at final submit to fill
 // in the gradebook key, including items the student never attempted). Post-submission, so fine.
-export async function revealHomeworkAnswers({ courseType, hwId, itemIds }) {
-  if (!itemIds || !itemIds.length) return {};
-  const data = await gradeViaServer({ action: "reveal", courseType, hwId, items: itemIds });
+// `items` may be item objects (preferred — they carry which homework and which instance each
+// answer belongs to, which is what a study guide needs) or bare id strings, which mean "this
+// homework, committed instance" and are what a real homework has always sent.
+export async function revealHomeworkAnswers({ courseType, hwId, itemIds, items }) {
+  const list = items || itemIds || [];
+  if (!list.length) return {};
+  const payload = list.map(it => (typeof it === "string" ? it : { id: it.id, ...keyRefFor(it, hwId) }));
+  const data = await gradeViaServer({ action: "reveal", courseType, hwId, items: payload });
   return data.answers || {};
+}
+
+// A hint the student ASKED for, on a study guide where hints are unlimited and cost nothing
+// (see STUDY_GRADING in src/study-guide.js). `priorHints` is passed so each press goes a step
+// further than the last instead of repeating it; the server still forbids revealing the answer.
+export async function requestHomeworkHint({ item, hwId, studentAnswer = "", priorHints = [], courseType = "physics1" }) {
+  const figureBlock = await figureToImageBlock(item._figure);
+  const data = await gradeViaServer({
+    action: "hint",
+    courseType, itemId: item.id, ...keyRefFor(item, hwId),
+    studentAnswer, priorHints,
+    fullPrompt: fullPromptFor(item),
+    figureBlock,
+  });
+  return data.message || "";
 }
 
 // Evaluate one item (a problem, or a single part of a multipart problem).
@@ -868,7 +888,8 @@ export async function evaluateHomeworkAnswer({ item, hwId, studentAnswer, attemp
   const figureBlock = await figureToImageBlock(item._figure);
   return gradeViaServer({
     action: "grade",
-    courseType, hwId, itemId: item.id, answerType: item.answerType,
+    courseType, itemId: item.id, answerType: item.answerType,
+    ...keyRefFor(item, hwId),
     studentAnswer, attemptNum, phase, fullPrompt, figureBlock, history, diagramContext,
   });
 }
@@ -878,16 +899,31 @@ export async function evaluateHomeworkAnswer({ item, hwId, studentAnswer, attemp
 // problem-level context the grader needs: `_figure` (image) and, for multipart parts,
 // `_problemPrompt` (the shared stem shown above the parts). These let evaluateHomeworkAnswer
 // give Claude the FULL problem + figure, not just an isolated part prompt.
+// `_sourceHw` and `_variant` exist for the study guide, whose problems are drawn from several
+// different homeworks and may be re-numbered per student (src/study-guide.js). The answer key is
+// indexed by homework, and a re-numbered problem's answer is recomputed from its seed, so both
+// have to reach the grader with the item rather than being inferred from the assignment - a
+// study guide's own id has no key, and its problems do not share one homework between them.
 export function itemsOf(p) {
+  const origin = { _sourceHw: p._sourceHw || null, _variant: p._variant || null };
   if (p.parts && p.parts.length) {
     return p.parts.map(pt => ({
       ...pt, weight: 1 / p.parts.length, _problemId: p.id,
-      _figure: p.figure || null, _problemPrompt: p.prompt || null,
+      _figure: p.figure || null, _problemPrompt: p.prompt || null, ...origin,
     }));
   }
   return [{
     id: p.id, prompt: p.prompt, answerType: p.answerType, freeHint: p.freeHint,
     unit: p.unit, graph: p.graph, vector: p.vector, weight: 1, _problemId: p.id,
-    _figure: p.figure || null, _problemPrompt: null,
+    _figure: p.figure || null, _problemPrompt: null, ...origin,
   }];
+}
+
+// Where this item's answer lives, and which instance of the problem it is. Every server call
+// goes through this so the three of them cannot disagree about either.
+export function keyRefFor(item, hwId) {
+  const variant = item?._variant?.varied
+    ? { problemId: item._variant.problemId, seed: item._variant.seed }
+    : null;
+  return { hwId: item?._sourceHw || hwId, variant };
 }

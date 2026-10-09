@@ -99,7 +99,13 @@ export function submissionMergePatch(subs, node) {
 
 // The per-item maps a draft is made of. Each is keyed by item id, and each is only ever added
 // to by the runner, which is what makes an additive patch complete rather than merely safe.
-export const DRAFT_ITEM_MAPS = ["answers", "attempts", "status", "earned", "feedback", "revealed", "gradePass", "hintUsed", "history"];
+// `hints` is the one map whose value is a LIST rather than a scalar: the hints a student has
+// asked for on an item, in order, which a study guide gives without limit (see STUDY_GRADING in
+// src/study-guide.js). It is stored so that a guide put down and picked up a day later still
+// shows the trail of hints already earned - having to re-ask for all of them to get back to
+// where you were is exactly the friction the draft exists to remove. The list is only ever
+// appended to, so it patches additively like every other map here.
+export const DRAFT_ITEM_MAPS = ["answers", "attempts", "status", "earned", "feedback", "revealed", "gradePass", "hintUsed", "history", "hints"];
 
 // Build the deep-path patch that saves a draft: one key per item per map, plus the two
 // scalars. Deliberately ADDITIVE — it never emits a null. Nothing needs deleting (the maps

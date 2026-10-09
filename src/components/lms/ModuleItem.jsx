@@ -19,6 +19,7 @@ export function ModuleItem({ item, meta, onClick }) {
   const hasContent =
     (t === "quiz"     && !!meta?.quiz) ||
     (t === "homework" && !!meta?.homework) ||
+    (t === "study"    && !!meta?.studyGuide) ||
     isMaterialItem(item);
   const isComingSoon = t === "homework" && !meta?.homework;
   const isPending = !hasContent && !isComingSoon;
@@ -28,7 +29,7 @@ export function ModuleItem({ item, meta, onClick }) {
   const late = dueDate && !completed && isLate(dueDate);
 
   const clickable = hasContent;
-  const title = t === "quiz" ? meta?.quiz?.title : t === "homework" ? meta?.homework?.title : item.title;
+  const title = t === "quiz" ? meta?.quiz?.title : t === "homework" ? meta?.homework?.title : t === "study" ? meta?.studyGuide?.title : item.title;
   const icon = <ItemIcon type={t} />;
 
   const completedBg = "rgba(0,130,140,0.06)";
@@ -82,6 +83,16 @@ export function ModuleItem({ item, meta, onClick }) {
                       {late ? "Past due! (½ credit)" : "Due " + dueToDate(dueDate).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' })}
                     </span>
                   )}
+            </>
+          )}
+          {/* A study guide's row cannot say how many problems it holds: the problems are chosen
+              per student when it is opened, and this row is rendered before any of that. What it
+              CAN say, and must, is that the set is built from this student's own work rather
+              than chosen for the class - see src/study-guide.js. */}
+          {t === "study" && meta?.studyGuide && (
+            <>
+              <span>Optional · not graded</span>
+              <span style={{ color: teal }}>Built from your own homework</span>
             </>
           )}
           {(t === "reading" || t === "notes") && item.url && <span>{hostnameOf(item.url)}</span>}

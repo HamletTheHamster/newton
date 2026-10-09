@@ -1846,3 +1846,26 @@ export const HOMEWORKS_PHYSICS2 = [
     ],
   },
 ];
+
+// ── Study guides ─────────────────────────────────────────────────────────────────────────────
+// A study guide is NOT a set of problems. It is a rule for assembling one per student: for each
+// homework it covers, the problems THAT student scored lowest on, re-numbered where a variant
+// spec exists (src/courses/variants/physics2.js). Two students open the same guide and get
+// different problems with different numbers, which is why nothing here lists any.
+//
+// It is optional and ungraded: no points, no deadline, no written-work upload, no submission.
+// The assembly lives in src/study-guide.js and the student-facing framing in HomeworkRunner's
+// study branch - a student has to know these problems came from their own record rather than
+// from the instructor's view of what the midterm covers.
+//
+// `covers` is explicit rather than derived from the midterm's date: the midterm's date moves,
+// and a guide that silently changed which chapters it drew from when it did would re-pick a
+// student's problems mid-revision. Ch. 21-26 is the midterm's material.
+export const STUDY_GUIDES_PHYSICS2 = [
+  {
+    id: "study_midterm",
+    title: "Midterm Study Guide",
+    covers: ["hw1", "hw2", "hw3", "hw4", "hw5", "hw6"],
+    perHw: 3,
+  },
+];

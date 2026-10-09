@@ -23,7 +23,7 @@ import { closesAssignment } from "../../auto-submit.js";
 //   There is deliberately nothing above the module list. A welcome card lived here briefly and was
 //   removed: on Home it put something the student had already read above the work they had not.
 //   A course's introductory prose is a card on the Course Guide page, like any other.
-export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submissions, onStartQuiz, onStartHomework, onOpenMaterial, materialViews, storageKey }) {
+export function Home({ loggedInStudent, modules, quizzes, homeworks = [], studyGuides = [], submissions, onStartQuiz, onStartHomework, onStartStudy, onOpenMaterial, materialViews, storageKey }) {
   // A deadline auto-submission banks a score but leaves the assignment open (see
   // closesAssignment, auto-submit.js), so it must not tick the item off here either — the
   // student still has the rest of the set and their written work to hand in.
@@ -62,6 +62,15 @@ export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submis
       const completed = completedQuizIds.has(homework.id);
       return { homework, completed, tracked: true, sub: completed ? latestSub(homework.id) : null };
     }
+    if (item.type === "study") {
+      const studyGuide = studyGuides.find(g => g.id === item.refId);
+      if (!studyGuide) return null;
+      // Deliberately UNTRACKED: no completion circle and no contribution to the module's
+      // "n / total". A study guide is optional and ungraded, and a hollow circle beside it
+      // would make revision look like work the student has failed to do - in a module whose
+      // counter is otherwise a list of things they owe.
+      return { studyGuide, completed: false, tracked: false };
+    }
     if (isMaterialItem(item)) {
       return { completed: !!viewRecordOf(openedMap[item._key || item.id]), tracked: true };
     }
@@ -75,6 +84,7 @@ export function Home({ loggedInStudent, modules, quizzes, homeworks = [], submis
     if (isMaterialItem(item)) { onOpenMaterial && onOpenMaterial(item); return; }
     if (item.type === "quiz" && meta?.quiz) { onStartQuiz(meta.quiz); return; }
     if (item.type === "homework" && meta?.homework) { onStartHomework(meta.homework, meta.completed); return; }
+    if (item.type === "study" && meta?.studyGuide) { onStartStudy && onStartStudy(meta.studyGuide); return; }
   };
 
   return (

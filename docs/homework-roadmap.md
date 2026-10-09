@@ -571,6 +571,101 @@ corrected — lives in the course docs: [courses/phy115.md](courses/phy115.md) a
 [courses/phy215.md](courses/phy215.md). When you verify a set, do it the same way and record the
 date there.
 
+## Study guides (personalized, optional, ungraded)
+
+A study guide is **not a set of problems**. It is a rule for assembling one per student: for each
+homework it covers, the problems *that student* scored lowest on, re-numbered where a variant spec
+exists. Two students open the same guide and get different problems with different numbers, which
+is why `STUDY_GUIDES_PHYSICS2` in `src/courses/physics2.js` lists none of them — it names the
+homeworks covered and how many problems to take from each.
+
+First one shipped: **`study_midterm`**, PHY 215, drawing up to three problems from each of hw1–hw6
+(Ch. 21–26). `covers` is explicit rather than derived from the midterm's date, because the date
+moves and a guide that silently changed which chapters it drew from would re-pick a student's
+problems mid-revision.
+
+### What it is, and what it deliberately is not
+
+| | |
+|---|---|
+| Points | **None.** No gradebook column, no category, no Blackboard export |
+| Deadline | **None.** No due date, so nothing is late, lockable or sweepable |
+| Written work | **Not asked for.** The upload and its integrity check exist to protect credit |
+| Submission | **None written.** The draft is the record, so a student can keep coming back |
+| Attempts | Unlimited |
+| Hints | Unlimited, on demand, free |
+| Answer | Available whenever the student asks |
+
+Everything in the right-hand column follows from the first row. With nothing to protect, the
+schedule that rations attempts on real homework only obstructs the revision the guide exists for.
+`revealCredit` stays at **0** so the finish screen stays honest: a problem whose answer you asked
+for is not a problem you can do, and the summary says so in those words.
+
+### The student has to know where the problems came from
+
+This is a requirement, not polish. A set chosen for the whole class says *this is what the midterm
+covers*; this one says *this is where YOUR homework was weakest*. A student who mistook the second
+for the first would read a short guide as a short midterm and revise the wrong thing. So it is said
+three times, in three places, and all three are asserted or smoke-tested:
+
+- a card at the top of the guide (`SELECTION_NOTE`, which lives in `src/study-guide.js` beside the
+  selection logic so the copy and the behavior cannot drift);
+- a line on **every problem**: which homework it came from, whether it is there because they scored
+  lowest on it or because they never handed that homework in, and **whether the numbers are new** —
+  without which a student working from their old solution would think the grader had broken;
+- the module row in the student's portal, before they ever open it.
+
+### Where it lives
+
+`openStudyGuide` (App.jsx) assembles it. The **picks are persisted on first open**, at
+`classes/{classId}/studyPicks/{studentId}/{guideId}`, and that is not an optimization: they are
+derived from data that keeps moving (a homework handed in late, a regrade, the class average that
+stands in for a set nobody handed in), so recomputing them on the second sitting could hand the
+student a different guide from the one they are part way through while their draft, keyed by item
+id, still held yesterday's answers. The record is per student and read on demand, like `hwDrafts`
+and `hwAttempts`. Two sessions opening it at once would each compute a list, so the record is
+re-read before writing and the first one wins.
+
+The guide reaches students as a module item of type **`study`** (Modules editor → ⋮ → **+ Study
+guide**), resolved in `Home.jsx` exactly as a homework item is. It is deliberately **untracked** —
+no completion circle, no contribution to the module's "n / total" — because a hollow circle beside
+optional revision would make it look like work the student had failed to do.
+
+### Re-numbering: how a variant works
+
+See `src/hw-variants.js` for the machinery and `src/courses/variants/physics2.js` for the authoring
+rules. The short version: each parameterized problem gets a param spec + prompt template on the
+client (it has to render the prompt it shows) and a solver on the server (it computes answers), both
+driven from params derived from the same per-student seed. Two invariants, both mechanically checked
+by `node src/variant-fidelity.test.mjs`:
+
+- **A.** Rendering the template with the committed instance's values reproduces the committed prompt
+  byte for byte — so a template is a hole-punching of the textbook sentence, not a paraphrase.
+- **B.** Solving at those values reproduces the committed answer key — so the solver is checked
+  against physics that was independently worked when the homework was authored.
+
+Plus a **400-draw sweep per spec** asserting no draw lands near zero, flips a sign the reference
+prose asserts, or leaves the problem's scale. That sweep has already caught three ill-conditioned
+ranges that would have shipped as "the app says I am wrong when I am right".
+
+**Partial coverage is a supported state, not a gap.** A problem with no spec is served with its own
+numbers — still the problem the student got wrong, still worth re-working — and the guide tells them
+so on the problem. Coverage today is 37 of the 60 problems in hw1–hw6; the per-problem list of what
+cannot be varied and why is in [courses/phy215.md](courses/phy215.md) § Study-guide variants.
+
+### Authoring a variant spec
+
+1. Copy the committed prompt into `prompt` and punch holes in it. Do not retype it.
+2. Declare each param in the units and the form the prompt prints it in, with the committed value
+   as `base` and the printed precision as `decimals`.
+3. Write the solver in `netlify/functions/_variantSolvers.js` **from the physics**. Never fit it to
+   the one committed answer: that reproduces that answer perfectly and is wrong for every other
+   draw, which is the one bug the fidelity test cannot catch on its own.
+4. Re-render any text/math reference answer that quotes a derived number, or a student who reveals
+   it reads a paragraph about a different problem.
+5. Run `node src/variant-fidelity.test.mjs`. Widen or narrow ranges until the sweep is quiet —
+   prefer narrowing a range over adding a `constraint`, since the spec file ships to the browser.
+
 ## Remaining buildout steps
 1. **Real content** — author the remaining homework sets in `src/courses/physics{1,2}.js`
    (`HOMEWORKS_PHYSICS*`): real end-of-chapter problems, figures under

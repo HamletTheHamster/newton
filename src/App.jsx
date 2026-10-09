@@ -11,7 +11,9 @@ import {
   compressImage, checkImageReadability, evaluateAnswer,
   parseRoster, useIsMobile,
 } from "./utils.js";
-import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, defaultModulesForCourse } from "./courses/index.js";
+import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, studyGuidesForCourse, defaultModulesForCourse } from "./courses/index.js";
+import { variantsForCourse } from "./courses/variants/index.js";
+import { pickStudyProblems, classDifficulty, buildStudyAssignment, isEmptyGuide } from "./study-guide.js";
 import { COURSE_META } from "./course-meta.js";
 import { HW_GRADING_DEFAULTS, rescoreSubmission } from "./homework.js";
 import { markOnTimeParts, isAutoSubmission, closesAssignment } from "./auto-submit.js";
@@ -61,7 +63,7 @@ import { PageEditor } from "./components/lms/PageEditor.jsx";
 import { PageViewer } from "./components/lms/PageViewer.jsx";
 import { LockIcon } from "./components/lms/itemIcons.jsx";
 import { NICKNAME_MAX, normalizeNickname, checkNicknameFormat, altNameFor, nicknameFromAltName, nicknameAllowed } from "./nickname.js";
-import { isInstructorAccount, isAuditing, instructorAccountOf, studentRoster, auditors } from "./roster-scope.js";
+import { isInstructorAccount, isAuditing, instructorAccountOf, studentRoster, auditors, scopeSubmissions } from "./roster-scope.js";
 import { labAssignments, labWeeksFor } from "./lab-schedule.js";
 import { simulationFor } from "./components/sims/index.js";
 import { QuizSimPanel } from "./components/sims/QuizSimPanel.jsx";
@@ -382,6 +384,12 @@ export default function App() {
     })),
   ].map(q => ({ ...q, dueDate: dueFor(q.id) }));
   const homeworks = homeworksForCourse(classMeta?.courseType).map(h => ({ ...h, dueDate: dueFor(h.id), grading: { ...HW_GRADING_DEFAULTS, ...(homeworkSettings[h.id] || {}) } }));
+  // Study guides are course-defined rules, not assignments: no due date is merged in and they
+  // never join `homeworks`, because everything downstream of that array - the gradebook, the
+  // calendar, the To Do rail, the deadline sweep, the Blackboard export - treats what it finds
+  // there as graded work. A study guide is assembled per student when it is opened
+  // (openStudyGuide below) and is worth nothing anywhere.
+  const studyGuides = studyGuidesForCourse(classMeta?.courseType);
   // Manual assignments (exams, labs) as dated events. They live only in the gradebook — there
   // is nothing to open and no submission — but they still belong on the calendar and the To Do
   // rail, so they're dated through the same `dueDates` node keyed by assignment id.
@@ -2230,6 +2238,82 @@ export default function App() {
     setScreen("homework");
     history.pushState({ newton: "homework" }, "", "");
   };
+  // ── Personalized study guide ────────────────────────────────────────────────────────────────
+  // Assembled on open, from this student's own submissions: for each homework the guide covers,
+  // the problems they scored lowest on, re-numbered where a variant spec exists. See
+  // src/study-guide.js for the selection rules and src/hw-variants.js for the re-numbering.
+  //
+  // The picks are PERSISTED on first open, at studyPicks/{studentId}/{guideId}, and that is not
+  // an optimization. They are derived from data that keeps moving - a homework handed in late, a
+  // regrade, the class average that stands in for a set nobody handed in - so recomputing them
+  // on the second sitting could hand the student a different guide than the one they are part
+  // way through, while their draft (keyed by item id) still held yesterday's answers. The record
+  // is per student and read on demand, like hwDrafts and hwAttempts (see CLAUDE.md).
+  //
+  // Two sessions opening it for the first time at once would each compute a list, so the record
+  // is re-read before writing and the first one wins. Whichever list that is, it is a valid
+  // guide; what matters is that only one of them is ever stored.
+  const [studyBusy, setStudyBusy] = useState(null);     // guideId being assembled
+  const [studyEmpty, setStudyEmpty] = useState(null);   // the guide a student has nothing to revise from
+
+  const studyPicksFor = async (guide, studentId) => {
+    const cid = requireClass();
+    const path = classPath(cid, `studyPicks/${studentId}/${guide.id}`);
+    const stored = await fbGet(path).catch(() => null);
+    if (Array.isArray(stored?.picks)) return stored.picks;
+    // Mine, by homework. A student's own record decides their picks; the class's average is only
+    // the stand-in for a homework they never handed in, and it is scoped to real students so a
+    // test or auditing account cannot make a problem look hard (src/roster-scope.js).
+    const ids = new Set(classStudents.map(st => st.studentId));
+    const classSubs = scopeSubmissions(submissions, ids);
+    const submissionsByHw = {}, difficultyByHw = {};
+    for (const hwId of guide.covers || []) {
+      const forHw = classSubs.filter(s => s.quizId === hwId && s.type === "homework");
+      submissionsByHw[hwId] = [...forHw].reverse().find(s => s.studentId === studentId) || null;
+      difficultyByHw[hwId] = classDifficulty(forHw);
+    }
+    const picks = pickStudyProblems({ covers: guide.covers, homeworks, submissionsByHw, difficultyByHw, perHw: guide.perHw });
+    const again = await fbGet(path).catch(() => null);
+    if (Array.isArray(again?.picks)) return again.picks;
+    await fbSet(path, { picks, createdAt: new Date().toISOString() }).catch(() => {});
+    return picks;
+  };
+
+  const openStudyGuide = async (guide, from = "student") => {
+    if (!guide || studyBusy) return;
+    setStudyBusy(guide.id);
+    try {
+      const courseType = classMeta?.courseType || "physics1";
+      // An instructor preview has no submissions to rank, so it gets the class's hardest
+      // problems under a fixed seed: the same shape of guide a student sees, which is what the
+      // preview is for. It is forced to practice like every other instructor preview.
+      const studentId = from === "instructor" ? "preview" : loggedInStudent?.studentId;
+      if (!studentId) return;
+      const picks = from === "instructor"
+        ? pickStudyProblems({
+            covers: guide.covers, homeworks, perHw: guide.perHw,
+            submissionsByHw: {},
+            // Scoped to real students, exactly as the student path is: a preview that ranked
+            // problems partly by a test account's blank submission would show the instructor a
+            // guide no student will ever be served.
+            difficultyByHw: Object.fromEntries((guide.covers || []).map(hwId => [
+              hwId,
+              classDifficulty(scopeSubmissions(submissions, new Set(classStudents.map(st => st.studentId)))
+                .filter(s => s.quizId === hwId && s.type === "homework")),
+            ])),
+          })
+        : await studyPicksFor(guide, studentId);
+      const assignment = buildStudyAssignment({
+        guide, homeworks, picks, studentId,
+        specs: variantsForCourse(courseType),
+      });
+      if (isEmptyGuide(assignment)) { setStudyEmpty(guide); return; }
+      startHomework(assignment, from === "instructor", from);
+    } finally {
+      setStudyBusy(null);
+    }
+  };
+
   // Calendar → assignment, mirroring what clicking the module item does. Only
   // called for events the calendar left clickable (not completed, not locked).
   // `from` picks the launch context: "student" runs it for real, "instructor" runs the
@@ -2717,7 +2801,7 @@ export default function App() {
         />
       );
     } else if (studentSection === "home") {
-      mainContent = <Home loggedInStudent={loggedInStudent} modules={courseModules} quizzes={quizzes} homeworks={homeworks} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onOpenMaterial={openMaterial} materialViews={myMaterialViews} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
+      mainContent = <Home loggedInStudent={loggedInStudent} modules={courseModules} quizzes={quizzes} homeworks={homeworks} studyGuides={studyGuides} submissions={submissions} onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))} onStartHomework={startHomework} onStartStudy={openStudyGuide} onOpenMaterial={openMaterial} materialViews={myMaterialViews} storageKey={`newton_modules_${loggedInStudent.studentId}_${currentClassId}`} />;
     } else if (studentSection === "announcements") {
       mainContent = <StudentAnnouncements announcements={sortedAnnouncements} />;
     } else if (studentSection === "calendar") {
@@ -2742,6 +2826,28 @@ export default function App() {
           {bugModalJsx}
           {viewingPage && <PageViewer title={viewingPage.title} content={viewingPage.content} onClose={() => setViewingPage(null)} />}
           {unseenAnns.length > 0 && studentSection !== "announcements" && !showStudentSettings && <NewAnnouncementsModal announcements={unseenAnns} onDismiss={markAnnouncementsRead} />}
+          {/* Assembling a study guide reads the stored picks (and on a first open, writes them),
+              so the click is not instant. Without this the row looks dead for a second and gets
+              clicked again. */}
+          {studyBusy && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70 }}>
+              <div style={{ ...th.s.card, background: th.isLight ? "#fff" : "#252627", padding: "20px 26px", color: th.text, fontSize: 14 }}>Building your study guide…</div>
+            </div>
+          )}
+          {/* A student who got full marks on every problem of every homework the guide covers has
+              nothing to revise from it. Saying so is the honest outcome, and far better than an
+              empty runner: the guide only ever contains problems they actually lost credit on. */}
+          {studyEmpty && (
+            <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 70, padding: 16 }}>
+              <div style={{ ...th.s.card, background: th.isLight ? "#fff" : "#252627", padding: 28, width: "100%", maxWidth: 420, display: "flex", flexDirection: "column", gap: 14 }}>
+                <div style={{ color: th.text, fontWeight: 700, fontSize: 17 }}>{studyEmpty.title}</div>
+                <div style={{ color: th.muted, fontSize: 14, lineHeight: 1.6 }}>
+                  This guide is built from the problems you scored lowest on, and you earned full credit on every problem in the homework it covers. There is nothing here for you to re-work. Revise from your own submitted homework instead: open any of them from your Grades page and download the study copy, which prints every problem with its correct answer.
+                </div>
+                <button onClick={() => setStudyEmpty(null)} style={{ ...th.s.btnPri }}>Close</button>
+              </div>
+            </div>
+          )}
           <Shell
             header={header}
             sidebar={<Sidebar items={studentSidebarItems} activeId={showStudentSettings ? "account-settings" : studentSection} onSelect={handleStudentSectionSelect} />}
@@ -3341,6 +3447,7 @@ export default function App() {
             uploads={uploads}
             quizzes={quizzes}
             homeworks={homeworks}
+            studyGuides={studyGuides}
             customQuizzes={customQuizzes}
             dueDates={dueDates}
             onSaveDueDates={saveDueDates}
@@ -3375,6 +3482,7 @@ export default function App() {
             // REAL student runners in preview mode; a page opens the same PageViewer students get.
             onPreviewQuiz={q => startQuiz(q, true, "instructor")}
             onPreviewHomework={hw => startHomework(hw, true, "instructor")}
+            onPreviewStudy={g => openStudyGuide(g, "instructor")}
             onViewPage={p => setViewingPage({ title: p.title, content: p.content || "" })}
           />
         )}

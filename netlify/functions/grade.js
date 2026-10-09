@@ -11,9 +11,16 @@
 //
 // Request body (POST JSON):
 //   { action: "grade", courseType, hwId, itemId, answerType, studentAnswer,
-//     attemptNum, phase, fullPrompt, figureBlock?, history?, diagramContext? }
-//   { action: "reveal", courseType, hwId, items: [itemId, …] }
-import { lookupAnswer } from "./_answerKeys.js";
+//     attemptNum, phase, fullPrompt, figureBlock?, history?, diagramContext?, variant? }
+//   { action: "reveal", courseType, hwId, items: [itemId | { id, hwId?, variant? }, …] }
+//   { action: "hint",  courseType, hwId, itemId, fullPrompt, figureBlock?, studentAnswer?,
+//     priorHints?, variant? }
+//
+// `variant` ({ problemId, seed }) marks an item served as a PARAMETERIZED instance - a study
+// guide re-numbers the problems it draws from a student's weakest homework (src/hw-variants.js).
+// The params are recomputed here from the seed and solved server-side, so the answer for a
+// re-numbered problem never exists on the client any more than a committed one does.
+import { resolveKey } from "./_variantSolvers.js";
 import { courseLabelFor } from "../../src/course-meta.js";
 import {
   numericMatch,
@@ -44,10 +51,16 @@ export default async (req) => {
 
   // ── reveal: return the correct answers for a set of items (used at final submit to populate the
   // gradebook key; post-submission so revealing is fine). Skips ids with no key entry. ──────────
+  // A study guide's items come from several different homeworks at once, so each entry may carry
+  // its own `hwId` and `variant`. A bare string still means "this homework, committed instance",
+  // which is what every real homework sends.
   if (body.action === "reveal") {
     const out = {};
-    for (const itemId of body.items || []) {
-      const key = lookupAnswer(body.courseType, body.hwId, itemId);
+    for (const entry of body.items || []) {
+      const itemId = typeof entry === "string" ? entry : entry?.id;
+      if (!itemId) continue;
+      const hwId = (typeof entry === "object" && entry.hwId) || body.hwId;
+      const key = resolveKey(body.courseType, hwId, itemId, typeof entry === "object" ? entry.variant : null);
       if (!key) continue;
       out[itemId] = key.answerType === "numeric"
         ? formatNumeric(key.answer, key.sigFigs, key.unit, key.sci)
@@ -56,9 +69,40 @@ export default async (req) => {
     return json({ answers: out });
   }
 
+  // ── hint: a hint asked for, rather than one earned by failing. ───────────────────────────────
+  // A study guide gives as many hints per problem as the student wants (src/study-guide.js:
+  // nothing there is graded, so rationing hints would only get in the way of the one thing a
+  // study guide is for). That needs a path of its own: the `grade` action's hint phase is reached
+  // only by submitting a wrong answer, so it cannot help a student who is stuck BEFORE they have
+  // anything to submit, and it consumes an attempt on the way.
+  //
+  // `priorHints` is what makes a second press worth pressing: each hint is told what has already
+  // been said and asked to go one step further, so a student who keeps asking is walked through
+  // the method instead of being handed the same sentence again. HINT_RULES still forbids the
+  // answer itself - the line is the ANSWER, not the method (see src/grading-core.js).
+  if (body.action === "hint") {
+    const key = resolveKey(body.courseType, body.hwId, body.itemId, body.variant);
+    if (!key) return json({ error: `No answer key for ${body.hwId}/${body.itemId}.` }, 400);
+    const prior = (Array.isArray(body.priorHints) ? body.priorHints : []).filter(Boolean);
+    const answerLine = key.answerType === "numeric"
+      ? `${key.answer}${key.unit ? " " + key.unit : ""}`
+      : String(key.answer);
+    const system = `You are an encouraging ${courseLabel} tutor helping a student work through a practice problem on a study guide. The full problem and any figure are provided.\n\nYou are given the correct answer ONLY so that you can aim your help at the right method - treat it as CONFIDENTIAL.\n\n` +
+      (prior.length
+        ? `You have already given this student ${prior.length} hint(s) on this problem, listed below. Give the NEXT step: go one concrete step further than the last hint rather than restating it. If the previous hints have already laid out the method, help them execute the next piece of it.\n\nHints already given:\n${prior.map((h, i) => `${i + 1}. ${h}`).join("\n")}`
+        : `Give the FIRST hint: name the principle or relationship this problem turns on and the first step to take with it. Do not work the problem out.`) +
+      `\n\n${HINT_RULES}\n\nReply with ONLY the hint, one to three sentences, no preamble.`;
+    const user = `Problem: ${body.fullPrompt || ""}\nCorrect answer (confidential): ${answerLine}` +
+      (body.studentAnswer ? `\nWhat the student has entered so far: ${body.studentAnswer}` : `\nThe student has not entered anything yet.`);
+    let text = "";
+    try { text = await callClaude({ system, messages: [{ role: "user", content: contentWith(body.figureBlock || null, user) }], maxTokens: 300 }); }
+    catch (err) { return json({ error: err?.message || "Hint error." }, 502); }
+    return json({ message: text.trim() || "Start from the relationship this chapter gives between the quantities you are told and the one you are asked for, and write it down before putting numbers in." });
+  }
+
   if (body.action !== "grade") return json({ error: "Unknown action." }, 400);
 
-  const key = lookupAnswer(body.courseType, body.hwId, body.itemId);
+  const key = resolveKey(body.courseType, body.hwId, body.itemId, body.variant);
   if (!key) return json({ error: `No answer key for ${body.hwId}/${body.itemId}.` }, 400);
 
   const { studentAnswer = "", phase, fullPrompt = "", figureBlock = null, diagramContext = null } = body;

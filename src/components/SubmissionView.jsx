@@ -1,21 +1,14 @@
-import { useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
-import { useTheme, ThemeContext, buildTheme } from "../theme.js";
+import { useState } from "react";
+import { useTheme } from "../theme.js";
 import { keyToValue, keyToVectorValue, keyToFBDValue, resolveScore, onTimeCreditIds, partIsOnTime } from "../homework.js";
 import { dueToDate } from "../utils.js";
-import { printSheet, printFilename, waitForImages } from "../print.js";
 import { ChatMessages } from "./ChatMessages.jsx";
-import { StudySheet, ProblemFigure } from "./StudySheet.jsx";
+import { ProblemFigure } from "./StudySheet.jsx";
+import { StudyCopyButton } from "./StudyCopyButton.jsx";
 import { MathText } from "./MathText.jsx";
 import { GraphField } from "./GraphField.jsx";
 import { VectorField } from "./VectorField.jsx";
 import { FBDField } from "./FBDField.jsx";
-
-// The PDF is printed on paper, which is light whatever the app is set to. Built once: the
-// printable sheet hands this to its own ThemeContext so every shared component inside it
-// (MathText, the plot fields, ChatMessages) renders its light palette with no print-only
-// branch anywhere in those components.
-const PRINT_THEME = buildTheme(true);
 
 // One gradable item (a whole problem or a part) in a homework submission breakdown.
 // When `onEditChange` is provided the earned value becomes an editable number input
@@ -327,32 +320,6 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
     } finally { setSaving(false); }
   };
 
-  // ---- Downloadable PDF ------------------------------------------------------------
-  // The sheet is mounted only once asked for, so a submission nobody downloads never pays for a
-  // second pass over its KaTeX and SVG. Once mounted it stays, so a second download is immediate.
-  const [sheetMounted, setSheetMounted] = useState(false);
-  const wantPrint = useRef(false);
-  const sheetRef = useRef(null);
-  const runPrint = async () => {
-    // The sheet's own <img> elements are not the ones already on screen, so a print fired in the
-    // same frame can catch a quiz drawing still blank.
-    await waitForImages(sheetRef.current);
-    printSheet(printFilename(assignmentTitle, studentName));
-  };
-  const handleDownload = () => {
-    if (sheetMounted) { runPrint(); return; }
-    wantPrint.current = true;
-    setSheetMounted(true);
-  };
-  useEffect(() => {
-    if (!sheetMounted || !wantPrint.current) return;
-    // One frame so the freshly mounted sheet has been laid out before the dialog snapshots it.
-    // The flag is cleared INSIDE the frame, not here: StrictMode runs this effect twice in dev
-    // and cancels the first frame, so clearing it up front would leave nothing to print.
-    const id = requestAnimationFrame(() => { wantPrint.current = false; runPrint(); });
-    return () => cancelAnimationFrame(id);
-  }, [sheetMounted]);
-
   const scoreLine = (
     <>
       Score: {resolved.excused ? "Excused" : `${resolved.effective != null ? resolved.effective : submission.score}/10`}
@@ -373,10 +340,7 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
               of worked problems to revise from, for the instructor the assignment with its answer
               key, ready to hand out once the deadline has passed. Named for what it produces, not
               for the screen it is on - it is not a print of this page. */}
-          <button onClick={handleDownload}
-            style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 12, color: teal, borderColor: `${teal}66` }}>
-            Download study copy
-          </button>
+          <StudyCopyButton record={submission} assignmentTitle={assignmentTitle} studentName={studentName} />
           {canEdit && hasOverrides && (
             <button onClick={handleReset} disabled={saving}
               style={{ ...s.btnGhost, width: "auto", padding: "6px 14px", fontSize: 12, color: "#f87171", borderColor: "#f8717155" }}>
@@ -452,20 +416,6 @@ export function SubViewModal({ submission, studentName, assignmentTitle, onClose
           submission={submission} editable={canEdit} draftParts={draftParts} setItemDraft={setItemDraft}
           earnedFor={earnedFor} showPartDeadline={showPartDeadline} onTimeIds={onTimeIds} resolvedAtOf={resolvedAtOf} />
       </div>
-      {/* The printable sheet. It is a STUDY document (`StudySheet`), not a print of this screen:
-          the grade lives here, the problems and their answers live there. Portalled to <body> so
-          that neither this fixed-position modal nor its scrolling body sits between it and the
-          page box - a print clips at the first such ancestor, which would cost every page after
-          the first - and rendered under its own light theme, because paper is light whatever the
-          app is set to. */}
-      {sheetMounted && createPortal(
-        <div className="print-sheet" ref={sheetRef}>
-          <ThemeContext.Provider value={PRINT_THEME}>
-            <StudySheet submission={submission} assignmentTitle={assignmentTitle} studentName={studentName} />
-          </ThemeContext.Provider>
-        </div>,
-        document.body
-      )}
     </div>
   );
 }
