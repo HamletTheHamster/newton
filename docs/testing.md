@@ -77,7 +77,62 @@ Everything that signals the run's mode is in the **top bar**, not the chat: prac
 
 **The safest way to exercise a quiz or homework end-to-end is the instructor preview**, which needs no student and writes nothing: Instructor → Home (Modules) → expand a module → **click the item's title**. It runs the real runner with practice forced on, badged "Preview" instead of "Practice", and "← Back" returns to Modules rather than the student portal. Use it to check new content (question wording, choice feedback, survey replies, homework prompts/figures, graph-vector-fbd fields, Claude's grading of a free-response or `text`/`math` answer) without touching `submissions`, `hwDrafts` or `hwAttempts` — homework preview writes **no** draft and **no** attempt counts, so it is repeatable. It still calls Claude, so the local proxy gotchas above apply.
 
+**But a preview is not a stand-in for a student run**, and the homework runner is where that bites — see the next section.
+
 Clicking the title also opens the other item types the way a student gets them — `file` and `link`/`reading`/`notes` in a new tab, `page` in the student `PageViewer` — which is the quickest way to confirm an upload or URL actually resolves.
+
+## Homework runner — the student-only branches a preview never touches
+
+The instructor preview runs the real runner, which makes it tempting to treat a clean preview as
+proof the assignment opens. It is not. `practice` is on in a preview, and `practice` is precisely
+what switches off every student-only branch: the draft, the attempt counts, the telemetry, the
+written-work upload, the submission, and the **acknowledgment gate**. A graded student run is
+therefore a different code path through the same component, and on 2026-10-10 it was the only
+broken one — `const ready = !needsAck || acked` sat above the `useState` that declares `acked`, so
+it threw `ReferenceError: Cannot access 'acked' before initialization` and React unmounted the
+tree. Every student got a blank page on every homework; every instructor preview worked, because
+`||` short-circuits when `needsAck` is false and the dead reference was never evaluated.
+
+So: **verify a runner change on a student account, or render it headlessly with `practice` off.**
+The headless check is quick and needs no login, no database and no Netlify functions — bundle the
+component with the esbuild that already ships under `vite` and render it with `react-dom/server`,
+which executes the whole render pass (hooks included, effects excluded) and so catches exactly
+this class of fault:
+
+```jsx
+// probe.jsx — keep it outside the repo (a scratch dir); it is a one-off, not a committed test
+import { renderToString } from "react-dom/server";
+import { HomeworkRunner } from "/abs/path/to/src/screens/student/HomeworkRunner.jsx";
+import { HOMEWORKS_PHYSICS2 } from "/abs/path/to/src/courses/physics2.js";
+
+for (const hw of HOMEWORKS_PHYSICS2) {
+  for (const mode of [{ practice: false, preview: false }, { practice: true, preview: true }]) {
+    try {
+      renderToString(<HomeworkRunner homework={hw} courseType="physics2" classId="c1"
+        loggedInStudent={{ fullName: "T", studentId: "s_t" }} {...mode}
+        onFinish={() => {}} onLeave={() => {}} />);
+      console.log("ok   ", hw.id, mode.practice ? "preview" : "student");
+    } catch (e) { console.log("THROW", hw.id, mode.practice ? "preview" : "student", e.message); }
+  }
+}
+```
+
+Bundle and run it **from the repo root**, so `react` and `react-dom` resolve out of
+`node_modules`, with the outfile in the repo root too (delete it afterwards):
+
+```bash
+npx esbuild /path/to/probe.jsx --bundle --platform=node --format=cjs \
+  --loader:.js=jsx --jsx=automatic \
+  --external:react --external:react-dom --external:react/jsx-runtime \
+  --define:import.meta.env='{"VITE_FIREBASE_API_KEY":"x","VITE_APPCHECK_DEBUG":""}' \
+  --outfile=.probe.cjs && node .probe.cjs; rm -f .probe.cjs
+```
+
+Three flags are load-bearing: `--jsx=automatic` (the project has no `React` import in scope),
+`--loader:.js=jsx` (components live in `.js` files too), and the `import.meta.env` define
+(`src/firebase.js` reads `VITE_FIREBASE_API_KEY` at module scope and `import.meta` is undefined
+under CJS). The same probe works for any screen component; `useTheme()` falls back to its default
+context, so no provider is needed.
 
 ## Written-work uploads — verifying compression without a browser session
 

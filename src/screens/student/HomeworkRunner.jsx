@@ -127,7 +127,6 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   const study = !!homework.study;
   // The written-work acknowledgment belongs to graded homework alone.
   const needsAck = !practice && !study;
-  const ready = !needsAck || acked;
 
   const problems = homework.problems || [];
   const allItems = problems.flatMap(itemsOf);
@@ -164,6 +163,12 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
   // student must re-confirm every time they begin or resume — see the gate screen below.
   const [acked, setAcked] = useState(false);
   const [ackChecked, setAckChecked] = useState(false);   // the "I understand" checkbox state
+  // Past the ack gate and into the assignment proper. Declared HERE, below `acked`, and not up
+  // beside `needsAck` where it reads more naturally: `acked` is a `const`, so touching it any
+  // earlier is a temporal-dead-zone throw. It cost a blank homework screen for every student,
+  // and only for them - `||` short-circuits, so practice and instructor preview (needsAck false)
+  // never evaluated it and the preview path looked healthy.
+  const ready = !needsAck || acked;
 
   // Written-work integrity step (skipped in practice mode).
   const [submitStep, setSubmitStep] = useState(false);   // showing the upload-your-work step
