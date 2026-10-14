@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { s, BG, CARD, TEAL, TEAL_DIM, MUTED, BORDER, buildTheme, ThemeContext, initialLightMode } from "./theme.js";
 import { fbGet, fbSet, fbUpdate, FIREBASE, classPath, slugifyClassId, uniqueClassId, fbUpload, fbDeleteStorage, fbListStorage } from "./firebase.js";
 import { flattenSubs, subsByStudentMap, submissionMergePatch, keyForSubmission } from "./student-work.js";
+import { buildQuizDraftPatch, buildQuizInputPatch, restorableQuizDraft, quizDraftHasWork } from "./quiz-draft.js";
 import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToken } from "./auth.js";
 import {
   ACCEPTED_IMG,
@@ -320,6 +321,24 @@ export default function App() {
   // walking through it (see previewMessages / skipAhead).
   const [previewAll, setPreviewAll] = useState(false);
   const [subSaveError, setSubSaveError] = useState(false); const [pendingSub, setPendingSub] = useState(null);
+  // ── The quiz draft (`quizDrafts/{studentId}/{quizId}`) ──────────────────────
+  // A quiz sitting used to exist only in the state above, so a reload cost the whole attempt
+  // and not merely the box (see src/quiz-draft.js for the full rationale and for why this
+  // draft, unlike homework's, does NOT survive a deliberate "Leave quiz"). The node is
+  // per-student, so like `hwDrafts` it is read and written on demand and never enters the
+  // class cache (CLAUDE.md § Adding new Firebase per-class state, the per-student exception).
+  const [quizDraftLoading, setQuizDraftLoading] = useState(false);
+  // Set the moment the sitting stops being live — submitted, or deliberately abandoned. Every
+  // save path checks it, so a debounced keystroke or an unmount flush already in flight can
+  // never write the draft back after the submission has become the record.
+  const quizDraftClosedRef = useRef(false);
+  const quizInputTimer = useRef(null);
+  // Has the TRANSCRIPT been written to the node yet this sitting? The typing autosave sends
+  // only the box, which on a sitting whose transcript has never been saved would leave a node
+  // holding an answer and no question — and `restorableQuizDraft` rejects that, so the typed
+  // text would be lost by the very save meant to keep it. Until the transcript is down, the
+  // typing save sends the whole sitting instead.
+  const quizDraftSeededRef = useRef(false);
 
   // ── Instructor state ────────────────────────────────────────────────────────
   const [instPw, setInstPw] = useState(""); const [instErr, setInstErr] = useState("");
@@ -1797,6 +1816,7 @@ export default function App() {
     } catch (e) { console.warn("Could not archive this student's submissions before removal:", e?.message || e); }
     await fbSave(classPath(cid, `submissions/${studentId}`), null);
     await fbSave(classPath(cid, `gradeOverrides/${studentId}`), null);
+    await fbSave(classPath(cid, `quizDrafts/${studentId}`), null);
     await fbSave(classPath(cid, `hwDrafts/${studentId}`), null);
     await fbSave(classPath(cid, `hwAttempts/${studentId}`), null);
     await fbSave(classPath(cid, `hwProgress/${studentId}`), null);
@@ -2210,6 +2230,96 @@ export default function App() {
   // `from` is "student" or "instructor" (a Modules-editor preview). An instructor preview is
   // FORCED to practice regardless of the caller, since there is no student to save a run for —
   // finishQuiz's submission path reads loggedInStudent, which is null on the instructor side.
+  // ── Quiz draft: path, save, clear ──────────────────────────────────────────
+  // The path is computed from arguments rather than from state wherever the caller is itself
+  // setting that state (startQuiz), since the setters have not committed yet at that point.
+  const quizDraftPathFor = (quiz, isPractice) =>
+    (!isPractice && currentClassId && loggedInStudent?.studentId && quiz?.id)
+      ? classPath(currentClassId, `quizDrafts/${loggedInStudent.studentId}/${quiz.id}`)
+      : null;
+  const quizDraftPath = quizDraftPathFor(activeQuiz, practiceMode);
+
+  // Everything the sitting is made of, gathered in one place so the autosave, the typing
+  // flush and the unmount flush cannot disagree about what a sitting IS.
+  const quizDraftState = () => ({ messages, apiHist, qScores, completedParts, qIdx, attemptCount, input, awaitingJustification });
+
+  const saveQuizDraft = () => {
+    if (!quizDraftPath || quizDraftLoading || quizDraftClosedRef.current) return Promise.resolve();
+    const state = quizDraftState();
+    if (!quizDraftHasWork(state)) return Promise.resolve();
+    return fbUpdate(quizDraftPath, buildQuizDraftPatch(state))
+      .then(() => { quizDraftSeededRef.current = true; })
+      .catch(() => {});
+  };
+
+  // Delete the node. Called on two very different occasions that want the same thing: the
+  // submission has become the record, or the student took the leave dialog at its word.
+  const clearQuizDraft = path => {
+    const target = path || quizDraftPath;
+    quizDraftClosedRef.current = true;
+    clearTimeout(quizInputTimer.current);
+    if (target) fbSet(target, null).catch(() => {});
+  };
+
+  // Save on every turn of the transcript. These are the only things that move a sitting
+  // forward, and each is a fresh reference per turn, so this fires once per student action
+  // rather than on every render.
+  useEffect(() => {
+    if (screen !== "quiz" || quizDone) return;
+    saveQuizDraft();
+  }, [messages, qScores, attemptCount, completedParts, qIdx, awaitingJustification]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Save the half-typed box, debounced. This is the one save that runs mid-sentence, so it
+  // carries ONLY the box: typing changes no turn, and re-sending the transcript every 1.2s
+  // would be waste on a phone connection. It deliberately runs even when the box is emptied,
+  // so clearing what you wrote is itself remembered.
+  useEffect(() => {
+    if (screen !== "quiz" || quizDone) return;
+    if (!quizDraftPath || quizDraftLoading || quizDraftClosedRef.current) return;
+    if (!quizDraftHasWork(quizDraftState())) return;
+    clearTimeout(quizInputTimer.current);
+    quizInputTimer.current = setTimeout(() => {
+      // Until the transcript is on the node, send the whole sitting: a stored box with no
+      // question behind it is not restorable, so an input-only first write would lose exactly
+      // what it was trying to save. A failed full write leaves the flag false and the next
+      // keystroke tries again, which is the behaviour we want from a flaky connection.
+      if (!quizDraftSeededRef.current) { saveQuizDraft(); return; }
+      fbUpdate(quizDraftPath, buildQuizInputPatch(input)).catch(() => {});
+    }, 1200);
+    return () => clearTimeout(quizInputTimer.current);
+  }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Flush when the page is hidden or torn down — switching apps on a phone, closing the tab,
+  // and above all the stale-build notice's reload, which is this draft's reason for existing.
+  // The builder is held in a ref because the listeners are registered once but must always
+  // write the CURRENT sitting (same reasoning as HomeworkRunner's flushPatchRef). `sendBeacon`
+  // is not an option: the write needs an App Check header and a beacon cannot carry one.
+  const quizFlushRef = useRef(null);
+  useEffect(() => {
+    quizFlushRef.current = () => {
+      if (screen !== "quiz" || quizDone || !quizDraftPath) return null;
+      if (quizDraftLoading || quizDraftClosedRef.current) return null;
+      const state = quizDraftState();
+      return quizDraftHasWork(state) ? { path: quizDraftPath, patch: buildQuizDraftPatch(state) } : null;
+    };
+  });
+  useEffect(() => {
+    const flush = () => {
+      const pending = quizFlushRef.current?.();
+      if (!pending) return;
+      clearTimeout(quizInputTimer.current);
+      fbUpdate(pending.path, pending.patch).catch(() => {});
+    };
+    const onHide = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", flush);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", flush);
+      flush();
+    };
+  }, []);
+
   const startQuiz = (quiz, isPractice = false, from = "student") => {
     const preview = from === "instructor";
     setRunnerFrom(from);
@@ -2226,6 +2336,33 @@ export default function App() {
     setMessages([questionMsg(quiz, 0, 1)]);
     setScreen("quiz");
     history.pushState({ newton: "quiz" }, "", "");
+
+    // Restore an interrupted sitting, if there is one.
+    //
+    // The screen is shown FIRST, on a freshly posed question 1, and the draft lands a moment
+    // later — rather than holding the student on a blank screen until the read returns. The
+    // transcript is the thing being replaced, so `quizDraftLoading` gates every save path in
+    // the meantime: without it the fresh question 1 would race the read and be written over
+    // the real sitting.
+    //
+    // This is applied, never OFFERED. A "start fresh?" button would be a way to shed a bad
+    // first question and its attempt counts, which is a cheat the quiz does not have today —
+    // the deliberate way out is the Leave dialog, which says the attempt is discarded and
+    // then actually discards it (confirmLeave).
+    quizDraftClosedRef.current = false;
+    quizDraftSeededRef.current = false;
+    const draftPath = quizDraftPathFor(quiz, isPractice || preview);
+    if (!draftPath) { setQuizDraftLoading(false); return; }
+    setQuizDraftLoading(true);
+    fbGet(draftPath).catch(() => null).then(stored => {
+      const draft = restorableQuizDraft(stored, quiz.questions.length);
+      if (!draft) return;
+      quizDraftSeededRef.current = true; // the transcript is already on the node
+      setMessages(draft.messages); setApiHist(draft.apiHist); setQScores(draft.qScores);
+      setCompletedParts(draft.completedParts); setQIdx(draft.qIdx);
+      setAttemptCount(draft.attemptCount); setInput(draft.input);
+      setAwaitingJustification(draft.awaitingJustification);
+    }).finally(() => setQuizDraftLoading(false));
   };
   // Same contract as startQuiz: an instructor preview is FORCED to practice, which is what keeps
   // HomeworkRunner off every per-student path (drafts, attempt counts, work uploads, the
@@ -2376,7 +2513,11 @@ export default function App() {
     if ((quizDone && !subSaveError) || runnerFrom === "instructor") { setScreen(runnerReturnScreen); return; }
     if (!quizDone) setShowLeaveConfirm(true);
   };
-  const confirmLeave = () => { setShowLeaveConfirm(false); setScreen(runnerReturnScreen); };
+  // The leave dialog says "Your progress will be lost and this attempt will not be saved", so
+  // the draft goes with it. Keeping it would quietly make quizzes resumable — a change to how
+  // the course assesses, not a fix for lost work — and would hand back a sitting the student
+  // had just been told they were throwing away.
+  const confirmLeave = () => { clearQuizDraft(); setShowLeaveConfirm(false); setScreen(runnerReturnScreen); };
   const onFileSelect = async e => {
     const file = e.target.files[0]; if (!file) return;
     if (!ACCEPTED_IMG.includes(file.type)) { alert("Please upload PNG, JPG, WEBP, or GIF."); e.target.value = ""; return; }
@@ -2541,19 +2682,24 @@ export default function App() {
     setBusy(false);
   };
   const finishQuiz = async (quiz, scores, curMsgs) => {
+    const draftPath = quizDraftPathFor(quiz, practiceMode);
     const raw = scores.reduce((a, b) => a + (b || 0), 0), late = isLate(quiz.dueDate);
     const final = late ? parseFloat((raw * 0.5).toFixed(1)) : raw;
     const resultMsg = { id: Date.now() + 10, type: "result", raw, final, late, scores, questions: quiz.questions, pts: ptsPer(quiz.questions.length), practiceMode, preview: runnerFrom === "instructor" };
     setQuizDone(true); setMessages([...curMsgs, resultMsg]);
     if (!practiceMode) {
       const sub = { id: "sub_" + Date.now(), studentName: loggedInStudent.fullName, studentId: loggedInStudent.studentId, quizId: quiz.id, quizTitle: quiz.title, rawScore: raw, score: final, late, timestamp: new Date().toISOString(), dialogue: [...curMsgs, resultMsg].map(({ imageUrl, ...m }) => m) };
-      // Stash to localStorage BEFORE the network call. A quiz has no draft node — the whole
-      // sitting exists only in this component's state — so if the save fails and the student
-      // closes the tab, the on-screen retry button dies with it and the work is gone. The
-      // stash is picked up and flushed on the next load (see the recovery effect).
+      // Stash to localStorage BEFORE the network call. The quiz draft (src/quiz-draft.js) now
+      // covers an interrupted sitting, but not this: the draft is keyed on work still in
+      // progress, whereas a FINISHED quiz whose save failed needs the finished submission held
+      // somewhere the on-screen retry button cannot die with the tab. The stash is picked up
+      // and flushed on the next load (see the recovery effect).
       stashPendingSub(currentClassId, sub);
       setPendingSub({ sub });
-      try { await addSubmission(sub); setSubSaveError(false); setPendingSub(null); clearStashedSub(); }
+      // The draft is cleared only once the submission has actually landed. On a failed save it
+      // is left exactly where it is: the two of them are then the student's belt and braces,
+      // and a draft that outlives its submission costs nothing but a node.
+      try { await addSubmission(sub); setSubSaveError(false); setPendingSub(null); clearStashedSub(); clearQuizDraft(draftPath); }
       catch { setSubSaveError(true); }
     }
   };

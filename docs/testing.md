@@ -81,6 +81,31 @@ Everything that signals the run's mode is in the **top bar**, not the chat: prac
 
 Clicking the title also opens the other item types the way a student gets them — `file` and `link`/`reading`/`notes` in a new tab, `page` in the student `PageViewer` — which is the quickest way to confirm an upload or URL actually resolves.
 
+## Quiz drafts — the same preview trap, one layer worse
+
+`quizDrafts` (added 2026-10-13, see architecture.md § Quiz sittings) is written only when
+`practiceMode` is false, and **two ordinary ways of opening a quiz set it true**: an instructor
+preview (`startQuiz(q, true, "instructor")`), and a student re-opening a quiz they have already
+handed in (`onStartQuiz={q => startQuiz(q, completedQuizIds.has(q.id))}`). So neither the obvious
+instructor check nor the obvious student check exercises a single line of the draft. Verifying it
+needs a student account on a quiz that account has **not** submitted.
+
+What to check, in one sitting:
+
+1. Answer question 1, let it grade, start typing into question 2 and stop. Wait ~2s.
+2. Reload the tab (⌘R — this is the stale-build notice's own path, `window.location.reload()`).
+3. The transcript, the score so far, the question you were on and the half-typed box all come
+   back. The sitting is restored silently; there is no resume prompt, by design.
+4. Press Back → "Leave" in the confirm dialog. Re-open the quiz: it starts clean at question 1.
+   That exit is the one that deliberately discards the draft, because the dialog says it does.
+5. Finish and submit. The node under `quizDrafts/{studentId}/{quizId}` is gone; the submission is
+   the record.
+
+The pure half is `node src/quiz-draft.test.mjs`, which covers the parts that fail silently — the
+no-nulls patch, RTDB's numeric-keyed objects read back in numeric order, `qScores` padded to one
+slot per question, and a typed-but-unsubmitted box surviving the round trip. What it cannot cover
+is the wiring above, which is why step 2 is done by hand.
+
 ## Homework runner — the student-only branches a preview never touches
 
 The instructor preview runs the real runner, which makes it tempting to treat a clean preview as

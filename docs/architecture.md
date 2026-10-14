@@ -235,6 +235,51 @@ Everything below is proxied through `netlify/functions/claude.js` (which forward
 3. **`evaluateHomeworkAnswer`** (`src/homework.js`) — grades a homework problem/part. **Numeric / text / math grading runs in its OWN function, `netlify/functions/grade.js` (not the `claude.js` proxy)**, which holds the answer key server-side (see Homework § "Server-side grading" below). The client posts the public context (prompt, figure image, history, FBD diagram context); the function injects the confidential answer, matches numerics deterministically (±2%, sig-fig agnostic, server-owned tolerance), and calls Claude for word/math + hints/reveal. **Graph / vector / fbd are graded locally on the client** (deterministic, instant) and never hit a function.
 4. **`checkWorkIntegrity`** (`src/homework.js`) — at homework submit, a lenient academic-integrity sniff-check: Claude sees the problems, the student's submitted answers, and the uploaded written-work images/PDFs, and flags only when there is clearly no evidence of personal work. Never throws (grader errors return `{flagged:false, error}` so an outage never penalizes a student).
 
+## Quiz sittings and the quiz draft
+
+A quiz is taken in one screen (`screen === "quiz"`, inline in `App.jsx` rather than in a runner
+component of its own) as a chat transcript: one question at a time, each multi-part question
+posed a part at a time, five attempts per part, half credit after the fifth miss.
+
+Until **2026-10-13** none of that was written down until the student finished. The sitting was
+`messages` / `qIdx` / `qScores` / `apiHist` / `attemptCount` / `completedParts` / `input`, all
+plain `useState`, and the only persistence anywhere near it was `newton_pending_sub` in
+localStorage — which holds a **finished** quiz whose save failed, and does nothing for one in
+progress. So a reload took the whole attempt, not merely the sentence in the box: every question
+already answered and graded went with it, and the student restarted at question 1. The
+`StaleBuildNotice` makes that reload involuntary and unskippable, so shipping a deploy could take
+a sitting away from a student mid-quiz, behind a modal that reads "Your work is saved."
+
+`quizDrafts/{studentId}/{quizId}` closes that. It is a per-student node, so like `hwDrafts` it is
+read and written on demand and never enters the class cache. The shapes and the reasoning are in
+`src/quiz-draft.js`; what matters at this level is how it differs from the homework draft, in two
+places, both deliberate:
+
+- **It is restored unconditionally, not offered.** Homework shows a resume prompt, which is safe
+  there only because `hwAttempts` is a separate authoritative node seeded on mount whatever the
+  student picks. A quiz has no such node, so a "start fresh?" button would be a way to shed a bad
+  opening question and its spent attempts — a cheat the quiz does not have today. `startQuiz`
+  shows the screen immediately on a freshly posed question 1 and swaps in the draft when the read
+  returns, with `quizDraftLoading` gating every save path in between so the fresh question cannot
+  race the read and be written over the real sitting.
+- **It is deleted on a deliberate "Leave quiz".** The leave dialog has always said "Your progress
+  will be lost and this attempt will not be saved", and a student may reasonably use it to
+  abandon a bad start. Keeping the draft through that exit would quietly turn quizzes into
+  resumable work — a change to how the course assesses, not a fix for lost work — and would hand
+  back a sitting the student had just been told they were throwing away. `confirmLeave` clears it;
+  so does a successful submission, after which the submission is the record. A FAILED submission
+  deliberately leaves the draft in place, as a second net beside the localStorage stash.
+
+Saves run at three moments, mirroring `HomeworkRunner`: on every turn of the transcript (the only
+things that move a sitting forward), on a 1.2s debounce while the box is being typed into, and on
+`visibilitychange`/`pagehide` — the last of which is what catches the stale-build reload. There is
+no `sendBeacon` fallback for the same reason there is none in the homework runner: the write needs
+an App Check header and a beacon cannot carry one.
+
+What a restored sitting does NOT get back is the thumbnail of a drawing the student had attached
+but not yet submitted, and the staged file itself. Both are browser objects; the submission path
+already strips the same field for the same reason.
+
 ## Homework
 
 Homework assignments are code-defined per course (`HOMEWORKS_PHYSICS1` in `src/courses/physics1.js`, read via `homeworksForCourse()`), and integrate through the same seams as quizzes:
