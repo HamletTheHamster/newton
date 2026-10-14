@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { courseLabelFor } from "./course-meta.js";
+import { GRADING_MODEL, GRADING_EFFORT, GRADING_TOKENS, PLAIN_TEXT_RULE } from "./grading-core.js";
 
 export const ACCEPTED_IMG = ["image/png", "image/jpeg", "image/webp", "image/gif"];
 
@@ -125,8 +126,9 @@ export async function checkImageReadability(imgData) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: "claude-opus-4-8",
-      max_tokens: 200,
+      model: GRADING_MODEL,
+      max_tokens: GRADING_TOKENS,
+      output_config: { effort: GRADING_EFFORT },
       system: "You are checking whether a student's uploaded photo of a hand-drawn physics graph is legible enough to evaluate. Reply ONLY with valid JSON: {\"readable\":true} if the drawing is clear enough to assess, or {\"readable\":false,\"reason\":\"one short sentence telling the student specifically what to fix\"} if not.",
       messages: [{ role: "user", content: [{ type: "image", source: { type: "base64", media_type: imgData.type, data: imgData.data } }, { type: "text", text: "Is this image of a hand-drawn physics graph clear and legible enough to evaluate?" }] }],
     }),
@@ -155,6 +157,9 @@ export async function evaluateAnswer(question, answer, history, imageData, attem
   } else {
     system = "You are an encouraging " + courseLabel + " tutor. Your goal is to guide students to the correct understanding themselves. Celebrate progress, never shame confusion, and ask targeted questions that help the student discover the answer rather than stating it.\n\nCRITICAL RULE: Mark CORRECT only when the student's answer clearly demonstrates conceptual understanding of the key idea. Informal wording and minor gaps in detail are fine, but the core physics concept must be present and accurate. Mark INCORRECT if the answer contains a conceptual error, is missing the key idea, or is too vague to confirm any real understanding.\n\nFor image submissions (motion graphs): accept the drawing if the key features are essentially correct.\n\nReply ONLY with valid JSON:\n- If adequate: {\"status\":\"correct\",\"message\":\"1-2 sentences confirming what they got right\"}\n- If not: {\"status\":\"incorrect\",\"message\":\"One focused Socratic question targeting the gap\"}";
   }
+  // The quiz chat prints `msg.text` raw (ChatMessages.jsx) — no markdown pass, no KaTeX — so
+  // markdown in the reply reaches the student as literal asterisks.
+  system += "\n\n" + PLAIN_TEXT_RULE;
   if (simPick) system += "\n\nThe student has just answered by clicking a point on the interactive simulation beside the quiz instead of writing (their message describes the point and the simulation's settings when they picked it). A picked point can NEVER complete this part on its own, because the part asks for reasoning. Reply with status \"incorrect\" regardless. In the message: if the point and the settings it was picked under match what the part asks, say so warmly in one sentence and ask them to justify in their own words WHY the field behaves that way there; if the settings do not match the case the part asks about, or the point is not what the part asks for, say what you see at that point (a number they can check on the plot) and ask one Socratic question that steers them, without giving the location. Do not count this against them.";
   if (attemptNum === 4) system += "\n\nThis is the student's 4th attempt on the current part(s). Give a more direct hint — point clearly toward the key concept without stating the full answer. They have one more try after this.";
   if (attemptNum >= 5) system += "\n\nThis is the student's final (5th) attempt on the current part(s). If still incorrect, kindly tell them the correct answer directly and encourage them to review the concept before moving on.";
@@ -167,7 +172,7 @@ export async function evaluateAnswer(question, answer, history, imageData, attem
   const res = await fetch("/.netlify/functions/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 1000, system, messages: [...history, { role: "user", content: userContent }] }),
+    body: JSON.stringify({ model: GRADING_MODEL, max_tokens: 2000, output_config: { effort: GRADING_EFFORT }, system, messages: [...history, { role: "user", content: userContent }] }),
   });
   let data;
   try { data = await res.json(); }
@@ -175,9 +180,11 @@ export async function evaluateAnswer(question, answer, history, imageData, attem
   if (!res.ok || data?.error) {
     throw new Error("Grader error: " + (data?.error?.message || `HTTP ${res.status}`));
   }
+  // Text blocks only — a thinking model's reasoning blocks carry no `.text` (see GRADING_MODEL).
   const text = data.content?.map(b => b.text || "").join("") || "";
   if (!text.trim()) {
-    throw new Error("The grader returned an empty response (check that ANTHROPIC_API_KEY is set in the Netlify dev environment).");
+    if (data.stop_reason === "max_tokens") throw new Error("The grader ran out of room before it wrote an answer.");
+    throw new Error(`The grader returned an empty response (stop_reason ${data.stop_reason || "unknown"}; check that CLAUDE_API_KEY is set in the Netlify dev environment).`);
   }
   try { return JSON.parse(text.replace(/```json\n?|```/g, "").trim()); }
   catch { return { status: "incorrect", message: text }; }

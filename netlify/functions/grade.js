@@ -31,10 +31,12 @@ import {
   normalizeLatexForGrading,
   parseJsonReply,
   HINT_RULES,
+  PLAIN_TEXT_RULE,
   DEFAULT_NUMERIC_TOL,
+  GRADING_MODEL,
+  GRADING_EFFORT,
+  GRADING_TOKENS,
 } from "../../src/grading-core.js";
-
-const HW_MODEL = "claude-opus-4-8";
 
 const json = (obj, status = 200) =>
   new Response(JSON.stringify(obj), { status, headers: { "Content-Type": "application/json" } });
@@ -96,7 +98,7 @@ export default async (req) => {
     const user = `Problem: ${body.fullPrompt || ""}\nCorrect answer (confidential): ${answerLine}` +
       (body.studentAnswer ? `\nWhat the student has entered so far: ${body.studentAnswer}` : `\nThe student has not entered anything yet.`);
     let text = "";
-    try { text = await callClaude({ system, messages: [{ role: "user", content: contentWith(body.figureBlock || null, user) }], maxTokens: 300 }); }
+    try { text = await callClaude({ system, messages: [{ role: "user", content: contentWith(body.figureBlock || null, user) }] }); }
     catch (err) { return json({ error: err?.message || "Hint error." }, 502); }
     return json({ message: text.trim() || "Start from the relationship this chapter gives between the quantities you are told and the one you are asked for, and write it down before putting numbers in." });
   }
@@ -139,7 +141,7 @@ export default async (req) => {
       const system = `You are an encouraging ${courseLabel} tutor. The full problem and any figure are provided. The student has answered this numeric problem incorrectly several times.\n\nYou are given the correct answer ONLY to help you diagnose their mistake — treat it as CONFIDENTIAL.\n\nInfer the single most likely error (a missing/extra factor, a squared-vs-linear term, a sign error, a unit conversion, the wrong formula, a misread value) and give ONE short hint pointing to that specific step.\n\n${HINT_RULES}\n\nReply with ONLY the hint sentence, no preamble.`;
       const user = `Problem: ${fullPrompt}\nCorrect answer (confidential): ${key.answer}${key.unit ? " " + key.unit : ""}\nStudent's (incorrect) answer: ${studentAnswer}`;
       let text = "";
-      try { text = await callClaude({ system, messages: [{ role: "user", content: contentWith(figureBlock, user) }], maxTokens: 200 }); }
+      try { text = await callClaude({ system, messages: [{ role: "user", content: contentWith(figureBlock, user) }] }); }
       catch { /* fall through to generic hint */ }
       return json({ correct: false, message: "💡 " + (text.trim() || "Re-check your setup — look carefully at your formula and units.") });
     }
@@ -163,7 +165,11 @@ export default async (req) => {
   } else if (phase === "reveal") {
     system += `\n\nThe student has now used all their attempts. If still incorrect, kindly state the correct answer directly and briefly explain it.`;
   }
-  system += `\n\nReply with ONLY a single JSON object and nothing else — no reasoning, preamble, or text before or after it. Do all your thinking silently; emit only the JSON:\n- If correct: {"status":"correct","message":"1-2 sentences confirming what they got right"}\n- If incorrect: {"status":"incorrect","message":"${phase === "reveal" ? "state the correct answer and a one-line explanation" : phase === "hint" ? "one targeted hint about their likely mistake" : "one short Socratic nudge"}"}`;
+  // "Do all your thinking silently" used to live here, for a model that did not think. On Opus
+  // 5.5 the reasoning is in thinking blocks the client never reads, and a rule telling the model
+  // not to think is one it cannot obey — the migration guide notes it raises tag leakage instead.
+  // The requirement that SURVIVES is the shape of the reply: one JSON object, nothing around it.
+  system += `\n\n${PLAIN_TEXT_RULE}\n\nReply with ONLY a single JSON object and nothing else — no preamble or text before or after it:\n- If correct: {"status":"correct","message":"1-2 sentences confirming what they got right"}\n- If incorrect: {"status":"incorrect","message":"${phase === "reveal" ? "state the correct answer and a one-line explanation" : phase === "hint" ? "one targeted hint about their likely mistake" : "one short Socratic nudge"}"}`;
 
   // Re-brace MathLive's compact \frac serialization so the grader reads the expression the
   // student actually sees rendered (see normalizeLatexForGrading). Only the copy sent to Claude
@@ -172,7 +178,7 @@ export default async (req) => {
   const userText = `Problem: ${fullPrompt}\n\nStudent Answer: ${shownAnswer}`;
   let text;
   try {
-    text = await callClaude({ system, messages: [...history, { role: "user", content: contentWith(figureBlock, userText) }], maxTokens: 600 });
+    text = await callClaude({ system, messages: [...history, { role: "user", content: contentWith(figureBlock, userText) }] });
   } catch (err) {
     return json({ error: err?.message || "Grader error." }, 502);
   }
@@ -194,7 +200,7 @@ function contentWith(figureBlock, text) {
 }
 
 // Call Claude directly (mirrors netlify/functions/claude.js — same CLAUDE_API_KEY, version, beta).
-async function callClaude({ system, messages, maxTokens = 600 }) {
+async function callClaude({ system, messages, maxTokens = GRADING_TOKENS, effort = GRADING_EFFORT }) {
   const key = process.env.CLAUDE_API_KEY || "";
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -204,13 +210,21 @@ async function callClaude({ system, messages, maxTokens = 600 }) {
       "anthropic-version": "2023-06-01",
       "anthropic-beta": "pdfs-2024-09-25",
     },
-    body: JSON.stringify({ model: HW_MODEL, max_tokens: maxTokens, system, messages }),
+    body: JSON.stringify({ model: GRADING_MODEL, max_tokens: maxTokens, output_config: { effort }, system, messages }),
   });
   let data;
   try { data = await res.json(); }
   catch { throw new Error("The grader returned a non-JSON response."); }
   if (!res.ok || data?.error) throw new Error("Grader error: " + (data?.error?.message || `HTTP ${res.status}`));
+  // A thinking model answers in `thinking` + `text` blocks; only the text blocks are the reply,
+  // and a `thinking` block's own text is empty under the default display. Join by `.text` so
+  // the reasoning never reaches the student and never lands in the stored feedback string.
   const text = data.content?.map(b => b.text || "").join("") || "";
-  if (!text.trim()) throw new Error("The grader returned an empty response (check that CLAUDE_API_KEY is set).");
+  if (!text.trim()) {
+    // Distinguish the two ways a thinking model hands back nothing, because the fixes differ:
+    // a budget that the thinking ate (raise GRADING_TOKENS) vs. a dead key or a refusal.
+    if (data.stop_reason === "max_tokens") throw new Error(`The grader ran out of room (max_tokens ${maxTokens}) before it wrote an answer.`);
+    throw new Error(`The grader returned an empty response (stop_reason ${data.stop_reason || "unknown"}; check that CLAUDE_API_KEY is set).`);
+  }
   return text;
 }

@@ -2,7 +2,7 @@
 
 **Status:** Phase 1 shipped (commit `3075801`). The test assignment `hw1` (numeric /
 word / math) works end-to-end: the MasteringPhysics-style runner, Claude grading
-(`claude-opus-4-8`), gradebook auto-population with a per-problem submission breakdown,
+(`GRADING_MODEL`, `src/grading-core.js`), gradebook auto-population with a per-problem submission breakdown,
 and integration into modules, the assignments tab, the calendar, and the to-do rail.
 
 See [architecture.md](architecture.md) § Homework for how the shipped pieces fit together.

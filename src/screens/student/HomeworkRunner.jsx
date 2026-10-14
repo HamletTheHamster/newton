@@ -42,6 +42,7 @@ import {
   rescoreSubmission,
 } from "../../homework.js";
 import { onTimeIdsFromTelemetry, stampOnTimeParts } from "../../auto-submit.js";
+import { GRADING_MODEL } from "../../grading-core.js";
 import { SELECTION_NOTE } from "../../study-guide.js";
 import { StudyCopyButton } from "../../components/StudyCopyButton.jsx";
 
@@ -92,7 +93,6 @@ function FreeHint({ children }) {
 }
 
 const ACCEPTED_WORK_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
-const HW_INTEGRITY_MODEL = "claude-opus-4-8";
 
 // MasteringPhysics-style homework runner. Owns all per-item state; on finish, builds a
 // submission object and calls onFinish(submission) (which persists it and may throw).
@@ -859,7 +859,7 @@ export function HomeworkRunner({ homework, courseType, classId, loggedInStudent,
       let integ = integrityResult;
       if (!integ) {
         const verdict = await checkWorkIntegrity({ problems, answers, files: workFiles.map(w => w.file), courseType });
-        integ = { ...verdict, checkedAt: new Date().toISOString(), model: HW_INTEGRITY_MODEL };
+        integ = { ...verdict, checkedAt: new Date().toISOString(), model: GRADING_MODEL };
         setIntegrityResult(integ);
       }
       // Fetch the correct answers for numeric/text/math items (server-held) to bake into the

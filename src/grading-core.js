@@ -7,6 +7,34 @@
 // Default ±2% numeric tolerance (mirrors HW_GRADING_DEFAULTS.numericTolerance in homework.js).
 export const DEFAULT_NUMERIC_TOL = 0.02;
 
+// ── The model, and what it costs to be a thinking one ──────────────────────────
+// ONE model string for every student-facing Claude call — quiz grading, homework grading,
+// hints, reveals and the written-work integrity check. It lived in four files before, and
+// HomeworkRunner's copy is STAMPED ON THE SUBMISSION (`integrity.model`), so a drift between
+// two of them would have the record name a model that never ran.
+//
+// Opus 5.5 ALWAYS thinks: `thinking: {type:"disabled"}` and a token budget are both 400s, and
+// the thinking is spent out of `max_tokens` even though its text is never returned. Two things
+// follow, and neither is optional:
+//
+//   1. Every ceiling must cover the thinking AS WELL AS the reply. Measured 2026-10-13: the
+//      numeric-mistake hint used to run at max_tokens 200, which on this model returns
+//      `stop_reason:"max_tokens"` with a thinking block and NO text — a grader outage that
+//      presents as the generic fallback hint, every single time. GRADING_TOKENS is the floor
+//      a short reply needs; the reply itself is ~50-320 tokens.
+//   2. Effort is the only throttle, and the deadline is NETLIFY'S, not ours: a synchronous
+//      function is killed at 10s, and both the grader (netlify/functions/grade.js) and the
+//      proxy (netlify/functions/claude.js) do their Claude call inside one. Measured on a real
+//      hw3 hint: `low` 3.4s, `medium` 8.1s. `medium` is not a quality setting here, it is a
+//      coin flip on a 502 in front of a student mid-problem. Opus 5.5's default is `medium`,
+//      so leaving effort unset is the same coin flip — it is set explicitly on every call.
+//
+// Re-measure both before raising either (scripted against the real prompts, not by eye).
+export const GRADING_MODEL = "claude-opus-5-5";
+export const GRADING_EFFORT = "low";
+export const GRADING_TOKENS = 1500;
+
+
 // Shared rules for hint phrasing. The line a hint must not cross is the ANSWER, not numbers:
 // method numbers (factors, constants, exponents) are useful and allowed; revealing, stating,
 // contrasting, or hand-computing the result is not.
@@ -14,7 +42,14 @@ export const HINT_RULES = `RULES:
 - Do NOT reveal or imply the answer. Never state it, and never contrast it with their value (no "X instead of Y", no "you got X but it should be Y").
 - Do NOT spell out the exact operation that turns their answer into the correct one.
 - You MAY mention numbers that belong to the METHOD (a factor, a constant like g=9.8, an exponent) when it points at the mistake — as long as that number is not the answer and doesn't let them reconstruct it.
-- Focus on the wrong concept or step, not the result.`;
+- Focus on the wrong concept or step, not the result.
+- Write PLAIN TEXT. The student's screen renders $...$ math but has no markdown pass, so **bold** and *italic* reach them as literal asterisks. No markdown, no em-dashes.`;
+
+// The same constraint for the graders that write a REPLY rather than a hint. Every one of these
+// strings is rendered raw or through MathText, neither of which has a markdown pass, so markdown
+// reaches the student as literal asterisks. It is a sharper rule on Opus 5.5 than it was on 4.8,
+// which rarely reached for bold in a one-sentence reply; 5.5 does.
+export const PLAIN_TEXT_RULE = `Write the message in PLAIN TEXT: no markdown (no **bold**, no *italic*, no bullet syntax, no headings) and no em-dashes. The student's screen has no markdown pass, so any markup reaches them as literal characters.`;
 
 // ── Numeric grading ────────────────────────────────────────────────────────────
 

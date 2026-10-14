@@ -11,7 +11,7 @@
 // Each problem is worth 1 point; multipart `parts` split that point equally.
 import { courseLabelFor } from "./course-meta.js";
 import { compressImage, dueToDate } from "./utils.js";
-import { formatNumeric, parseJsonReply } from "./grading-core.js";
+import { formatNumeric, parseJsonReply, GRADING_MODEL, GRADING_EFFORT, GRADING_TOKENS } from "./grading-core.js";
 import { workPendingState, onTimeIdsFromTelemetry } from "./auto-submit.js";
 
 // Re-export the shared pure grading helpers so existing importers of homework.js keep working.
@@ -19,7 +19,6 @@ import { workPendingState, onTimeIdsFromTelemetry } from "./auto-submit.js";
 // answer key is never shipped to the client; these primitives stay available for any other caller.
 export { parseNumber, sigFigsOf, numericMatch, toSigFigString, toSciString, normalizeSciNotation } from "./grading-core.js";
 
-const HW_MODEL = "claude-opus-4-8";
 
 // Default angular tolerance (degrees) for a drawn direction, used by gradeVectors and gradeFBD
 // when a key omits `angleTol`. ±5° is a 10°-wide acceptance window, which is comfortably
@@ -741,7 +740,6 @@ export async function checkWorkIntegrity({ problems = [], answers = {}, files = 
     const text = await callClaude({
       system,
       messages: [{ role: "user", content: [...blocks, { type: "text", text: userText }] }],
-      maxTokens: 300,
     });
     const parsed = parseJsonReply(text, { sufficient: true });
     if (parsed.sufficient === false) {
@@ -754,11 +752,11 @@ export async function checkWorkIntegrity({ problems = [], answers = {}, files = 
 }
 
 // ── Claude calls ────────────────────────────────────────────────────────────────
-async function callClaude({ system, messages, maxTokens = 600 }) {
+async function callClaude({ system, messages, maxTokens = GRADING_TOKENS, effort = GRADING_EFFORT }) {
   const res = await fetch("/.netlify/functions/claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: HW_MODEL, max_tokens: maxTokens, system, messages }),
+    body: JSON.stringify({ model: GRADING_MODEL, max_tokens: maxTokens, output_config: { effort }, system, messages }),
   });
   let data;
   try { data = await res.json(); }
@@ -766,9 +764,11 @@ async function callClaude({ system, messages, maxTokens = 600 }) {
   if (!res.ok || data?.error) {
     throw new Error("Grader error: " + (data?.error?.message || `HTTP ${res.status}`));
   }
+  // Text blocks only — a thinking model's reasoning blocks carry no `.text` (see GRADING_MODEL).
   const text = data.content?.map(b => b.text || "").join("") || "";
   if (!text.trim()) {
-    throw new Error("The grader returned an empty response (check that ANTHROPIC_API_KEY is set in the Netlify dev environment).");
+    if (data.stop_reason === "max_tokens") throw new Error(`The grader ran out of room (max_tokens ${maxTokens}) before it wrote an answer.`);
+    throw new Error(`The grader returned an empty response (stop_reason ${data.stop_reason || "unknown"}; check that CLAUDE_API_KEY is set in the Netlify dev environment).`);
   }
   return text;
 }
