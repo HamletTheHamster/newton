@@ -375,7 +375,7 @@ export function effortByStudent({ homeworkIds = [], submissions = [], telemetryA
 // powerful row available at class-sized n, and is usually the one worth reading first.
 export function buildCorrelations({
   roster, assignments, outcomeId, matrix, countMissingAsZero = true, now = new Date(),
-  feature = "score", effort = null, materials = null,
+  feature = "score", effort = null, materials = null, categories = null,
 }) {
   const outcome = (assignments || []).find(a => a.id === outcomeId);
   if (!outcome) return [];
@@ -404,10 +404,10 @@ export function buildCorrelations({
   }
 
   if (feature === "score" || !effort) {
-    return (assignments || [])
+    const rows = (assignments || [])
       .filter(a => a.id !== outcomeId)
-      .map(a => ({ assignment: a, ...statsFor(pairBy({ roster, xOf: sid => pctFor(a, sid, opts), yOf })) }))
-      .sort(byStrength);
+      .map(a => ({ assignment: a, ...statsFor(pairBy({ roster, xOf: sid => pctFor(a, sid, opts), yOf })) }));
+    return pinPooled([...rows, ...categoryRows({ roster, assignments, outcome, categories, opts, yOf })]);
   }
 
   const valueOf = (sid, key) => {
@@ -437,13 +437,58 @@ export function buildCorrelations({
   return pinPooled(rows);
 }
 
-// Strongest first, with any pooled row pinned to the top rather than left to sort among the
-// individual ones — it answers a different question (the whole term at once) and is the row to
-// read first.
+// One pooled row per grade category (homework, quizzes, labs...): the student's category
+// average, which asks "does doing well at this KIND of work predict the outcome" with far more
+// statistical power than any single assignment can at class-sized n.
+//
+// Three choices, each load-bearing:
+//   • Points-weighted, sum earned over sum possible, the way `calcGrades` averages a category, so
+//     the x value is the category figure the gradebook shows, less its drop-lowest: the score a
+//     grade policy forgives is still evidence about the student, and is often the most telling.
+//   • Only work due ON OR BEFORE the outcome. A row that claims to predict the midterm must not
+//     be built from homework set after it; an undated assignment or outcome cannot be ordered and
+//     is kept. Single-assignment rows are not filtered, since the instructor can see their dates.
+//   • A category needs two or more qualifying assignments, else its row duplicates one below it.
+//     The outcome itself is never in its own category's average.
+function categoryRows({ roster, assignments, outcome, categories, opts, yOf }) {
+  const cutoff = outcome.dueDate ? dueToDate(outcome.dueDate) : null;
+  const groups = new Map();
+  for (const a of (assignments || [])) {
+    if (a.id === outcome.id || !a.catId) continue;
+    if (cutoff && a.dueDate && dueToDate(a.dueDate) > cutoff) continue;
+    if (!groups.has(a.catId)) groups.set(a.catId, []);
+    groups.get(a.catId).push(a);
+  }
+  const orderOf = id => categories?.[id]?.order ?? 99;
+  return [...groups.entries()]
+    .filter(([, list]) => list.length >= 2)
+    .sort(([p], [q]) => orderOf(p) - orderOf(q))
+    .map(([catId, list]) => {
+      const xOf = sid => {
+        let earned = 0, possible = 0;
+        for (const a of list) {
+          const pct = pctFor(a, sid, opts);
+          if (pct == null) continue;
+          const max = a.maxPts || 10;
+          earned += (pct / 100) * max; possible += max;
+        }
+        return possible > 0 ? (earned / possible) * 100 : null;
+      };
+      const name = categories?.[catId]?.name || catId.replace(/^cat_/, "");
+      return {
+        assignment: { id: `cat:${catId}`, title: `${name} average`, type: "category", catId, maxPts: 100, count: list.length },
+        pooled: true,
+        ...statsFor(pairBy({ roster, xOf, yOf })),
+      };
+    });
+}
+
+// Strongest first, with any pooled rows pinned to the top (in the order given) rather than left
+// to sort among the individual ones — they answer a different question (a whole body of work at
+// once) and are the rows to read first.
 function pinPooled(rows) {
   const sorted = rows.filter(x => !x.pooled).sort(byStrength);
-  const pooled = rows.find(x => x.pooled);
-  return pooled ? [pooled, ...sorted] : sorted;
+  return [...rows.filter(x => x.pooled), ...sorted];
 }
 
 // ── Reading a correlation in words ────────────────────────────────────────────

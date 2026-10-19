@@ -58,9 +58,12 @@ function CorrelationBars({ rows, selectedId, onSelect }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-      {rows.map(row => {
+      {rows.map((row, i) => {
         const isSel = row.assignment.id === selectedId;
         const isHov = hover === row.assignment.id;
+        // A hairline under the last pooled row: those are a different kind of row (a whole body of
+        // work at once) and the strength ranking only starts below them.
+        const endsPooled = row.pooled && rows[i + 1] && !rows[i + 1].pooled;
         const r = row.r;
         const color = r == null ? muted : r < 0 ? neg : CORR_POS;
         // Emphasis, not recoloring: the hue always follows the sign of the correlation, and
@@ -83,6 +86,7 @@ function CorrelationBars({ rows, selectedId, onSelect }) {
               alignItems: "center", width: "100%", textAlign: "left", font: "inherit",
               background: isSel ? (isLight ? "rgba(0,0,0,0.04)" : "rgba(255,255,255,0.05)") : "none",
               border: "none", borderRadius: 6, padding: "5px 7px", cursor: "pointer",
+              ...(endsPooled ? { borderBottom: `1px solid ${border}`, borderRadius: "6px 6px 0 0", marginBottom: 4, paddingBottom: 8 } : {}),
             }}
           >
             <span style={{
@@ -271,7 +275,7 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
 }
 
 // ── Correlation view ──────────────────────────────────────────────────────────
-function CorrelationView({ roster, assignments, matrix, feature, onFeature, effort, effortLoading, materials, materialsLoading }) {
+function CorrelationView({ roster, assignments, matrix, gradeCategories, feature, onFeature, effort, effortLoading, materials, materialsLoading }) {
   const { s, text, muted, border, isLight } = useTheme();
   const isMobile = useIsMobile();
   const [outcomeId, setOutcomeId] = useState(null);
@@ -298,8 +302,8 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
 
   const rows = useMemo(() => (outcome ? buildCorrelations({
     roster, assignments, outcomeId: activeOutcomeId, matrix, countMissingAsZero: countMissing,
-    feature, effort, materials,
-  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort, materials]);
+    feature, effort, materials, categories: gradeCategories,
+  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort, materials, gradeCategories]);
 
   const activeSelectedId = selectedId && rows.some(r => r.assignment.id === selectedId)
     ? selectedId
@@ -485,7 +489,7 @@ function CorrelationView({ roster, assignments, matrix, feature, onFeature, effo
                 </InfoDot>
               </div>
               <p style={{ ...s.muted, fontSize: 11.5, margin: "0 0 12px" }}>
-                {isScore ? "Ranked by strength. Click any row to plot it."
+                {isScore ? `Each category's average over the work due by ${outcome?.title} sits at the top, then every assignment ranked by strength. Click any row to plot it.`
                   : isMaterials
                     ? "One row per module, measured by the share of its materials a student opened, with every material across the term pooled at the top. Click any row to plot it."
                     : `Homework measured by ${pred.short}. Ranked by strength, with every problem across the term pooled at the top. Click any row to plot it.`}
@@ -810,7 +814,7 @@ export function Analytics({
 
       {view === "correlation" && (
         <CorrelationView
-          roster={roster} assignments={assignments} matrix={matrix}
+          roster={roster} assignments={assignments} matrix={matrix} gradeCategories={gradeCategories}
           feature={feature} onFeature={setFeature}
           effort={effort} effortLoading={EFFORT_FEATURES.has(feature) && !engagement}
           materials={materials} materialsLoading={feature === "materials" && !materialViews}

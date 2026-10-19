@@ -411,5 +411,55 @@ eq("time on task sums every assignment", timeOnTaskMap({
   }
 }
 
+// ── Category averages as predictors ───────────────────────────────────────────
+// What has to hold: the average is points-weighted over the category, work due AFTER the outcome
+// is left out of it, a category with only one qualifying assignment gets no row, the outcome is
+// never in its own category, and the rows sit above the individual assignments.
+{
+  const { buildCorrelations } = await import("./analytics.js");
+  const roster = [0, 1, 2, 3, 4].map(i => ({ studentId: "c" + i, fullName: "C" + i }));
+  const A = [
+    { id: "hw1", title: "HW1", type: "homework", catId: "cat_hw", maxPts: 10, dueDate: "2026-09-01" },
+    { id: "hw2", title: "HW2", type: "homework", catId: "cat_hw", maxPts: 10, dueDate: "2026-09-08" },
+    { id: "hw9", title: "HW9", type: "homework", catId: "cat_hw", maxPts: 10, dueDate: "2026-11-20" },
+    { id: "lab1", title: "Lab 1a", type: "manual", catId: "cat_lab", maxPts: 10 },
+    { id: "lab2", title: "Lab 1b", type: "manual", catId: "cat_lab", maxPts: 20 },
+    { id: "q1", title: "Quiz 1", type: "quiz", catId: "cat_quiz", maxPts: 10, dueDate: "2026-09-02" },
+    { id: "q9", title: "Quiz 9", type: "quiz", catId: "cat_quiz", maxPts: 10, dueDate: "2026-11-21" },
+    { id: "mid", title: "Midterm", type: "manual", catId: "cat_midterm", maxPts: 15, dueDate: "2026-10-15" },
+  ];
+  const scores = {
+    c0: { hw1: 10, hw2: 10, hw9: 0, lab1: 10, lab2: 20, q1: 9, mid: 15 },
+    c1: { hw1: 8, hw2: 9, hw9: 10, lab1: 8, lab2: 10, q1: 7, mid: 12 },
+    c2: { hw1: 6, hw2: 7, hw9: 10, lab1: 6, lab2: 14, q1: 5, mid: 9 },
+    c3: { hw1: 4, hw2: 5, hw9: 10, lab1: 4, lab2: 8, q1: 3, mid: 6 },
+    c4: { hw1: 2, hw2: 3, hw9: 10, lab1: 2, lab2: 4, q1: 1, mid: 3 },
+  };
+  const matrix = {
+    scoreMap: scores,
+    excusedMap: Object.fromEntries(roster.map(r => [r.studentId, {}])),
+    subsByStudent: Object.fromEntries(roster.map(r => [r.studentId, {}])),
+  };
+  const categories = {
+    cat_lab: { name: "Laboratory", order: 0 }, cat_hw: { name: "Homework", order: 1 },
+    cat_quiz: { name: "Quiz", order: 2 }, cat_midterm: { name: "Midterm Exam", order: 3 },
+  };
+  const rows = buildCorrelations({ roster, assignments: A, outcomeId: "mid", matrix, categories, now: new Date("2026-12-01") });
+  eq("category rows come first, in category order", rows.slice(0, 2).map(r => r.assignment.id), ["cat:cat_lab", "cat:cat_hw"]);
+  eq("they are titled by the category's own name", rows[1].assignment.title, "Homework average");
+  eq("a category with one assignment due by the outcome gets no row", rows.some(r => r.assignment.id === "cat:cat_quiz"), false);
+  eq("the outcome's own category gets no row", rows.some(r => r.assignment.id === "cat:cat_midterm"), false);
+  eq("every individual assignment still has its row", rows.filter(r => !r.pooled).length, A.length - 1);
+  const hw = rows[1];
+  near("homework due after the outcome is left out of the average", hw.points.find(p => p.studentId === "c0").x, 100, 0.001);
+  near("homework average", hw.points.find(p => p.studentId === "c2").x, 65, 0.001);
+  if (!(hw.r > 0.99)) { fails++; console.log("FAIL homework average should track the midterm, got r=" + hw.r); }
+  else console.log(`ok   homework average tracks the midterm (r=${hw.r.toFixed(3)})`);
+  near("lab average is points-weighted, not a mean of percentages", rows[0].points.find(p => p.studentId === "c2").x, (6 + 14) / 30 * 100, 0.001);
+  // An undated outcome cannot be ordered against anything, so nothing is filtered by date.
+  const undated = buildCorrelations({ roster, assignments: A.map(a => a.id === "mid" ? { ...a, dueDate: null } : a), outcomeId: "mid", matrix, categories, now: new Date("2026-12-01") });
+  eq("an undated outcome averages the whole category", undated.some(r => r.assignment.id === "cat:cat_quiz"), true);
+}
+
 console.log(fails ? `\n${fails} FAILURE(S)` : "\nall passed");
 process.exit(fails ? 1 : 0);

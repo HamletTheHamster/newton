@@ -106,6 +106,23 @@ Per the house data-viz rules:
   under the title. Letting it scroll sideways instead left a truncated "R SQUARED" header
   reading as a second "R".
 
+### Category averages (score predictor)
+
+Under **Assignment score**, the bars and table open with one pooled row per grade category,
+**"Homework average"**, **"Quiz average"**, **"Laboratory average"** (titled by the category's own
+name), pinned above the per-assignment ranking with a hairline under the last one. Each is the
+student's points-weighted category average (sum earned over sum possible, as `calcGrades` does,
+but **without drop-lowest**: a forgiven score is still evidence about the student). It answers
+"does doing well at this kind of work predict the exam", with far more power than any one
+assignment at class-sized n. Rules (`categoryRows` in `src/analytics.js`, tested):
+
+- **Only work due on or before the outcome's due date** is averaged, so the midterm row is never
+  built from homework set after it. If either date is missing, nothing is filtered.
+- A category needs **two or more** qualifying assignments, else the row would duplicate one below.
+- The outcome is never in its own category's average.
+- The missing-work toggle applies to every assignment inside the average exactly as it does to
+  a single row; an unmarked lab is not a zero.
+
 ### Predictors: what an assignment is measured by
 
 The **Measured by** selector switches what the correlation is computed on. This exists because
