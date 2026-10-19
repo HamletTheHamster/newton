@@ -9,7 +9,7 @@ import {
   buildScoreMatrix, buildCorrelations, linearFit, strengthNote, readingFor, mergeTelemetry,
   effortByStudent, PREDICTORS,
 } from "../../analytics.js";
-import { CORR_POS, corrNeg, fmtR, fmtPct, Stat, StatRow, ViewTabs, EmptyCard, Panel } from "./analytics-ui.jsx";
+import { CORR_POS, corrNeg, omittedInk, fmtR, fmtPct, Stat, StatRow, ViewTabs, EmptyCard, Panel } from "./analytics-ui.jsx";
 import { AnalyticsItems } from "./AnalyticsItems.jsx";
 import { AnalyticsStudents } from "./AnalyticsStudents.jsx";
 import { AnalyticsPulse } from "./AnalyticsPulse.jsx";
@@ -128,28 +128,37 @@ function CorrelationBars({ rows, selectedId, onSelect }) {
 // ── Scatter with least-squares trend line ─────────────────────────────────────
 // `xDomain`/`xTicks`/`xLabel` are supplied by the caller: the y axis is always a score
 // percentage, but x may be a percentage, a count of attempts, or minutes.
-function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
+// `row` carries the KEPT points, which the fit and the stats are computed from. `allPoints` is
+// every student, omitted ones included, because an omitted point stays on the plot (hollow, in
+// `omittedInk`) so it can be clicked back in. `onToggle(ids)` flips a whole stack at once.
+function Scatter({ row, allPoints, omitted, onToggle, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
   const { text, muted, border } = useTheme();
   const [hover, setHover] = useState(null);
   // A document-unique clip id: a hardcoded one would be silently reused if a second scatter is
   // ever mounted (a comparison view, a print layout), and the first definition would win.
   const clipId = `scatterClip-${useId().replace(/:/g, "")}`;
-  const points = row?.points || [];
-  // The fit is computed from the RAW points, never the stacks below: every student must weigh
-  // the same in the regression, however many share a coordinate.
-  const fit = useMemo(() => linearFit(points.map(p => [p.x, p.y])), [points]);
+  const kept = row?.points || [];
+  const points = allPoints || kept;
+  // The fit is computed from the RAW kept points, never the stacks below: every student must
+  // weigh the same in the regression, however many share a coordinate.
+  const fit = useMemo(() => linearFit(kept.map(p => [p.x, p.y])), [kept]);
   // Group students who land on the same coordinate. Rounded to 2dp, which is finer than the
   // plot can resolve, so only genuinely coincident points merge.
   const stacks = useMemo(() => {
     const by = new Map();
+    // Kept and omitted students at the same coordinate are separate stacks, so a click on the
+    // ring puts back exactly the students it shows.
     for (const p of points) {
-      const key = `${p.x.toFixed(2)}|${p.y.toFixed(2)}`;
-      const st = by.get(key) || { key, x: p.x, y: p.y, names: [] };
+      const off = !!omitted?.has(p.studentId);
+      const key = `${p.x.toFixed(2)}|${p.y.toFixed(2)}|${off ? "o" : "k"}`;
+      const st = by.get(key) || { key, x: p.x, y: p.y, off, names: [], ids: [] };
       st.names.push(p.name);
+      st.ids.push(p.studentId);
       by.set(key, st);
     }
-    return [...by.values()].map(st => ({ ...st, n: st.names.length }));
-  }, [points]);
+    // Omitted rings drawn first, so a filled kept marker on the same spot stays on top.
+    return [...by.values()].map(st => ({ ...st, n: st.names.length })).sort((a, b) => b.off - a.off);
+  }, [points, omitted]);
   const gridInk = border;
 
   if (!points.length) {
@@ -209,20 +218,27 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
           // Area grows with the count, capped, so a big stack reads as big without swallowing
           // the plot. Never let a marker fall below the 8px minimum.
           const r = Math.min(11, 4.5 + 2.2 * Math.sqrt(st.n - 1)) + (on ? 1.5 : 0);
+          const surface = isLight ? "#faf8f6" : "#1e1e1f";
           return (
             <g key={st.key}>
+              {/* A transparent hit target bigger than the mark, so a small dot is easy to click. */}
               <circle
-                cx={sx(st.x)} cy={scY(st.y)} r={r}
-                fill={CORR_POS} fillOpacity={on ? 1 : 0.85}
-                stroke={isLight ? "#faf8f6" : "#1e1e1f"} strokeWidth="2"
-                style={{ cursor: "pointer", transition: "r 0.1s" }}
+                cx={sx(st.x)} cy={scY(st.y)} r={Math.max(r, 9)} fill="transparent"
+                style={{ cursor: "pointer" }}
                 onMouseEnter={() => setHover(st)}
                 onMouseLeave={() => setHover(null)}
+                onClick={() => onToggle?.(st.ids)}
+              />
+              <circle
+                cx={sx(st.x)} cy={scY(st.y)} r={st.off ? r - 1 : r}
+                fill={st.off ? surface : CORR_POS} fillOpacity={st.off ? 0.9 : on ? 1 : 0.85}
+                stroke={st.off ? omittedInk(isLight) : surface} strokeWidth="2"
+                style={{ transition: "r 0.1s", pointerEvents: "none" }}
               />
               {st.n > 1 && (
                 <text
                   x={sx(st.x)} y={scY(st.y) + 3.2} textAnchor="middle" fontSize="9.5"
-                  fontWeight="700" fill={isLight ? "#fff" : "#0d1211"} style={{ pointerEvents: "none" }}
+                  fontWeight="700" fill={st.off ? text : isLight ? "#fff" : "#0d1211"} style={{ pointerEvents: "none" }}
                 >{st.n}</text>
               )}
             </g>
@@ -267,6 +283,9 @@ function Scatter({ row, outcome, isLight, xDomain, xTicks, xLabel, fmtX }) {
           <div style={{ color: muted, fontSize: 11, fontFamily: "monospace" }}>
             {fmtX(hover.x)} / {fmtPct(hover.y)}
           </div>
+          <div style={{ color: muted, fontSize: 11 }}>
+            {hover.off ? "Left out of the fit. Click to put back." : "Click to leave out of the fit."}
+          </div>
         </div>
       );
       })()}
@@ -281,6 +300,21 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
   const [outcomeId, setOutcomeId] = useState(null);
   const [selectedId, setSelectedId] = useState(null);
   const [countMissing, setCountMissing] = useState(true);
+  // Students the instructor has clicked out of the analysis (a student who sat the exam ill, say).
+  // Left out of EVERY row, not just the plotted one, so the bars, the table and the scatter never
+  // disagree about who is in the sample. Cleared when the outcome changes, since a reason to drop
+  // someone from one exam is not a reason to drop them from another.
+  const [omitted, setOmitted] = useState(() => new Set());
+  const toggleOmitted = useCallback(ids => setOmitted(prev => {
+    const next = new Set(prev);
+    const allOff = ids.every(id => next.has(id));
+    for (const id of ids) allOff ? next.delete(id) : next.add(id);
+    return next;
+  }), []);
+  const keptRoster = useMemo(
+    () => (omitted.size ? (roster || []).filter(stu => !omitted.has(stu.studentId)) : roster),
+    [roster, omitted]
+  );
   const pred = PREDICTORS[feature] || PREDICTORS.score;
   const isScore = feature === "score";
   const isMaterials = feature === "materials";
@@ -301,14 +335,26 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
   const outcome = assignments.find(a => a.id === activeOutcomeId) || null;
 
   const rows = useMemo(() => (outcome ? buildCorrelations({
+    roster: keptRoster, assignments, outcomeId: activeOutcomeId, matrix, countMissingAsZero: countMissing,
+    feature, effort, materials, categories: gradeCategories,
+  }) : []), [keptRoster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort, materials, gradeCategories]);
+
+  // The same rows over the WHOLE roster, read only for the omitted students' points, which stay
+  // on the scatter so they can be clicked back in. Skipped entirely while nobody is omitted.
+  const allRows = useMemo(() => (outcome && omitted.size ? buildCorrelations({
     roster, assignments, outcomeId: activeOutcomeId, matrix, countMissingAsZero: countMissing,
     feature, effort, materials, categories: gradeCategories,
-  }) : []), [roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort, materials, gradeCategories]);
+  }) : null), [omitted, roster, assignments, activeOutcomeId, matrix, countMissing, outcome, feature, effort, materials, gradeCategories]);
 
   const activeSelectedId = selectedId && rows.some(r => r.assignment.id === selectedId)
     ? selectedId
     : rows[0]?.assignment.id || null;
   const selected = rows.find(r => r.assignment.id === activeSelectedId) || null;
+  const selectedAll = allRows?.find(r => r.assignment.id === activeSelectedId) || null;
+  const omittedNames = useMemo(
+    () => (roster || []).filter(stu => omitted.has(stu.studentId)).map(stu => stu.altName || stu.fullName || stu.studentId),
+    [roster, omitted]
+  );
 
   // How many students have a usable score on the outcome at all. If this is zero the whole view
   // is empty, and the reason is almost always "the exam hasn't been marked yet", which is worth
@@ -352,7 +398,9 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
   // fitted to the data (rounded outward), because pinning them to 0-100 would squash every point
   // into the left edge.
   const axis = useMemo(() => {
-    const xs = (selected?.points || []).map(p => p.x);
+    // Over every plotted point, omitted ones included, so leaving a student out never rescales
+    // the axis out from under the ring the instructor just clicked.
+    const xs = ((selectedAll || selected)?.points || []).map(p => p.x);
     if (isPct || !xs.length) {
       return {
         domain: [0, 100], ticks: [0, 25, 50, 75, 100],
@@ -379,7 +427,7 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
         : `${selected?.assignment.title || ""} - minutes on task`,
       fmt: v => (feature === "attempts" ? `${v.toFixed(1)} tries` : `${Math.round(v)} min`),
     };
-  }, [selected, isPct, isMaterials, feature]);
+  }, [selected, selectedAll, isPct, isMaterials, feature]);
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -392,7 +440,7 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
           <label style={{ ...s.label, marginBottom: 0 }}>Predict scores on</label>
           <select
             value={activeOutcomeId || ""}
-            onChange={e => { setOutcomeId(e.target.value); setSelectedId(null); }}
+            onChange={e => { setOutcomeId(e.target.value); setSelectedId(null); setOmitted(new Set()); }}
             style={{ ...s.input, padding: "9px 12px", colorScheme: isLight ? "light" : "dark" }}
           >
             {assignments.map(a => <option key={a.id} value={a.id}>{a.title}</option>)}
@@ -510,7 +558,7 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
                     {selected.assignment.title} vs {outcome.title}
                   </h3>
                   <p style={{ ...s.muted, fontSize: 11.5, margin: "0 0 12px" }}>
-                    One dot per student. Hover a dot for the name.
+                    One dot per student. Hover a dot for the name, click it to leave that student out.
                   </p>
                   {!isScore && (
                     <p style={{
@@ -530,7 +578,7 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
                       value={selected.r2 == null ? "-" : selected.r2.toFixed(2)}
                       hint={selected.r2 == null ? null : `${Math.round(selected.r2 * 100)}% of variation`}
                     />
-                    <Stat label="Students" value={selected.n} hint="with both scores" />
+                    <Stat label="Students" value={selected.n} hint={omitted.size ? `${omitted.size} left out` : "with both scores"} />
                     <Stat
                       label="95% interval"
                       value={selected.ci ? `${fmtR(selected.ci[0])} to ${fmtR(selected.ci[1])}` : "-"}
@@ -539,9 +587,22 @@ function CorrelationView({ roster, assignments, matrix, gradeCategories, feature
                   </div>
 
                   <Scatter
-                    row={selected} outcome={outcome} isLight={isLight}
+                    row={selected} allPoints={selectedAll?.points} omitted={omitted} onToggle={toggleOmitted}
+                    outcome={outcome} isLight={isLight}
                     xDomain={axis.domain} xTicks={axis.ticks} xLabel={axis.label} fmtX={axis.fmt}
                   />
+
+                  {omitted.size > 0 && (
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", margin: "12px 0 0", fontSize: 11.5 }}>
+                      <span style={{ color: muted, lineHeight: 1.5, flex: "1 1 200px" }}>
+                        Left out of every row: {omittedNames.join(", ")}
+                      </span>
+                      <button
+                        onClick={() => setOmitted(new Set())}
+                        style={{ ...s.btnGhost, width: "auto", padding: "4px 10px", fontSize: 11.5 }}
+                      >Put everyone back</button>
+                    </div>
+                  )}
 
                   {strengthNote(selected) && (
                     <p style={{

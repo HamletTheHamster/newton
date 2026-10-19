@@ -14,6 +14,12 @@ import { useTheme } from "../../theme.js";
 export const CORR_POS = "#0e9e90";
 export const corrNeg = isLight => (isLight ? "#c25d10" : "#dd7024");
 
+// A scatter point the instructor has left out of the fit. Validated against CORR_POS (the kept
+// points) in both modes: light passes outright, dark sits at CVD dE 7.9 (protan), inside the 6-8
+// band that is legal only with a second encoding. That encoding is the SHAPE: an omitted point is
+// drawn as a hollow ring, a kept one filled. Never draw an omitted point filled.
+export const omittedInk = isLight => (isLight ? "#e34948" : "#e66767");
+
 // Four-slot categorical series, for the stacked bars: an attempt distribution (first try ->
 // later -> gave up -> unresolved) and the completion funnel.
 //

@@ -56,7 +56,7 @@ instrumentation.**
 |---|---|
 | Controls | Outcome selector, the missing-work toggle, CSV export. One row above the charts. |
 | Strength of relationship | Ranked **diverging bars**, one per assignment, `r` on a fixed -1..+1 scale. Click a row to plot it. |
-| Scatter | The selected assignment vs. the outcome, one dot per student, with a least-squares trend line and a stat row (`r`, `r²`, n, 95% interval). |
+| Scatter | The selected assignment vs. the outcome, one dot per student, with a least-squares trend line and a stat row (`r`, `r²`, n, 95% interval). **Click a dot to leave that student out** (see below). |
 | All assignments | The same numbers as a table, which is also what makes the charts accessible. |
 
 ### The statistics (`src/analytics.js`)
@@ -105,6 +105,22 @@ Per the house data-viz rules:
 - Below 768px the six-column table drops to three columns with the plain-language reading folded
   under the title. Letting it scroll sideways instead left a truncated "R SQUARED" header
   reading as a second "R".
+
+### Leaving students out
+
+Clicking a scatter point leaves that student (or every student in a stacked marker) out of the
+analysis; clicking again puts them back. Three rules:
+
+- **Out of every row, not just the plotted one.** The bars, the table, the CSV and the scatter's
+  fit are all recomputed over the kept students (`buildCorrelations` is simply handed the roster
+  minus them), so no two panels disagree about who is in the sample.
+- **The point stays on the plot**, as a hollow ring in `omittedInk` (red), so it can be clicked
+  back in. The ring is the second encoding the dark-mode palette check requires (teal vs red is
+  CVD dE 7.9 there), so an omitted point must never be drawn filled. The x axis is fitted over
+  every point, omitted ones included, so leaving a student out never rescales the plot.
+- **Cleared when the outcome changes**, since a reason to drop someone from one exam is not a
+  reason to drop them from another. It is view state only: nothing is stored, and a reload
+  restores everyone. A line under the scatter names who is out, with "Put everyone back".
 
 ### Category averages (score predictor)
 
