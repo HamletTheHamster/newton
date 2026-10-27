@@ -138,6 +138,13 @@ export async function checkImageReadability(imgData) {
   try { return JSON.parse(text.replace(/```json\n?|```/g, "").trim()); } catch { return { readable: true }; }
 }
 
+// The question as the quiz grader reads it: the text the student sees, plus the question's
+// `graderNote` when it has one. A note is Claude-facing only (never rendered), for what the
+// grader cannot otherwise know, chiefly a `figure` the student is looking at and Claude is not.
+export const quizGraderText = q => q.graderNote
+  ? q.text + "\n\nNote for the grader (the student does not see this): " + q.graderNote
+  : q.text;
+
 // Grade one free-response quiz answer. `part` is null for a single-part question; for a
 // multi-part question it is `{ label, text, index, total, stem, full }` for the ONE part being
 // asked right now (the runner poses parts sequentially, see App.jsx `submitAnswer`), and the

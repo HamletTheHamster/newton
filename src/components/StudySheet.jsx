@@ -1,6 +1,7 @@
 import { useTheme } from "../theme.js";
 import { keyToValue, keyToVectorValue, keyToFBDValue } from "../homework.js";
 import { MathText } from "./MathText.jsx";
+import { MatchCard } from "./MatchQuestion.jsx";
 import { GraphField } from "./GraphField.jsx";
 import { VectorField } from "./VectorField.jsx";
 import { FBDField } from "./FBDField.jsx";
@@ -173,6 +174,7 @@ function QuizBody({ submission }) {
         <div key={i} style={{ display: "flex", gap: 16, alignItems: "flex-start", marginTop: rows.length ? 18 : 0, paddingTop: rows.length ? 18 : 0, borderTop: rows.length ? `1px solid ${border}` : "none", breakInside: "avoid" }}>
           <div style={{ color: muted, fontSize: 22, fontWeight: 700, lineHeight: 1, width: 28, flexShrink: 0, textAlign: "right" }}>{qn}</div>
           <div style={{ flex: 1, minWidth: 0, color: text, fontSize: 13.5, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+            {m.q?.figure && <ProblemFigure src={m.q.figure} width={m.q.figureWidth} />}
             {m.split
               ? <>{m.split.stem && <div style={{ marginBottom: 6 }}>{m.split.stem}</div>}<div><strong style={{ color: muted }}>({m.split.parts[0].label})</strong> {m.split.parts[0].text}</div></>
               : m.q?.text}
@@ -191,7 +193,9 @@ function QuizBody({ submission }) {
           <span style={{ color: muted, fontSize: 10.5, fontWeight: 700, letterSpacing: "0.09em", textTransform: "uppercase", flexShrink: 0, paddingTop: 2 }}>You</span>
           <div style={{ flex: 1, color: text, fontSize: 13.5, lineHeight: 1.55, whiteSpace: "pre-wrap" }}>
             {m.imageUrl && <img src={m.imageUrl} alt="Your drawing" style={{ display: "block", maxWidth: 320, maxHeight: 240, objectFit: "contain", borderRadius: 6, border: `1px solid ${border}`, marginBottom: m.text ? 6 : 0 }} />}
-            {m.text}
+            {m.match
+              ? m.match.map(x => <div key={x.label} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><strong style={{ color: muted }}>({x.label})</strong><MatchCard opt={x} compact /></div>)
+              : m.text}
           </div>
         </div>
       );

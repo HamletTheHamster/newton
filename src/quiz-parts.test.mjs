@@ -52,6 +52,8 @@ test("the stem keeps its own trailing punctuation", () => {
 console.log("\nquiz-parts: every committed labelled question");
 
 const all = [...QUIZZES_PHYSICS1, ...QUIZZES_PHYSICS2].flatMap(q => q.questions.map(x => ({ quiz: q.id, ...x })));
+// A matching question is a widget, but its statements ARE its text's parts (matchItems), so it is
+// checked here too.
 const widget = q => !!(q.yesNo || q.dragDrop || q.choices || q.survey);
 for (const q of all) {
   if (widget(q)) continue;

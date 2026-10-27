@@ -1,4 +1,6 @@
 import { useTheme } from "../theme.js";
+import { ProblemFigure } from "./StudySheet.jsx";
+import { MatchCard, matchItems } from "./MatchQuestion.jsx";
 
 // One part of a multi-part question: its letter as a small teal label, then its text. Shared by
 // the question card (which shows part (a) under the stem) and the `part` message that poses each
@@ -23,6 +25,14 @@ function WidgetSummary({ q }) {
   if (q.choices) return (
     <div style={box}>
       {(q.options || []).map(o => <div key={o.key} style={{ color: o.key === q.correct ? text : muted }}>{o.key}. {o.label}{o.key === q.correct ? " ✓" : ""}</div>)}
+    </div>
+  );
+  if (q.matching) return (
+    <div style={box}>
+      {matchItems(q).map(it => {
+        const opt = (q.options || []).find(o => o.key === q.correct?.[it.key]);
+        return <div key={it.key} style={{ color: text, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>({it.key}) {opt ? <MatchCard opt={opt} compact /> : "?"}</div>;
+      })}
     </div>
   );
   if (q.yesNo) return <div style={box}>Yes / No</div>;
@@ -60,6 +70,9 @@ export function ChatMessages({ messages, busy = false }) {
             <div style={{ color: teal, fontSize: 12, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>
               Question {msg.num} of {msg.total} · {msg.pts} {msg.pts === 1 ? "point" : "points"}
             </div>
+            {/* A question that needs its picture (`figure` + `figureWidth`, the homework shape)
+                carries it above the text, where the source's "the figure" sends the reader. */}
+            {msg.q.figure && <ProblemFigure src={msg.q.figure} width={msg.q.figureWidth} />}
             {msg.split ? (
               // A multi-part question poses its parts one at a time: the stem, then part (a) here,
               // the rest as `part` messages below as each earlier one is settled.
@@ -87,7 +100,9 @@ export function ChatMessages({ messages, busy = false }) {
           <div key={i} style={{ display: "flex", justifyContent: "flex-end" }}>
             <div style={{ background: teal, color: "#fff", borderRadius: "14px 14px 4px 14px", padding: "10px 16px", maxWidth: 480, fontSize: 14, lineHeight: 1.6 }}>
               {msg.imageUrl && <img src={msg.imageUrl} alt="Drawing" style={{ borderRadius: 8, maxWidth: "100%", maxHeight: 220, objectFit: "contain", marginBottom: msg.text ? 8 : 0 }} />}
-              {msg.text && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{msg.text}</p>}
+              {msg.match
+                ? msg.match.map(m => <div key={m.label} style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}><span style={{ fontFamily: "monospace", fontSize: 12, fontWeight: 700 }}>({m.label})</span><MatchCard opt={m} compact /></div>)
+                : msg.text && <p style={{ margin: 0, whiteSpace: "pre-wrap" }}>{msg.text}</p>}
             </div>
           </div>
         );

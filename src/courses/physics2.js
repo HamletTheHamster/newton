@@ -1,6 +1,6 @@
 // PHY 215 — Physics II (Young & Freedman, one chapter per week).
 //
-// STATUS: quizzes 1–7, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23), 4 (Ch. 24) and 5 (Ch. 25) are
+// STATUS: quizzes 1–10, homework 1 (Ch. 21), 2 (Ch. 22), 3 (Ch. 23), 4 (Ch. 24) and 5 (Ch. 25) are
 // authored; later weeks are added as each is prepped. Source material (quiz documents, problem screenshots, the
 // instructor answer key, lecture notes) lives OUTSIDE the repo in
 // `source/phy215/{quizzes,hw/HWn,lectures}/` (gitignored). Figures the app actually serves go in
@@ -27,6 +27,12 @@
 //   { id, text, requiresImage: true, formatLabel, acceptedFormats: [...] }   // upload a drawing
 //   { id, text, dragDrop: true, displaySentence, blanksLabel: [...],
 //     wordBank: [...], correctBlanks: [...] }           // fill-in-the-blank drag & drop
+//   { id, text, matching: true, options: [{ key, tex, tag }], correct: { a: key, … },
+//     feedback?, correctReply? }                        // drag-and-drop matching; the statements
+//                                                       // are the text's (a)/(b)/… (MatchQuestion.jsx)
+// Any free-response question may add `figure` + `figureWidth` (rendered above the text, as in
+// homework) and a Claude-facing `graderNote` (never shown; describes the figure, which the grader
+// cannot see) — see q10_1.
 import { clockPoint } from "../clock-geometry.js";
 
 export const QUIZZES_PHYSICS2 = [
@@ -304,6 +310,53 @@ export const QUIZZES_PHYSICS2 = [
         // (b) is the N slider.
         simulation: "twistedPair",
         text: "Pairs of conductors carrying opposing current into and out of the power supply components of electronic equipment are sometimes twisted together to reduce magnetic-field effects on the surrounding circuitry.\n\n(a) How does keeping them close together help?\n\n(b) How does twisting them help?",
+      },
+    ],
+  },
+  // Week 10 quiz — covers week 9 (Ch. 29): electromagnetic induction. Q1 is free response split
+  // into labelled parts; Q2 is a drag-and-drop matching activity (see docs/courses/phy215.md for
+  // the worked answers). Q1 is the first quiz
+  // question with a `figure`, which renders above the text exactly as a homework figure does; its
+  // `graderNote` describes that figure to Claude, which never sees it.
+  {
+    id: "q10",
+    title: "Quiz 10: Electromagnetic Induction",
+    questions: [
+      {
+        id: "q10_1",
+        // Y&F Test Your Understanding of Section 29.2. The source's choices are labelled
+        // "(i) clockwise, (ii) counterclockwise, or (iii) zero"; the labels are dropped because
+        // detectParts would read "(i)" as a third part between (a) and (b) (the q7_1 trap).
+        // "The figure at right" becomes "The figure": it renders above the text, not beside it.
+        figure: "/quizFigures/physics2/q10-squeezed-coil.png",
+        figureWidth: 400, // natural 655×392
+        text: "The figure shows a wire coil being squeezed in a uniform magnetic field.\n\n(a) While the coil is being squeezed, is the induced emf in the coil clockwise, counterclockwise, or zero?\n\n(b) Once the coil has reached its final squeezed shape, is the induced emf in the coil clockwise, counterclockwise, or zero?",
+        graderNote: "The figure shows a circular wire coil lying in the plane of the page in a uniform magnetic field directed INTO the page (drawn as a grid of x's). Two hands grip it from the left and right and squeeze it into a narrow vertical oval, so its area shrinks while the field stays the same. Clockwise and counterclockwise are as seen by someone looking at the page. Reference answers: (a) clockwise. The magnetic flux into the page decreases as the area shrinks; by Lenz's law the induced current opposes that decrease by producing field into the page inside the coil, and by the right-hand rule a current producing field into the page circulates clockwise. Equivalently, emf = -dPhi_B/dt is positive with the thumb pointed into the page. (b) zero. Once the shape stops changing, the flux is constant (still nonzero and still into the page), so there is no induced emf. Each part offers three choices, so a bare choice could be a guess: before marking a part correct, the student should give the reason (a decreasing flux and Lenz's law for (a); no change in flux for (b)). A student who says (b) is zero 'because the field is still there' or similar has the right choice for a wrong reason.",
+      },
+      {
+        id: "q10_2",
+        // Y&F Q29.17, verbatim, as a drag-and-drop matching activity (MatchQuestion.jsx): the four
+        // statements are the text's (a)-(d), and each gets one of the four equations exactly as
+        // Section 29.7 prints them, with their equation numbers and without their names (the
+        // names would answer the question). Graded deterministically, no Claude.
+        matching: true,
+        text: "Match the mathematical statements of Maxwell's equations as given in Section 29.7 to these verbal statements.\n\n(a) Closed electric field lines are evidently produced only by changing magnetic flux.\n\n(b) Closed magnetic field lines are produced both by the motion of electric charge and by changing electric flux.\n\n(c) Electric field lines can start on positive charges and end on negative charges.\n\n(d) Evidently there are no magnetic monopoles on which to start and end magnetic field lines.",
+        options: [
+          { key: "29.18", tag: "(29.18)", tex: "\\oint \\vec{\\boldsymbol{E}} \\cdot d\\vec{\\boldsymbol{A}} = \\frac{Q_{\\text{encl}}}{\\epsilon_0}" },
+          { key: "29.19", tag: "(29.19)", tex: "\\oint \\vec{\\boldsymbol{B}} \\cdot d\\vec{\\boldsymbol{A}} = 0" },
+          { key: "29.20", tag: "(29.20)", tex: "\\oint \\vec{\\boldsymbol{B}} \\cdot d\\vec{\\boldsymbol{l}} = \\mu_0 \\left( i_{\\text{C}} + \\epsilon_0 \\frac{d\\Phi_E}{dt} \\right)_{\\text{encl}}" },
+          { key: "29.21", tag: "(29.21)", tex: "\\oint \\vec{\\boldsymbol{E}} \\cdot d\\vec{\\boldsymbol{l}} = -\\frac{d\\Phi_B}{dt}" },
+        ],
+        correct: { a: "29.21", b: "29.20", c: "29.18", d: "29.19" },
+        // Shown for the FIRST wrong statement only, after "N of 4 matches are right". Tutor text
+        // renders raw, so no $ math here.
+        feedback: {
+          a: "Look again at (a). Closed field lines mean a nonzero integral of E around a closed path. Which equation has a changing magnetic flux on its right-hand side?",
+          b: "Look again at (b). Which equation names both a conduction current and a changing electric flux as the sources of B around a closed path?",
+          c: "Look again at (c). Lines that start and end on charges give a net flux through a closed surface around a charge. Which equation relates a closed-surface integral to the charge enclosed?",
+          d: "Look again at (d). If there were magnetic monopoles, a closed surface around one would have a net magnetic flux through it. Which equation says that flux is always zero?",
+        },
+        correctReply: "Faraday's law (29.21) makes closed E loops from a changing magnetic flux; Ampere's law with displacement current (29.20) makes closed B loops from both conduction current and a changing electric flux; Gauss's law for E (29.18) ties E lines to the charges they start and end on; and Gauss's law for B (29.19), zero net flux through every closed surface, says there are no magnetic monopoles.",
       },
     ],
   },

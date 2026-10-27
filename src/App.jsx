@@ -9,7 +9,7 @@ import { makeHash, verifyPw, verifyTotp, genTotpSecret, genDeviceToken, hashToke
 import {
   ACCEPTED_IMG,
   dueToDate, fmtDueTime, isLate, effectiveDue, fmtDate, ptsPer, splitParts,
-  compressImage, checkImageReadability, evaluateAnswer,
+  compressImage, checkImageReadability, evaluateAnswer, quizGraderText,
   parseRoster, useIsMobile,
 } from "./utils.js";
 import { COURSE_LABELS, COURSE_OPTIONS, quizzesForCourse, homeworksForCourse, studyGuidesForCourse, defaultModulesForCourse } from "./courses/index.js";
@@ -32,6 +32,7 @@ import { MultiSelect } from "./components/MultiSelect.jsx";
 import { ChatMessages } from "./components/ChatMessages.jsx";
 import { DragDropQuestion } from "./components/DragDropQuestion.jsx";
 import { ChoiceQuestion } from "./components/ChoiceQuestion.jsx";
+import { MatchQuestion, matchItems } from "./components/MatchQuestion.jsx";
 import { ManualAddStudent } from "./components/ManualAddStudent.jsx";
 import { BugReportModal } from "./components/BugReportModal.jsx";
 import { Footer } from "./components/Footer.jsx";
@@ -469,14 +470,14 @@ export default function App() {
   })();
   const simInline = useIsMobile(1100);
   const isImageQ = !!currentQ?.requiresImage, isYesNoQ = !!currentQ?.yesNo, isDragDropQ = !!currentQ?.dragDrop;
-  const isChoiceQ = !!currentQ?.choices, isSurveyQ = !!currentQ?.survey;
+  const isChoiceQ = !!currentQ?.choices, isSurveyQ = !!currentQ?.survey, isMatchQ = !!currentQ?.matching;
   // Widget questions — anything whose answer isn't free-form prose. `splitParts` looks for
   // "(a) … (b) …" in the question text, which is meaningless for these.
-  const isWidgetQ = isYesNoQ || isDragDropQ || isChoiceQ || isSurveyQ;
+  const isWidgetQ = isYesNoQ || isDragDropQ || isChoiceQ || isSurveyQ || isMatchQ;
   // A survey question reuses the ordinary textarea (it just isn't graded), so it keeps autofocus.
-  const usesTextInput = !isYesNoQ && !isDragDropQ && !isChoiceQ;
-  // Multiple choice IS graded on the same 5-attempt / half-credit schedule as free response, so it
-  // shows the counter; yes/no, drag-drop and survey have no attempt limit.
+  const usesTextInput = !isYesNoQ && !isDragDropQ && !isChoiceQ && !isMatchQ;
+  // Multiple choice and matching ARE graded on the same 5-attempt / half-credit schedule as free
+  // response, so they show the counter; yes/no, drag-drop and survey have no attempt limit.
   const showsAttempts = !isYesNoQ && !isDragDropQ && !isSurveyQ;
   // A multi-part free-response question is posed ONE PART AT A TIME: the question card shows the
   // stem and part (a), and each later part appears as its own card once the one before it is
@@ -2192,7 +2193,7 @@ export default function App() {
   // split, since "(a)" in a survey or multiple-choice stem is not a part.
   const questionMsg = (quiz, idx, id) => {
     const q = quiz.questions[idx];
-    const widget = !!(q.yesNo || q.dragDrop || q.choices || q.survey);
+    const widget = !!(q.yesNo || q.dragDrop || q.choices || q.survey || q.matching);
     const split = widget ? null : splitParts(q.text);
     return { id, type: "question", q, num: idx + 1, total: quiz.questions.length, pts: ptsPer(quiz.questions.length)[idx], ...(split ? { split } : {}) };
   };
@@ -2579,6 +2580,41 @@ export default function App() {
     }
     setBusy(false);
   };
+  // A matching question (`matching: true`, MatchQuestion.jsx): graded deterministically as a whole,
+  // on the multiple-choice schedule (full credit once every match is right within five attempts,
+  // half after the fifth miss, when the key is shown). A miss says HOW MANY are right but not
+  // which, plus the authored nudge for the first wrong statement, so the cards stay put and the
+  // student reconsiders rather than swapping until something turns green.
+  const submitMatch = async placement => {
+    if (busy) return; setBusy(true);
+    const q = activeQuiz.questions[qIdx], pts = ptsPer(activeQuiz.questions.length), qPts = pts[qIdx];
+    const items = matchItems(q);
+    const optOf = k => (q.options || []).find(o => o.key === k);
+    const tagOf = k => optOf(k)?.tag || k;
+    const summary = items.map(it => "(" + it.key + ") " + tagOf(placement[it.key])).join(", ");
+    // `match` lets the bubble (and the gradebook transcript, and the study copy) print the
+    // equations the student placed; `text` stays as the plain fallback.
+    const match = items.map(it => ({ label: it.key, tex: optOf(placement[it.key])?.tex || "", tag: tagOf(placement[it.key]) }));
+    const currentAttempt = attemptCount + 1;
+    setAttemptCount(currentAttempt);
+    const newMsgs = [...messages, { id: Date.now(), type: "student", text: summary, match }];
+    const wrong = items.filter(it => placement[it.key] !== q.correct[it.key]);
+    if (wrong.length === 0) {
+      const nScores = [...qScores]; nScores[qIdx] = qPts; setQScores(nScores);
+      await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: "✅ " + (q.correctReply || "All matched correctly."), correct: true }], qIdx + 1);
+    } else if (currentAttempt >= 5) {
+      const nScores = [...qScores]; nScores[qIdx] = qPts / 2; setQScores(nScores);
+      const key = items.map(it => "(" + it.key + ") " + tagOf(q.correct[it.key])).join(", ");
+      const tell = ("The correct matches are " + key + ". " + (q.correctReply || "")).trim();
+      await advanceOrFinish(activeQuiz, nScores, [...newMsgs, { id: Date.now() + 1, type: "tutor", text: tell }], qIdx + 1);
+    } else {
+      const right = items.length - wrong.length;
+      const count = right + " of " + items.length + " " + (right === 1 ? "match is" : "matches are") + " right.";
+      const nudge = q.feedback?.[wrong[0].key];
+      setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: count + " " + (nudge || "Look again at what each equation integrates, and over what.") }]);
+    }
+    setBusy(false);
+  };
   // The textarea path serves free-response, image, and survey questions; only the survey is
   // ungraded, so it routes to submitSurvey instead of the Claude-backed submitAnswer.
   const sendAnswer = () => (isSurveyQ ? submitSurvey() : submitAnswer());
@@ -2607,14 +2643,14 @@ export default function App() {
     setBusy(true);
     const q = activeQuiz.questions[qIdx];
     const partCtx = currentSplit && currentPart
-      ? { label: currentPart.label, text: currentPart.text, index: completedParts.length, total: currentSplit.parts.length, stem: currentSplit.stem, full: q.text }
+      ? { label: currentPart.label, text: currentPart.text, index: completedParts.length, total: currentSplit.parts.length, stem: currentSplit.stem, full: quizGraderText(q) }
       : null;
     const ans = "Picked a point on the simulation: " + pick.summary;
     const newMsgs = [...messages, { id: Date.now(), type: "student", text: ans }];
     setMessages(newMsgs);
     try {
-      const result = await evaluateAnswer(q.text, pick.summary, apiHist, null, 0, partCtx, classMeta?.courseType || "physics1", true);
-      const qLine = partCtx ? "Physics Question (full): " + q.text + "\n\nThe student is now answering part (" + partCtx.label + "): " + partCtx.text : "Physics Question: " + q.text;
+      const result = await evaluateAnswer(quizGraderText(q), pick.summary, apiHist, null, 0, partCtx, classMeta?.courseType || "physics1", true);
+      const qLine = partCtx ? "Physics Question (full): " + quizGraderText(q) + "\n\nThe student is now answering part (" + partCtx.label + "): " + partCtx.text : "Physics Question: " + quizGraderText(q);
       setApiHist([...apiHist, { role: "user", content: qLine + "\n\nStudent Answer (a point picked on the simulation): " + pick.summary }, { role: "assistant", content: JSON.stringify(result) }]);
       setAwaitingJustification(true);
       setMessages([...newMsgs, { id: Date.now() + 1, type: "tutor", text: result.message }]);
@@ -2636,10 +2672,10 @@ export default function App() {
     setMessages(newMsgs);
     try {
       const partCtx = currentSplit && currentPart
-        ? { label: currentPart.label, text: currentPart.text, index: completedParts.length, total: currentSplit.parts.length, stem: currentSplit.stem, full: q.text }
+        ? { label: currentPart.label, text: currentPart.text, index: completedParts.length, total: currentSplit.parts.length, stem: currentSplit.stem, full: quizGraderText(q) }
         : null;
-      const result = await evaluateAnswer(q.text, ans, apiHist, imgData, currentAttempt, partCtx, classMeta?.courseType || "physics1");
-      const qLine = partCtx ? "Physics Question (full): " + q.text + "\n\nThe student is now answering part (" + partCtx.label + "): " + partCtx.text : "Physics Question: " + q.text;
+      const result = await evaluateAnswer(quizGraderText(q), ans, apiHist, imgData, currentAttempt, partCtx, classMeta?.courseType || "physics1");
+      const qLine = partCtx ? "Physics Question (full): " + quizGraderText(q) + "\n\nThe student is now answering part (" + partCtx.label + "): " + partCtx.text : "Physics Question: " + quizGraderText(q);
       const histUser = imgData ? qLine + "\n\n[Student submitted a drawing" + (ans ? ". Note: " + ans : "") + "]" : qLine + "\n\nStudent Answer: " + ans;
       setApiHist([...apiHist, { role: "user", content: histUser }, { role: "assistant", content: JSON.stringify(result) }]);
       if (partCtx) {
@@ -3121,6 +3157,8 @@ export default function App() {
               <DragDropQuestion key={qIdx} q={currentQ} onSubmit={submitDragDrop} busy={busy} />
             ) : isChoiceQ ? (
               <ChoiceQuestion key={qIdx} q={currentQ} onSubmit={submitChoice} busy={busy} />
+            ) : isMatchQ ? (
+              <MatchQuestion key={qIdx} q={currentQ} onSubmit={submitMatch} busy={busy} />
             ) : (
               <>
                 {pendingFile && (
