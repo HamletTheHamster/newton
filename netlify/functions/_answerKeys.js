@@ -778,6 +778,75 @@ hw8_p4c: { answerType: "text", answer: "No. The question asks for the judgment i
       hw8_p10b: { answerType: "math", answer: "\\frac{\\mu_0 I}{2\\pi r}\\cdot\\frac{r^2 - a^2}{b^2 - a^2}" },
       hw8_p10c: { answerType: "math", answer: "\\frac{\\mu_0 I}{2\\pi r}" },
     },
+    hw9: {
+      // Y&F Ch. 29. Every value re-derived by script from the problem statements before the
+      // instructor key was opened (see docs/courses/phy215.md § hw9); 1 mph = 0.44704 m/s and
+      // 1 G = 1e-4 T. Every numeric is a magnitude, a speed or a rate, so all carry nonNegative.
+      // 29.1 — |emf| = A|dB/dt| = (0.0900)(0.190) = 0.0171 V; I = 0.0171/0.600 = 0.0285 A.
+      hw9_p1a: { answerType: "numeric", answer: 17.1, sigFigs: 3, unit: "mV", nonNegative: true },
+      hw9_p1b: { answerType: "numeric", answer: 28.5, sigFigs: 3, unit: "mA", nonNegative: true },
+      // 29.15 — Lenz's law with B into the page. The source says "Explain your reasoning", so each
+      // reference says a bare direction is incomplete (verified: without that sentence a bare
+      // "Counterclockwise" was accepted). Contrast 29.20(a), 29.27(b), 29.29(a) and 29.38(b), which
+      // ask only for the direction: their references say the bare direction IS complete (step 12).
+      hw9_p2a: { answerType: "text", answer: "Counterclockwise. The question asks for the reasoning as well as the direction, so a direction with no reason given is incomplete. The magnetic flux through the loop is into the page and increasing. By Lenz's law the induced current opposes this change, so it produces its own magnetic field out of the page inside the loop. By the right-hand rule, a current that makes a field out of the page inside the loop circulates counterclockwise." },
+      hw9_p2b: { answerType: "text", answer: "Clockwise. The question asks for the reasoning as well as the direction, so a direction with no reason given is incomplete. The magnetic flux through the loop is into the page and decreasing. By Lenz's law the induced current opposes this change, so it produces its own magnetic field into the page inside the loop, adding to the weakening field. By the right-hand rule, a current that makes a field into the page inside the loop circulates clockwise." },
+      hw9_p2c: { answerType: "text", answer: "Neither: there is no induced current. The question asks for the reasoning as well, so the claim with no reason given is incomplete. With $B$ constant, the magnetic flux through the loop does not change, so by Faraday's law $\\mathcal{E} = -d\\Phi_B/dt = 0$. With no induced emf there is no induced current, clockwise or counterclockwise." },
+      // 29.20 — B out of the page and decreasing -> induced field out of the page -> counterclockwise.
+      // |emf| = pi r^2 |dB/dt| = pi (0.0480)^2 (0.680) = 4.922e-3 V; P = emf^2/R = 1.5141e-4 W.
+      hw9_p3a: { answerType: "text", answer: "Counterclockwise. The question asks only for the direction, so counterclockwise on its own is a complete answer. What supports it: the magnetic flux through the loop is out of the page and decreasing. By Lenz's law the induced current opposes this decrease, so it produces its own magnetic field out of the page inside the loop. By the right-hand rule, a current that makes a field out of the page inside the loop circulates counterclockwise." },
+      hw9_p3b: { answerType: "numeric", answer: 151.4128, sigFigs: 3, unit: "μW", nonNegative: true },
+      // 29.22 — only the left 1.50-cm side is in the field (read off the figure): emf = vBL =
+      // (3.00)(3.50)(0.0150) = 0.1575 V, I = 0.2625 A, F = ILB = (0.2625)(0.0150)(3.50) = 0.013781 N.
+      hw9_p4_m: { answerType: "numeric", answer: 13.78125, sigFigs: 3, unit: "mN", nonNegative: true },
+      hw9_p4_d: { answerType: "text", answer: "To the left, opposite to the loop's velocity. Only the left end of the loop is still in the field. As the loop leaves, the flux into the page through it decreases, so by Lenz's law the induced current is clockwise, which makes it flow upward along the left end. The force on that end is $\\vec F = I\\vec L\\times\\vec B$ with $\\vec L$ upward and $\\vec B$ into the page, which points to the left. The forces on the parts of the top and bottom sides still in the field carry opposite currents and cancel. A force opposing the motion is what Lenz's law requires." },
+      // 29.25 — v = emf/(BL) = 1.50/((0.650)(0.0500)) = 46.154 m/s = 103.24 mph.
+      hw9_p5_ms: { answerType: "numeric", answer: 46.15385, sigFigs: 3, unit: "m/s", nonNegative: true },
+      hw9_p5_mph: { answerType: "numeric", answer: 103.2432, sigFigs: 3, unit: "mph", nonNegative: true },
+      // A judgment and nothing more, so the reference says outright that a bare "no" is complete
+      // (Authoring step 12; the hw8 28.24 lesson).
+      hw9_p5_c: { answerType: "text", answer: "No. The question asks for the judgment itself, so no on its own is a complete answer. What supports it is the speed just found: the bar would have to move at about $46\\text{ m/s}$ (about $103$ mph) through the field to produce the $1.50\\text{ V}$ of a single AA battery, and it produces that voltage only while it keeps moving in a straight line through the field. A bar cannot be kept moving in one direction at highway speed, which is why practical generators rotate a coil in a magnetic field instead." },
+      // 29.26 — B = 0.50 G = 5.0e-5 T.
+      //   (a) v = 180 mph = 80.467 m/s; emf = (80.467)(5.0e-5)(1.5) = 6.035e-3 V = 6.0 mV.
+      //   (b) v = 565 mph = 252.58 m/s; emf = (252.58)(5.0e-5)(64.4) = 0.8133 V.
+      // Two sig figs: the 0.50 G is 2 sf. The key boxes 6.03 mV and 814 mV from 80.5 and 253 m/s
+      // (within 0.1%; logged in the discrepancies doc).
+      hw9_p6a: { answerType: "numeric", answer: 6.03504, sigFigs: 2, unit: "mV", nonNegative: true },
+      hw9_p6a_c: { answerType: "text", answer: "No. The question asks for the judgment itself, so no on its own is a complete answer. What supports it is the size of the result: about $6\\text{ mV}$ across the tracks, a few thousandths of a volt, far smaller than even the $1.5\\text{ V}$ of a single AA battery and negligible beside the voltages a train's electrical systems use." },
+      hw9_p6b: { answerType: "numeric", answer: 0.8133, sigFigs: 2, unit: "V", nonNegative: true },
+      hw9_p6b_c: { answerType: "text", answer: "No. The question asks for the judgment itself, so no on its own is a complete answer. What supports it is the size of the result: at most about $0.81\\text{ V}$ between the wing tips, less than a single AA battery, which is far too small to cause problems for the plane's electrical systems." },
+      // 29.27 — a at the top of the rod, b at the bottom, B into the page (read off the figure).
+      //   (a) emf = (7.50)(0.800)(0.500) = 3.00 V.   (c) I = 2.00 A, F = ILB = 0.800 N, to the right.
+      //   (d) Fv = 6.00 W = I^2 R.
+      hw9_p7a: { answerType: "numeric", answer: 3.0, sigFigs: 3, unit: "V", nonNegative: true },
+      hw9_p7b: { answerType: "text", answer: "From $b$ to $a$, upward in the figure. The question asks only for the direction, so from b to a (or upward through the rod) on its own is a complete answer. What supports it: the rod moves to the right through a field into the page, so the magnetic force $q\\vec v\\times\\vec B$ on a positive charge in the rod points up the rod, toward $a$. Equivalently, the area of the circuit $abdc$ and the flux into the page through it are increasing, so by Lenz's law the induced current is counterclockwise, which runs upward through the rod." },
+      hw9_p7c_m: { answerType: "numeric", answer: 0.8, sigFigs: 3, unit: "N", nonNegative: true },
+      hw9_p7c_d: { answerType: "text", answer: "To the right, in the direction of the rod's velocity. The induced current $I = \\mathcal{E}/R = 2.00\\text{ A}$ flows from $b$ to $a$ (up the rod), so the magnetic force on the rod is $\\vec F = I\\vec L\\times\\vec B$ with $\\vec L$ upward and $\\vec B$ into the page, which points to the left and opposes the motion. To keep the rod moving at constant speed, the applied force must balance it, so it points to the right." },
+      // (d) Both rates are instructor-added numeric blanks (see physics2.js); the comparison's
+      // reference says the numbers need not be repeated but the energy account is required.
+      hw9_p7d_m: { answerType: "numeric", answer: 6.0, sigFigs: 3, unit: "W", nonNegative: true },
+      hw9_p7d_t: { answerType: "numeric", answer: 6.0, sigFigs: 3, unit: "W", nonNegative: true },
+      hw9_p7d: { answerType: "text", answer: "They are equal, both $6.00\\text{ W}$, which means the energy put into the circuit by the work done on the rod is all dissipated as thermal energy in the resistor. The rates were already computed in the blanks above, so they need not be repeated here, but the question asks what the comparison says about the energy, so equal on its own is incomplete. The applied force does mechanical work on the rod at $Fv = (0.800\\text{ N})(7.50\\text{ m/s}) = 6.00\\text{ W}$, and the induced current develops thermal energy at $I^2R = (2.00\\text{ A})^2(1.50\\ \\Omega) = 6.00\\text{ W}$. Since the rod moves at constant speed, its kinetic energy does not change and nothing is stored, so by conservation of energy every joule of work done on the rod ends up as thermal energy in the resistor. The magnetic field only transfers the energy; it does no net work itself." },
+      // 29.28 — emf = (5.0)(0.750)(1.50) = 5.625 V, I = 0.225 A. Two sig figs: the 5.0 m/s is 2 sf
+      // (the key boxes 5.63 V and 225 mA, the same values at 3 sf).
+      // The three (b) parts share one answer (counterclockwise, b to a in the bar) on purpose: each
+      // reference says the method its prompt names is what it grades (verified: without that
+      // sentence a Lenz's-law answer was accepted for (i), the magnetic-force part). Since
+      // 2026-10-28 the prompts ask for the method and then the direction (instructor's change), so
+      // each reference opens with the method and requires both.
+      hw9_p8a: { answerType: "numeric", answer: 5.625, sigFigs: 2, unit: "V", nonNegative: true },
+      hw9_p8b_i: { answerType: "text", answer: "This part asks for the method and then the direction, so both are required: an answer that gives only the direction, or reaches it by a different method, is incomplete. Using the magnetic force on the charges: the bar moves to the right through a field into the page, so the force $\\vec F = q\\vec v\\times\\vec B$ on a positive charge in the bar points up the bar, from $b$ toward $a$. The charges are pushed that way, so the current runs from $b$ to $a$ in the bar and down through the resistor. Direction: counterclockwise around the circuit." },
+      hw9_p8b_ii: { answerType: "text", answer: "This part asks for the method and then the direction, so both are required: an answer that gives only the direction, or reaches it by a different method, is incomplete. Using Faraday's law: take the area vector into the page, so the positive direction around the circuit is clockwise. As the bar moves to the right the enclosed area grows, so the flux $\\Phi_B = BLx$ into the page increases and $d\\Phi_B/dt > 0$. Then $\\mathcal{E} = -d\\Phi_B/dt$ is negative, so the induced current runs opposite to the chosen positive (clockwise) direction. Direction: counterclockwise, from $b$ to $a$ in the bar." },
+      hw9_p8b_iii: { answerType: "text", answer: "This part asks for the method and then the direction, so both are required: an answer that gives only the direction, or reaches it by a different method, is incomplete. Using Lenz's law: as the bar moves to the right the area of the circuit grows, so the magnetic flux into the page through it increases. The induced current opposes this increase by producing its own field out of the page inside the circuit, and by the right-hand rule that requires a current circulating counterclockwise. Direction: counterclockwise, from $b$ to $a$ in the bar." },
+      hw9_p8c: { answerType: "numeric", answer: 0.225, sigFigs: 2, unit: "A", nonNegative: true },
+      // 29.29 — B out of the page, bar moving left toward R: outward flux decreasing -> counterclockwise.
+      // emf = (5.90)(0.650)(0.360) = 1.3806 V, I = 30.68 mA, P = ILBv = emf^2/R = 0.042357 W.
+      hw9_p9a: { answerType: "text", answer: "Counterclockwise. The question asks only for the direction, so counterclockwise on its own is a complete answer. What supports it: the bar moves to the left, toward the resistor, so the area of the circuit shrinks and the magnetic flux out of the page through it decreases. By Lenz's law the induced current opposes this decrease by producing its own field out of the page inside the circuit, which requires a counterclockwise current. Equivalently, $q\\vec v\\times\\vec B$ on a positive charge in the bar, with $\\vec v$ to the left and $\\vec B$ out of the page, points up the bar, which on the right side of the circuit is counterclockwise." },
+      hw9_p9b: { answerType: "numeric", answer: 42.35681, sigFigs: 3, unit: "mW", nonNegative: true },
+      // 29.38 — E = (r/2)|dB/dt| with r = 0.0225 m: (0.01125)(0.250) = 2.8125e-3 V/m.
+      hw9_p10a: { answerType: "numeric", answer: 2.8125, sigFigs: 3, unit: "mV/m", nonNegative: true },
+      hw9_p10b: { answerType: "text", answer: "Counterclockwise. The question asks only for the direction, so counterclockwise on its own is a complete answer. What supports it: the field between the magnets points from the north pole to the south pole, so for someone on the south pole it points toward them. The field is decreasing, so by Lenz's law the induced current produces its own field in the same direction, toward the viewer, to oppose the decrease. A current that makes a field pointing toward the viewer circulates counterclockwise as they see it." },
+    },
   },
 };
 

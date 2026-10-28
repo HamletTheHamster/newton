@@ -447,6 +447,16 @@ The procedure:
     answer. What supports it is …"), which restores the bare answer without weakening the reveal or
     accepting a wrong one. **Test it**: run each bare-answer `text` item through the real grader
     three times, since one pass does not establish that a Claude verdict is stable.
+    **The rule runs both ways, and leading with the reason is not enough on its own.** The grader
+    is told to grade generously, so a reference that merely *contains* a justification does not
+    make it require one: PHY 215 `hw9`'s 29.15 says "Explain your reasoning", and a bare
+    "Counterclockwise" passed until the reference said *"The question asks for the reasoning as
+    well as the direction, so a direction with no reason given is incomplete."* Likewise a part
+    that **names its method** (29.28(b): "(i) using the magnetic force on the charges … (ii) using
+    Faraday's law … (iii) using Lenz's law") accepted an answer by another method until its
+    reference said the named method is what the part grades. So every `text` reference should say,
+    in its own words, which of the three it is: the bare answer is complete; the reason is
+    required; or this particular method is required.
 
 ### Wording — transcribe the problem, don't rewrite it
 

@@ -303,6 +303,33 @@ magnitude ($Mg\tan\theta/(BL)$) and 27.70 (18.1 m/s²).
 
 ---
 
+## HW9 — Electromagnetic Induction (verified 2026-10-28)
+
+Every value independently re-derived by script from the problem statements before the key was
+opened, and every direction derived twice ($q\vec v\times\vec B$ and Lenz's law). Assigned problems:
+29.1, 29.15, 29.20, 29.22, 29.25, 29.26, 29.27, 29.28, 29.29, 29.38.
+
+**No boxed value is wrong.** The two rows below are intermediate roundings, both well inside ±2%.
+
+| Problem / part | Key value | Verified value | Outside ±2%? | Likely cause | Fixed? |
+|----------------|-----------|----------------|--------------|--------------|--------|
+| 29.26 (a) — emf across the tracks | $6.03$ mV | $6.035$ mV, revealed as **$6.0$ mV** | No (0.08%) | The key rounds 180 mph to 80.5 m/s; exactly it is 80.467 m/s. The data ($0.50$ G, $1.5$ m) support 2 sf. | ☐ |
+| 29.26 (b) — emf between the wing tips | $814$ mV | $813.3$ mV, revealed as **$0.81$ V** | No (0.08%) | The key rounds 565 mph to 253 m/s; exactly it is 252.58 m/s. The $0.50$ G supports 2 sf. | ☐ |
+
+**Not a key error, but noted for precision — 29.28.** The key boxes $5.63$ V and $225$ mA from a
+$5.0$ m/s speed that is 2 sf. The app reveals $5.6$ V and $0.23$ A; all four spellings grade correct.
+
+**Not a key error, but incomplete as a model answer — 29.15.** The problem says "Explain your
+reasoning"; the key gives "a) CCW b) CW c) no induced current" with no reasoning. The app's
+references carry it (Lenz's law: the induced field opposes the change in flux).
+
+**Confirmed correct (no discrepancy):** 29.1 (17.1 mV, 28.5 mA), 29.15 (CCW, CW, none), 29.20 (CCW,
+151 μW), 29.22 (13.8 mN to the left), 29.25 (46.2 m/s, 103 mph, no), 29.26's two "no"s, 29.27
+(3.00 V, $b\to a$, 0.800 N to the right, both 6.00 W), 29.28 (5.6 V, counterclockwise by all three
+methods, 0.23 A), 29.29 (CCW, 42.4 mW), 29.38 (2.81 mV/m, CCW).
+
+---
+
 ## HW8 — Sources of Magnetic Field (verified 2026-09-23)
 
 Every value independently re-derived from the problem statements before the key was opened, and

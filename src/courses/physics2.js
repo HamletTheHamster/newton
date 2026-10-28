@@ -1898,6 +1898,186 @@ export const HOMEWORKS_PHYSICS2 = [
       },
     ],
   },
+  {
+    id: "hw9",
+    title: "Homework 9: Electromagnetic Induction",
+    // WORDING: every prompt below is the Y&F problem text VERBATIM, with only the adaptations the
+    // app forces:
+    //   - "Fig. E29.xx" becomes "the figure". The six figures are rendered straight from the
+    //     textbook PDF at 300 dpi and trimmed to ink (no caption), not screen captures.
+    //   - A sentence that asks one question of several cases is split so the shared clause stays
+    //     in the stem and each lettered clause becomes its own part (29.15, 29.28(b)). 29.15's
+    //     single trailing "Explain your reasoning." is repeated on each of its three parts, the
+    //     q4 treatment, and its stem ends in the one added colon.
+    //   - 29.26's and 29.27's stems run straight into "(a)" in the source with no full stop; the
+    //     period that ends each stem is forced by the split and is the only other punctuation added.
+    //   - 29.29's "At the instant when the bar is moving to the left at 5.90 m/s," governs both
+    //     of its parts, so it opens each part rather than dangling at the end of the stem.
+    //   - "magnitude and direction" (29.22, 29.27(c)) splits into a numeric magnitude plus a text
+    //     direction, the hw7 27.15 / hw8 28.72 treatment.
+    //   - 29.25's "(in m/s and mph)" splits at its own "and" into two blanks, each keeping the
+    //     source's parenthetical for its own unit (the hw8 28.24 treatment), since the two prompts
+    //     are otherwise identical.
+    //   - 29.25 and 29.26 close with a judgment ("Does this seem ..."), each its own text part.
+    //   - TWO DELIBERATE DEPARTURES from the verbatim rule, made on the instructor's explicit
+    //     instruction (2026-10-28); do not revert either. 29.27(d) gains two numeric blanks ahead
+    //     of its comparison, and 29.28(b)(i)-(iii) are reworded to ask for the method and then the
+    //     direction. See the comments on those problems and the hw9 note in docs/courses/phy215.md.
+    //   - Units live in `unit`, which renders beside the input box. Bold problem titles ("Are
+    //     Motional emfs a Practical Source of Electricity?", "Motional emfs in Transportation.")
+    //     are kept as plain text, as hw5-hw8 keep theirs.
+    problems: [
+      // 29.1 — Faraday: |emf| = A |dB/dt| = (0.0900)(0.190) = 0.0171 V = 17.1 mV; I = emf/R = 28.5 mA.
+      // The initial 3.80 T is irrelevant: only the rate matters.
+      {
+        id: "hw9_p1",
+        prompt: "A single loop of wire with an area of $0.0900\\text{ m}^2$ is in a uniform magnetic field that has an initial value of $3.80\\text{ T}$, is perpendicular to the plane of the loop, and is decreasing at a constant rate of $0.190\\text{ T/s}$.",
+        parts: [
+          { id: "hw9_p1a", prompt: "(a) What emf is induced in this loop?", answerType: "numeric", unit: "mV" },
+          { id: "hw9_p1b", prompt: "(b) If the loop has a resistance of $0.600\\ \\Omega$, find the current induced in the loop.", answerType: "numeric", unit: "mA" },
+        ],
+      },
+      // 29.15 — B into the page. Lenz: (a) flux into the page increasing, induced field out of the
+      // page, counterclockwise; (b) decreasing, induced field into the page, clockwise; (c) constant
+      // flux, no emf, no induced current. Each is a two-way choice whose answer alone is a coin
+      // flip and the source says "Explain your reasoning", so all three are `text`.
+      {
+        id: "hw9_p2",
+        figure: "/homeworkFigures/physics2/HW9/figE29-15.png", figureWidth: 300,  // natural 480x444
+        prompt: "A circular loop of wire is in a region of spatially uniform magnetic field, as shown in the figure. The magnetic field is directed into the plane of the figure. Determine the direction (clockwise or counterclockwise) of the induced current in the loop when:",
+        parts: [
+          { id: "hw9_p2a", prompt: "(a) $B$ is increasing. Explain your reasoning.", answerType: "text" },
+          { id: "hw9_p2b", prompt: "(b) $B$ is decreasing. Explain your reasoning.", answerType: "text" },
+          { id: "hw9_p2c", prompt: "(c) $B$ is constant with value $B_0$. Explain your reasoning.", answerType: "text" },
+        ],
+      },
+      // 29.20 — B out of the page and decreasing: induced field out of the page, counterclockwise.
+      // |emf| = pi r^2 |dB/dt| = pi (0.0480)^2 (0.680) = 4.92 mV; P = emf^2/R = 1.514e-4 W = 151 uW.
+      {
+        id: "hw9_p3",
+        figure: "/homeworkFigures/physics2/HW9/figE29-20.png", figureWidth: 280,  // natural 424x423
+        prompt: "A circular loop of wire with radius $r = 0.0480\\text{ m}$ and resistance $R = 0.160\\ \\Omega$ is in a region of spatially uniform magnetic field, as shown in the figure. The magnetic field is directed out of the plane of the figure. The magnetic field has an initial value of $8.00\\text{ T}$ and is decreasing at a rate of $dB/dt = -0.680\\text{ T/s}$.",
+        parts: [
+          { id: "hw9_p3a", prompt: "(a) Is the induced current in the loop clockwise or counterclockwise?", answerType: "text" },
+          { id: "hw9_p3b", prompt: "(b) What is the rate at which electrical energy is being dissipated by the resistance of the loop?", answerType: "numeric", unit: "μW" },
+        ],
+      },
+      // 29.22 — READ THE FIGURE: only the LEFT short side (1.50 cm) is still in the field, so
+      // emf = vBL = (3.00)(3.50)(0.0150) = 0.1575 V, I = 0.2625 A, and F = ILB = 13.8 mN. The
+      // forces on the two long sides' in-field stretches are equal and opposite. Flux into the page
+      // decreasing -> clockwise current -> upward on the left side -> F = I L x B points LEFT,
+      // opposing the motion.
+      {
+        id: "hw9_p4",
+        figure: "/homeworkFigures/physics2/HW9/figE29-22.png", figureWidth: 440,  // natural 915x346
+        prompt: "A rectangular loop of wire with dimensions $1.50\\text{ cm}$ by $8.00\\text{ cm}$ and resistance $R = 0.600\\ \\Omega$ is being pulled to the right out of a region of uniform magnetic field. The magnetic field has magnitude $B = 3.50\\text{ T}$ and is directed into the plane of the figure.",
+        parts: [
+          { id: "hw9_p4_m", prompt: "At the instant when the speed of the loop is $3.00\\text{ m/s}$ and it is still partially in the field region, what is the magnitude of the force the magnetic field exerts on the loop?", answerType: "numeric", unit: "mN" },
+          { id: "hw9_p4_d", prompt: "At the instant when the speed of the loop is $3.00\\text{ m/s}$ and it is still partially in the field region, what is the direction of the force the magnetic field exerts on the loop?", answerType: "text" },
+        ],
+      },
+      // 29.25 — v = emf/(BL) = 1.50/((0.650)(0.0500)) = 46.2 m/s = 103 mph (1 mph = 0.44704 m/s).
+      {
+        id: "hw9_p5",
+        prompt: "Are Motional emfs a Practical Source of Electricity?",
+        parts: [
+          { id: "hw9_p5_ms", prompt: "How fast (in m/s) would a $5.00\\text{-cm}$ copper bar have to move at right angles to a $0.650\\text{-T}$ magnetic field to generate $1.50\\text{ V}$ (the same as a AA battery) across its ends?", answerType: "numeric", unit: "m/s" },
+          { id: "hw9_p5_mph", prompt: "How fast (in mph) would a $5.00\\text{-cm}$ copper bar have to move at right angles to a $0.650\\text{-T}$ magnetic field to generate $1.50\\text{ V}$ (the same as a AA battery) across its ends?", answerType: "numeric", unit: "mph" },
+          { id: "hw9_p5_c", prompt: "Does this seem like a practical way to generate electricity?", answerType: "text" },
+        ],
+      },
+      // 29.26 — 0.50 G = 5.0e-5 T. (a) 180 mph = 80.47 m/s, emf = vBL = (80.47)(5.0e-5)(1.5) =
+      // 6.0 mV. (b) 565 mph = 252.6 m/s, emf = (252.6)(5.0e-5)(64.4) = 0.81 V. Two sig figs: the
+      // 0.50 G (and in (a) the 1.5 m) are 2 sf. Each "Does this seem large enough ..." is `text`.
+      {
+        id: "hw9_p6",
+        prompt: "Motional emfs in Transportation. Airplanes and trains move through the earth's magnetic field at rather high speeds, so it is reasonable to wonder whether this field can have a substantial effect on them. We shall use a typical value of $0.50\\text{ G}$ for the earth's field.",
+        parts: [
+          { id: "hw9_p6a", prompt: "(a) The French TGV train and the Japanese “bullet train” reach speeds of up to $180\\text{ mph}$ moving on tracks about $1.5\\text{ m}$ apart. At top speed moving perpendicular to the earth's magnetic field, what potential difference is induced across the tracks as the wheels roll?", answerType: "numeric", unit: "mV" },
+          { id: "hw9_p6a_c", prompt: "(a) Does this seem large enough to produce noticeable effects?", answerType: "text" },
+          { id: "hw9_p6b", prompt: "(b) The Boeing 747-400 aircraft has a wingspan of $64.4\\text{ m}$ and a cruising speed of $565\\text{ mph}$. If there is no wind blowing (so that this is also their speed relative to the ground), what is the maximum potential difference that could be induced between the opposite tips of the wings?", answerType: "numeric", unit: "V" },
+          { id: "hw9_p6b_c", prompt: "(b) Does this seem large enough to cause problems with the plane?", answerType: "text" },
+        ],
+      },
+      // 29.27 — From the figure: a at the top of the rod, b at the bottom, c and d at the left
+      // ends of the rails, B into the page.
+      //   (a) emf = vBL = (7.50)(0.800)(0.500) = 3.00 V.
+      //   (b) v x B = (+x) x (-z) = +y on positive charges: current flows UP the rod, from b to a.
+      //   (c) I = 3.00/1.50 = 2.00 A; F_B = ILB = 0.800 N to the LEFT, so the applied force is
+      //       0.800 N to the RIGHT.
+      //   (d) Fv = (0.800)(7.50) = 6.00 W and I^2 R = (2.00)^2 (1.50) = 6.00 W: equal.
+      // DELIBERATE DEPARTURE FROM THE VERBATIM-WORDING RULE, on the instructor's explicit
+      // instruction (2026-10-28), the hw8 28.17(b) precedent: graded as prose alone, a bare
+      // "They're equal." passed with neither rate computed. Both rates are now numeric blanks
+      // AHEAD of the comparison, each built from the source's own phrase, and the comparison asks
+      // what the result says about energy (worded so it does not state the conclusion for them).
+      // Do NOT revert to a single text part.
+      {
+        id: "hw9_p7",
+        figure: "/homeworkFigures/physics2/HW9/figE29-27.png", figureWidth: 380,  // natural 552x323
+        prompt: "The conducting rod $ab$ shown in the figure makes contact with metal rails $ca$ and $db$. The apparatus is in a uniform magnetic field of $0.800\\text{ T}$, perpendicular to the plane of the figure.",
+        parts: [
+          { id: "hw9_p7a", prompt: "(a) Find the magnitude of the emf induced in the rod when it is moving toward the right with a speed $7.50\\text{ m/s}$.", answerType: "numeric", unit: "V" },
+          { id: "hw9_p7b", prompt: "(b) In what direction does the current flow in the rod?", answerType: "text" },
+          { id: "hw9_p7c_m", prompt: "(c) If the resistance of the circuit $abdc$ is $1.50\\ \\Omega$ (assumed to be constant), find the magnitude of the force required to keep the rod moving to the right with a constant speed of $7.50\\text{ m/s}$. You can ignore friction.", answerType: "numeric", unit: "N" },
+          { id: "hw9_p7c_d", prompt: "(c) If the resistance of the circuit $abdc$ is $1.50\\ \\Omega$ (assumed to be constant), find the direction of the force required to keep the rod moving to the right with a constant speed of $7.50\\text{ m/s}$. You can ignore friction.", answerType: "text" },
+          { id: "hw9_p7d_m", prompt: "(d) What is the rate at which mechanical work is done by the force $(Fv)$?", answerType: "numeric", unit: "W" },
+          { id: "hw9_p7d_t", prompt: "(d) What is the rate at which thermal energy is developed in the circuit $(I^2R)$?", answerType: "numeric", unit: "W" },
+          { id: "hw9_p7d", prompt: "(d) Compare the rate at which mechanical work is done by the force $(Fv)$ with the rate at which thermal energy is developed in the circuit $(I^2R)$, and describe what this says about the energy put into the circuit by the work done on the rod and the energy dissipated in the resistor.", answerType: "text" },
+        ],
+      },
+      // 29.28 — emf = vBL = (5.0)(0.750)(1.50) = 5.6 V (2 sf: the 5.0 m/s), I = emf/R = 0.23 A.
+      // Direction, by each of the three methods the source names: counterclockwise, i.e. b to a
+      // in the bar (a is at the top in the figure) and downward through R. The three parts share
+      // one answer on purpose; what each grades is the METHOD named in its prompt.
+      // DELIBERATE DEPARTURE FROM THE VERBATIM-WORDING RULE, on the instructor's explicit
+      // instruction (2026-10-28): the source's "Find the direction ... (i) using X" is reworded to
+      // "Describe how you would find the direction ... using X, and then state the direction", so
+      // the requirement the grader enforces (the named method, not just the direction) is on the
+      // student's screen rather than only in the reference. The method phrases are the source's.
+      // Do NOT revert.
+      {
+        id: "hw9_p8",
+        figure: "/homeworkFigures/physics2/HW9/figE29-28.png", figureWidth: 360,  // natural 499x298
+        prompt: "A $1.50\\text{-m-long}$ metal bar is pulled to the right at a steady $5.0\\text{ m/s}$ perpendicular to a uniform, $0.750\\text{-T}$ magnetic field. The bar rides on parallel metal rails connected through a $25.0\\text{-}\\Omega$ resistor, as shown in the figure, so the apparatus makes a complete circuit. You can ignore the resistance of the bar and the rails.",
+        parts: [
+          { id: "hw9_p8a", prompt: "(a) Calculate the magnitude of the emf induced in the circuit.", answerType: "numeric", unit: "V" },
+          { id: "hw9_p8b_i", prompt: "(b)(i) Describe how you would find the direction of the current induced in the circuit using the magnetic force on the charges in the moving bar, and then state the direction.", answerType: "text" },
+          { id: "hw9_p8b_ii", prompt: "(b)(ii) Describe how you would find the direction of the current induced in the circuit using Faraday's law, and then state the direction.", answerType: "text" },
+          { id: "hw9_p8b_iii", prompt: "(b)(iii) Describe how you would find the direction of the current induced in the circuit using Lenz's law, and then state the direction.", answerType: "text" },
+          { id: "hw9_p8c", prompt: "(c) Calculate the current through the resistor.", answerType: "numeric", unit: "A" },
+        ],
+      },
+      // 29.29 — B out of the page, R on the left, bar moving LEFT toward it: the enclosed area and
+      // the outward flux shrink, so the induced field is out of the page: counterclockwise.
+      // (Check: v x B = (-x) x (+z) = +y, up the bar on the right side of the loop.)
+      // emf = (5.90)(0.650)(0.360) = 1.3806 V, I = 30.7 mA, P = Fv = ILBv = emf^2/R = 42.4 mW.
+      // The source never says the speed is steady; "the rate at which the applied force is doing
+      // work" equals F_B v only if it is, which is the book's and the key's reading.
+      {
+        id: "hw9_p9",
+        figure: "/homeworkFigures/physics2/HW9/figE29-29.png", figureWidth: 380,  // natural 555x363
+        prompt: "A $0.360\\text{-m-long}$ metal bar is pulled to the left by an applied force $F$. The bar rides on parallel metal rails connected through a $45.0\\text{-}\\Omega$ resistor, as shown in the figure, so the apparatus makes a complete circuit. You can ignore the resistance of the bar and rails. The circuit is in a uniform $0.650\\text{-T}$ magnetic field that is directed out of the plane of the figure.",
+        parts: [
+          { id: "hw9_p9a", prompt: "(a) At the instant when the bar is moving to the left at $5.90\\text{ m/s}$, is the induced current in the circuit clockwise or counterclockwise?", answerType: "text" },
+          { id: "hw9_p9b", prompt: "(b) At the instant when the bar is moving to the left at $5.90\\text{ m/s}$, what is the rate at which the applied force is doing work on the bar?", answerType: "numeric", unit: "mW" },
+        ],
+      },
+      // 29.38 — Faraday on the ring (r = 2.25 cm): E (2 pi r) = pi r^2 |dB/dt|, so
+      // E = (r/2)|dB/dt| = (0.01125)(0.250) = 2.81e-3 V/m = 2.81 mV/m.
+      // (b) The field runs from the N pole to the S pole, i.e. TOWARD someone standing on the
+      // south pole. It is decreasing, so the induced current makes a field toward that viewer,
+      // which is a counterclockwise current as they see it.
+      {
+        id: "hw9_p10",
+        prompt: "A metal ring $4.50\\text{ cm}$ in diameter is placed between the north and south poles of large magnets with the plane of its area perpendicular to the magnetic field. These magnets produce an initial uniform field of $1.12\\text{ T}$ between them but are gradually pulled apart, causing this field to remain uniform but decrease steadily at $0.250\\text{ T/s}$.",
+        parts: [
+          { id: "hw9_p10a", prompt: "(a) What is the magnitude of the electric field induced in the ring?", answerType: "numeric", unit: "mV/m" },
+          { id: "hw9_p10b", prompt: "(b) In which direction (clockwise or counterclockwise) does the current flow as viewed by someone on the south pole of the magnet?", answerType: "text" },
+        ],
+      },
+    ],
+  },
 ];
 
 // ── Study guides ─────────────────────────────────────────────────────────────────────────────
