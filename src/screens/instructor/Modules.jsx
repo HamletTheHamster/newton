@@ -16,6 +16,15 @@ const EyeIcon = ({ hidden }) => hidden
   ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
   : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
 
+// Mirrors the uploads/ rule in storage.rules. A file over it would otherwise be refused only after
+// the whole upload had been sent.
+const UPLOAD_LIMIT = 25 * 1024 * 1024;
+const fitsUploadLimit = file => file.size < UPLOAD_LIMIT;
+
+// So "Lecture 2" lands above "Lecture 10", whatever order the OS picker hands the files over in.
+const byNaturalName = (a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
+const sameFile = (a, b) => a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+
 export function Modules({
   classId, modules, moduleConfig, pages, uploads, quizzes, homeworks = [], studyGuides = [], customQuizzes,
   dueDates, onSaveDueDates,
@@ -46,7 +55,12 @@ export function Modules({
   const [addType, setAddType] = useState(null);      // "quiz" | "homework" | "reading" | "notes" | "link" | "file"
   const [addTitle, setAddTitle] = useState("");
   const [addUrl, setAddUrl] = useState("");
-  const [addFile, setAddFile] = useState(null);
+  // Files staged for upload: { id, file, title, uploadId, itemId, error }. The two ids are fixed at
+  // staging, not at upload, so retrying a file that failed partway overwrites its own earlier
+  // attempt and cannot leave a stray Storage object or a second module row.
+  const [addFiles, setAddFiles] = useState([]);
+  const [addRun, setAddRun] = useState(null);        // { id, index, total }: the file now uploading
+  const addRunRef = useRef(null);                    // identity of the batch that owns the bar
   const [addQuizPick, setAddQuizPick] = useState("");
   const [addHwPick, setAddHwPick] = useState("");
   const [addStudyPick, setAddStudyPick] = useState("");
@@ -67,6 +81,11 @@ export function Modules({
   const [creatingModule, setCreatingModule] = useState(false);
   const [newModuleTitle, setNewModuleTitle] = useState("");
 
+  // What the module list is NOW. An upload batch outlives the render that started it, so a commit
+  // built from the `modules` prop would drop every file before it, and any reorder made meanwhile.
+  const modulesRef = useRef(modules);
+  modulesRef.current = modules;
+
   const cfgOf = id => moduleConfig[id] || {};
   const toggleOne = id => setOpenMap(prev => ({ ...prev, [id]: !prev[id] }));
 
@@ -81,7 +100,7 @@ export function Modules({
 
   const resetAddState = () => {
     setAddingTo(null); setAddType(null);
-    setAddTitle(""); setAddUrl(""); setAddFile(null);
+    setAddTitle(""); setAddUrl(""); setAddFiles([]); setAddRun(null); addRunRef.current = null;
     setAddQuizPick(""); setAddHwPick(""); setAddStudyPick(""); setAddProgress(0); setAddBusy(false); setAddErr("");
   };
 
@@ -101,7 +120,8 @@ export function Modules({
 
   // ── Module-level CRUD ────────────────────────────────────────────────────
   const updateModule = async (moduleId, mutator) => {
-    const next = (modules || []).map(m => m.id === moduleId ? mutator(m) : m);
+    const next = (modulesRef.current || []).map(m => m.id === moduleId ? mutator(m) : m);
+    modulesRef.current = next;
     await onSaveModules(next);
   };
 
@@ -291,38 +311,60 @@ export function Modules({
     resetAddState();
   };
 
-  const submitAddFile = async (mod) => {
-    setAddErr("");
-    if (!addFile) { setAddErr("Choose a file to upload."); return; }
-    if (addFile.size >= 50 * 1024 * 1024) { setAddErr("File is too large (50 MB max)."); return; }
-    const title = addTitle.trim() || addFile.name;
-    setAddBusy(true); setAddProgress(0);
-    try {
-      const uploadId = newId("u");
-      const safeName = addFile.name.replace(/[^\w.\-]+/g, "_");
-      const storagePath = `classes/${classId}/uploads/${uploadId}/${safeName}`;
-      const result = await onUploadFile(storagePath, addFile, p => setAddProgress(p));
-      const meta = {
-        name: addFile.name, size: result.size, mime: result.mime,
-        storagePath: result.storagePath, downloadUrl: result.downloadUrl,
-        createdAt: new Date().toISOString(),
-      };
-      await onSaveUpload(uploadId, meta);
-      const items = [...(mod.items || []), { id: newId("it"), type: "file", title, uploadId }];
-      await updateModule(mod.id, m => ({ ...m, items }));
-      resetAddState();
-    } catch (e) {
-      setAddErr(e?.message || "Upload failed.");
-      setAddBusy(false);
+  // One file at a time, each one finished (stored, recorded, in the module) before the next starts:
+  // a failure or a closed tab costs only the files not yet done, and they land in the listed order.
+  // The batch keeps running if the instructor leaves this screen, against the class it started in.
+  const submitAddFiles = async (mod) => {
+    const queue = addFiles.filter(f => fitsUploadLimit(f.file));
+    if (!queue.length) { setAddErr("Choose a file to upload."); return; }
+    const run = {};
+    addRunRef.current = run;
+    const live = () => addRunRef.current === run;  // false once the bar has been reset for something else
+    setAddErr(""); setAddBusy(true);
+    setAddFiles(list => list.map(f => ({ ...f, error: null })));
+    let failed = 0;
+    for (const [index, entry] of queue.entries()) {
+      if (live()) { setAddRun({ id: entry.id, index, total: queue.length }); setAddProgress(0); }
+      try {
+        const { file, uploadId, itemId } = entry;
+        const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+        const storagePath = `classes/${classId}/uploads/${uploadId}/${safeName}`;
+        const result = await onUploadFile(storagePath, file, p => { if (live()) setAddProgress(p); });
+        await onSaveUpload(uploadId, {
+          name: file.name, size: result.size, mime: result.mime,
+          storagePath: result.storagePath, downloadUrl: result.downloadUrl,
+          createdAt: new Date().toISOString(),
+        });
+        const item = { id: itemId, type: "file", title: entry.title.trim() || file.name, uploadId };
+        await updateModule(mod.id, m => (m.items || []).some(it => it.id === itemId)
+          ? m
+          : { ...m, items: [...(m.items || []), item] });
+        setAddFiles(list => list.filter(f => f.id !== entry.id));
+      } catch (e) {
+        failed++;
+        const error = e?.message || "Upload failed.";
+        setAddFiles(list => list.map(f => f.id === entry.id ? { ...f, error } : f));
+      }
     }
+    if (!live()) return;
+    // Anything still listed needs the instructor: a failure to retry, or a file too large to send.
+    if (!failed && queue.length === addFiles.length) { resetAddState(); return; }
+    setAddBusy(false); setAddRun(null); addRunRef.current = null;
   };
 
-  const pickAddFile = (f) => {
-    if (!f) return;
-    setAddFile(f);
+  const stageFiles = (fileList) => {
+    const picked = Array.from(fileList || []).sort(byNaturalName);
+    if (!picked.length) return;
     setAddErr("");
-    setAddTitle(t => t || f.name);
+    setAddFiles(prev => [
+      ...prev,
+      ...picked
+        .filter(file => !prev.some(f => sameFile(f.file, file)))
+        .map(file => ({ id: newId("st"), file, title: file.name, uploadId: newId("u"), itemId: newId("it"), error: null })),
+    ]);
   };
+  const setStagedTitle = (id, title) => setAddFiles(list => list.map(f => f.id === id ? { ...f, title } : f));
+  const unstageFile = id => setAddFiles(list => list.filter(f => f.id !== id));
 
   // ── Replace an item's file in place ──────────────────────────────────────
   // Keeps the same uploadId (and therefore the module item, its title and any
@@ -342,7 +384,7 @@ export function Modules({
     const { modId, item } = target;
     const itemKey = `${modId}::${item.id}`;
     setReplaceErr(null);
-    if (file.size >= 50 * 1024 * 1024) { setReplaceErr({ itemKey, msg: "File is too large (50 MB max)." }); return; }
+    if (!fitsUploadLimit(file)) { setReplaceErr({ itemKey, msg: "File is too large (25 MB max)." }); return; }
 
     const prev = uploads[item.uploadId] || null;
     const uploadId = item.uploadId || newId("u");
@@ -386,7 +428,8 @@ export function Modules({
       <input
         ref={addFileInputRef}
         type="file"
-        onChange={e => { pickAddFile(e.target.files?.[0]); e.target.value = ""; }}
+        multiple
+        onChange={e => { stageFiles(e.target.files); e.target.value = ""; }}
         style={{ display: "none" }}
       />
       <input ref={replaceInputRef} type="file" onChange={onReplaceFilePicked} style={{ display: "none" }} />
@@ -678,7 +721,8 @@ export function Modules({
                   err={addErr}
                   title={addTitle} setTitle={setAddTitle}
                   url={addUrl} setUrl={setAddUrl}
-                  file={addFile} setFile={setAddFile}
+                  files={addFiles} run={addRun}
+                  onStageFiles={stageFiles} onStagedTitle={setStagedTitle} onUnstageFile={unstageFile}
                   quizPick={addQuizPick} setQuizPick={setAddQuizPick}
                   hwPick={addHwPick} setHwPick={setAddHwPick}
                   studyPick={addStudyPick} setStudyPick={setAddStudyPick} studyGuides={studyGuides}
@@ -694,7 +738,7 @@ export function Modules({
                   onSubmitQuiz={() => submitAddQuiz(mod)}
                   onSubmitText={() => submitAddTextItem(mod, addType)}
                   onSubmitLink={() => submitAddLink(mod)}
-                  onSubmitFile={() => submitAddFile(mod)}
+                  onSubmitFile={() => submitAddFiles(mod)}
                 />
               </div>
             )}
@@ -815,7 +859,7 @@ function UrlInput({ initial, onCommit, placeholder }) {
 
 function AddItemBar({
   mod, active, busy, progress, err,
-  title, setTitle, url, setUrl, file, setFile, quizPick, setQuizPick, quizzes, customQuizzes,
+  title, setTitle, url, setUrl, files, run, onStageFiles, onStagedTitle, onUnstageFile, quizPick, setQuizPick, quizzes, customQuizzes,
   hwPick, setHwPick, homeworks,
   studyPick, setStudyPick, studyGuides,
   onCancel, onOpenPageEditor, onCreateNewQuiz, onDeleteCustomQuiz,
@@ -943,26 +987,53 @@ function AddItemBar({
   }
 
   if (active === "file") {
+    const ready = files.filter(f => fitsUploadLimit(f.file)).length;
+    const uploadLabel = !busy
+      ? (ready > 1 ? `Upload ${ready} files` : "Upload")
+      : `Uploading${run?.total > 1 ? ` ${run.index + 1} of ${run.total}` : ""}… ${Math.round(progress * 100)}%`;
     return wrap(
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <label style={{ ...s.btnGhost, width: "auto", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
-            {file ? "Choose different…" : "Choose file…"}
-            <input type="file" disabled={busy} onChange={e => { setFile(e.target.files?.[0] || null); if (!title && e.target.files?.[0]) setTitle(e.target.files[0].name); }} style={{ display: "none" }} />
-          </label>
-          {file && <span style={{ ...s.muted, fontSize: 12 }}>{file.name} · {fmtBytes(file.size)}</span>}
-          <input style={{ ...s.input, flex: "1 1 240px", padding: "8px 12px", fontSize: 13 }} placeholder="Display title (defaults to filename)" value={title} onChange={e => setTitle(e.target.value)} disabled={busy} />
-        </div>
-        {busy && (
-          <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden", height: 6 }}>
-            <div style={{ width: Math.round(progress * 100) + "%", height: "100%", background: teal, transition: "width 0.15s linear" }} />
-          </div>
-        )}
+        {files.map(f => {
+          const tooLarge = !fitsUploadLimit(f.file);
+          const uploading = run?.id === f.id;
+          const problem = tooLarge ? "Too large (25 MB max)" : f.error;
+          return (
+            <div key={f.id} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <input
+                  aria-label={`Display title for ${f.file.name}`}
+                  style={{ ...s.input, flex: "1 1 240px", width: "auto", padding: "8px 12px", fontSize: 13, opacity: tooLarge ? 0.5 : 1 }}
+                  placeholder={f.file.name}
+                  value={f.title}
+                  onChange={e => onStagedTitle(f.id, e.target.value)}
+                  disabled={busy || tooLarge}
+                />
+                <span style={{ ...s.muted, fontSize: 12, whiteSpace: "nowrap" }}>{fmtBytes(f.file.size)}</span>
+                <button
+                  onClick={() => onUnstageFile(f.id)}
+                  disabled={busy}
+                  title={`Remove ${f.file.name}`}
+                  style={{ background: "none", border: "none", color: muted, cursor: busy ? "not-allowed" : "pointer", fontSize: 14, padding: "2px 6px", opacity: busy ? 0.5 : 1 }}
+                >✕</button>
+              </div>
+              {uploading && (
+                <div style={{ background: "rgba(255,255,255,0.05)", borderRadius: 6, overflow: "hidden", height: 6 }}>
+                  <div style={{ width: Math.round(progress * 100) + "%", height: "100%", background: teal, transition: "width 0.15s linear" }} />
+                </div>
+              )}
+              {problem && <p style={{ color: "#f87171", fontSize: 12, margin: 0 }}>{problem}</p>}
+            </div>
+          );
+        })}
         {err && <p style={{ color: "#f87171", fontSize: 13, margin: 0 }}>{err}</p>}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={onSubmitFile} disabled={busy || !file} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13, opacity: busy || !file ? 0.5 : 1 }}>
-            {busy ? "Uploading… " + Math.round(progress * 100) + "%" : "Upload"}
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <button onClick={onSubmitFile} disabled={busy || !ready} style={{ ...s.btnPri, width: "auto", padding: "8px 16px", fontSize: 13, opacity: busy || !ready ? 0.5 : 1 }}>
+            {uploadLabel}
           </button>
+          <label style={{ ...s.btnGhost, width: "auto", cursor: busy ? "not-allowed" : "pointer", opacity: busy ? 0.5 : 1 }}>
+            {files.length ? "Add more…" : "Choose files…"}
+            <input type="file" multiple disabled={busy} onChange={e => { onStageFiles(e.target.files); e.target.value = ""; }} style={{ display: "none" }} />
+          </label>
           <button onClick={onCancel} disabled={busy} style={{ ...s.btnGhost, width: "auto", opacity: busy ? 0.5 : 1 }}>Cancel</button>
         </div>
       </div>

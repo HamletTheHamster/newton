@@ -207,6 +207,10 @@ export default function App() {
     setCurrentClassIdState(id);
     try { if (id) localStorage.setItem("newton_current_class_id", id); else localStorage.removeItem("newton_current_class_id"); } catch {}
   };
+  // A long-running save (a module file upload batch) holds a closure over the class it started in.
+  // Its writes belong to that class, but it must not paint them over a class switched to since.
+  const currentClassIdRef = useRef(currentClassId);
+  currentClassIdRef.current = currentClassId;
   const classMeta = currentClassId ? classes[currentClassId]?.metadata || null : null;
 
   const [roster, setRoster] = useState([]);
@@ -1365,7 +1369,7 @@ export default function App() {
   const saveModules = async nextArr => {
     const cid = requireClass();
     const safe = Array.isArray(nextArr) ? nextArr : [];
-    setModules(safe);
+    if (currentClassIdRef.current === cid) setModules(safe);
     updateClassCache(cid, 'modules', safe);
     await fbSave(classPath(cid, 'modules'), safe.length ? safe : null);
   };
@@ -1412,9 +1416,13 @@ export default function App() {
   };
   const saveUpload = async (uploadId, meta) => {
     const cid = requireClass();
-    const updated = { ...uploads, [uploadId]: meta };
-    setUploads(updated);
-    updateClassCache(cid, 'uploads', updated);
+    // Merged against the latest state, not this render's `uploads`: a batch calls this once per
+    // file from one closure, and spreading the closure's copy would drop each file before the last.
+    if (currentClassIdRef.current === cid) setUploads(prev => ({ ...prev, [uploadId]: meta }));
+    setClasses(prev => ({
+      ...prev,
+      [cid]: { ...(prev[cid] || {}), uploads: { ...(prev[cid]?.uploads || {}), [uploadId]: meta } },
+    }));
     await fbSave(classPath(cid, `uploads/${uploadId}`), meta);
   };
   const deleteUpload = async uploadId => {
@@ -3624,6 +3632,7 @@ export default function App() {
 
         {currentClassId && instructorSection === "modules" && (
           <InstructorModules
+            key={currentClassId}
             classId={currentClassId}
             modules={modules}
             moduleConfig={moduleConfig}
