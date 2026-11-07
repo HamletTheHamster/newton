@@ -790,10 +790,14 @@ function TopBar({ creating, title, onTitleChange, onStartCreate, onSubmitCreate,
 function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, dragProps, isDropTarget, menuOpen, menuRef, onToggleMenu, menu, renameMode, renameDraft, onRenameDraftChange, onRenameCommit, onRenameCancel, onTitleClick, titleHint }) {
   const { s, muted, border, text, teal } = useTheme();
   const activeDragProps = renameMode ? { ...dragProps, draggable: false } : (dragProps || {});
+  // A hidden row fades its CONTENT, never the row itself. Opacity on the row would fade the open
+  // menu with it and, worse, make the row a stacking context that traps the menu's zIndex: the next
+  // faded row then paints over the menu and takes its clicks, so "Show to students" could not be hit.
+  const contentOpacity = isHidden ? 0.45 : 1;
   return (
-    <div {...activeDragProps} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${border}`, opacity: isHidden ? 0.45 : 1, flexWrap: "wrap", cursor: renameMode ? "default" : (dragProps?.draggable ? "grab" : "default"), boxShadow: isDropTarget ? `inset 0 3px 0 0 ${teal}` : undefined }}>
-      <span style={{ color: muted, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18 }}>{typeIcon}</span>
-      <div style={{ flex: "1 1 200px", minWidth: 0 }}>
+    <div {...activeDragProps} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 18px", borderTop: `1px solid ${border}`, flexWrap: "wrap", cursor: renameMode ? "default" : (dragProps?.draggable ? "grab" : "default"), boxShadow: isDropTarget ? `inset 0 3px 0 0 ${teal}` : undefined }}>
+      <span style={{ color: muted, flexShrink: 0, display: "inline-flex", alignItems: "center", minWidth: 18, opacity: contentOpacity }}>{typeIcon}</span>
+      <div style={{ flex: "1 1 200px", minWidth: 0, opacity: contentOpacity }}>
         {renameMode ? (
           <div style={{ display: "flex", alignItems: "center", gap: 6 }} onClick={e => e.stopPropagation()}>
             <input
@@ -829,7 +833,7 @@ function ItemRow({ typeIcon, title, subtitle, meta, error, isHidden, urlField, d
           </>
         )}
       </div>
-      {urlField && <div style={{ flex: "2 1 280px", minWidth: 0 }}>{urlField}</div>}
+      {urlField && <div style={{ flex: "2 1 280px", minWidth: 0, opacity: contentOpacity }}>{urlField}</div>}
       <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
         <div style={{ position: "relative" }} ref={menuRef}>
           <button onClick={onToggleMenu} style={{ background: "transparent", border: "none", color: muted, cursor: "pointer", fontSize: 20, padding: "2px 8px", lineHeight: 1, borderRadius: 6 }}>⋮</button>
